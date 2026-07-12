@@ -109,7 +109,9 @@ $site_config = array(
     'icrm_hub_enabled'          => true,
     'icrm_hub_geo_button'       => true,
     /* onoff-builder-bridge — 루트 / 를 빌더 페이지로 (project_id) */
-    'home_builder_bridge_id'    => '',
+    'home_builder_bridge_id'    => 'bacaraai-landing',
+    /* 로그인 후 진입하는 시스템 빌더 페이지 (project_id) */
+    'builder_system_bridge_id'  => 'bacaraai-system',
 );
 
 /**

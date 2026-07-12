@@ -738,6 +738,66 @@ if (!function_exists('onoff_builder_resolve_import_index_file')) {
     }
 }
 
+if (!function_exists('onoff_builder_get_system_bridge_id')) {
+    function onoff_builder_get_system_bridge_id()
+    {
+        $id = '';
+        if (function_exists('g5site_cfg')) {
+            $id = onoff_builder_sanitize_project_id(g5site_cfg('builder_system_bridge_id', ''));
+        }
+
+        return $id;
+    }
+}
+
+if (!function_exists('onoff_builder_page_requires_member')) {
+    function onoff_builder_page_requires_member($id)
+    {
+        $id = onoff_builder_sanitize_project_id($id);
+        $system_id = onoff_builder_get_system_bridge_id();
+
+        return $system_id !== '' && $id === $system_id;
+    }
+}
+
+if (!function_exists('onoff_builder_get_page_url')) {
+    function onoff_builder_get_page_url($id)
+    {
+        $id = onoff_builder_sanitize_project_id($id);
+        if ($id === '') {
+            return defined('G5_URL') ? G5_URL : '/';
+        }
+
+        return rtrim(ONOFF_BUILDER_URL, '/') . '/page.php?id=' . rawurlencode($id);
+    }
+}
+
+if (!function_exists('onoff_builder_require_member_for_page')) {
+    function onoff_builder_require_member_for_page($id)
+    {
+        global $is_member;
+
+        if (!onoff_builder_page_requires_member($id)) {
+            return;
+        }
+
+        if (!empty($is_member)) {
+            return;
+        }
+
+        $back = onoff_builder_get_page_url($id);
+        $login = defined('G5_BBS_URL') ? G5_BBS_URL . '/login.php' : '/bbs/login.php';
+        $login .= '?url=' . urlencode($back);
+
+        if (function_exists('goto_url')) {
+            goto_url($login);
+        }
+
+        header('Location: ' . $login);
+        exit;
+    }
+}
+
 if (!function_exists('onoff_builder_render_import_page')) {
     function onoff_builder_render_import_page($id)
     {

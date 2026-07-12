@@ -36,6 +36,7 @@ jobs:
             _backup_transfer_*/
             **/_backup_transfer_*/
             _BUILDER_INPUT/**
+            builder/**
             data/**
             cache/**
             session/**

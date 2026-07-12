@@ -1,0 +1,6 @@
+        <RightPanel 
+          table={selectedTable} 
+          isOpen={isRightPanelOpen} 
+          onClose={() => setIsRightPanelOpen(false)} 
+        />
+      </main>

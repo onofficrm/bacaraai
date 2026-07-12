@@ -1,0 +1,218 @@
+import { getResultColor, getResultLabel } from '../utils/colors';
+import React from 'react';
+import { Maximize2, Star, EyeOff, Activity, BarChart2 } from 'lucide-react';
+import { AiOpinion, TableData, TableStatus } from '../types';
+import Roadmap from './Roadmap';
+
+interface TableCardProps {
+  table: TableData;
+  isSelected?: boolean;
+  isFavorite?: boolean;
+  onSelect?: (id: string) => void;
+  onZoom?: (id: string) => void;
+  onToggleFavorite?: (id: string, e: React.MouseEvent) => void;
+}
+
+export default function TableCard({ table, isSelected, isFavorite, onSelect, onZoom, onToggleFavorite }: TableCardProps) {
+  const isBetting = table.status === 'betting' || table.status === 'rule_triggered' || table.status === 'waiting_user';
+  
+  // Determine border and styling based on status
+  let cardClass = "bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors group rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden ";
+  if (isSelected) {
+    cardClass += " ring-2 ring-amber-500/50 ";
+  }
+  if (table.status === 'rule_triggered') {
+    cardClass += " border-amber-500/50 ";
+  } else if (table.status === 'risk_blocked') {
+    cardClass += " border-red-900/50 ";
+  }
+
+  return (
+    <div className={cardClass} onClick={() => onSelect?.(table.id)}>
+      
+      {/* Blocked overlay */}
+      {table.status === 'risk_blocked' && (
+        <div className="absolute inset-0 bg-red-950/20 backdrop-blur-[1px] z-10 flex items-center justify-center">
+          <div className="bg-zinc-900 border border-red-900 text-red-400 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 shadow-lg">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+            위험 한도 차단됨
+          </div>
+        </div>
+      )}
+
+      {/* Card Header */}
+      <div className="flex justify-between items-start">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold text-zinc-100">{table.name}</h3>
+            <span className="text-xs text-zinc-500 font-mono">{table.gameCode}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <StatusBadge status={table.status} />
+            <div className={`text-xs font-mono font-bold flex items-center gap-1 ${
+              isBetting ? 'text-amber-500' : 'text-zinc-400'
+            }`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${isBetting ? 'bg-amber-500 animate-ping' : 'bg-zinc-500'}`}></div>
+              {table.timer}s
+            </div>
+          </div>
+        </div>
+        
+        <div className={`flex items-center gap-1 transition-opacity z-20 ${isFavorite ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+          <button 
+            className={`p-1.5 rounded transition-colors ${isFavorite ? 'text-amber-400 bg-amber-400/10' : 'text-zinc-500 hover:text-amber-400 hover:bg-zinc-800'}`} 
+            onClick={(e) => onToggleFavorite?.(table.id, e)}
+          >
+            <Star size={16} fill={isFavorite ? "currentColor" : "none"} />
+          </button>
+          <button className="p-1.5 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-colors" onClick={(e) => { e.stopPropagation(); onZoom?.(table.id); }}>
+            <Maximize2 size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Roadmap Area */}
+      <Roadmap data={table.roadmap} />
+
+      {/* Stats Area */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex items-center gap-3 text-xs">
+          <div className="flex flex-col">
+            <span className="text-zinc-500">P</span>
+            <span className="text-blue-400 font-mono font-bold">{table.stats.player}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-zinc-500">B</span>
+            <span className="text-red-400 font-mono font-bold">{table.stats.banker}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-zinc-500">T</span>
+            <span className="text-emerald-400 font-mono font-bold">{table.stats.tie}</span>
+          </div>
+        </div>
+        
+        <div className="flex flex-col items-end text-xs justify-center gap-1">
+          <div className="flex items-center gap-1">
+            <span className="text-zinc-500">연속:</span>
+            <span className={`font-medium ${table.stats.currentStreak.includes('Player') ? 'text-blue-400' : table.stats.currentStreak.includes('Banker') ? 'text-red-400' : 'text-emerald-400'}`}>
+              {table.stats.currentStreak}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* AI Analysis Area */}
+      <div className="mt-1 pt-3 border-t border-zinc-800/80 flex flex-col gap-2">
+        <div className="hidden sm:flex justify-between items-center text-[10px]">
+          <div className="flex gap-1.5">
+            <AiBadge model="GPT" opinion={table.ai.gpt.opinion} />
+            <AiBadge model="Gem" opinion={table.ai.gemini.opinion} />
+            <AiBadge model="Cld" opinion={table.ai.claude.opinion} />
+          </div>
+          <div className="text-zinc-500 font-medium">
+            일치도: <span className={table.ai.consensus.includes('3/3') ? 'text-amber-400' : 'text-zinc-300'}>{table.ai.consensus}</span>
+          </div>
+        </div>
+        
+                <div className="bg-zinc-950 rounded border border-zinc-800/80 p-2 flex justify-between items-center mt-1">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] text-zinc-500">최종 참고 의견</span>
+            <span className={`text-sm font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
+              {getOpinionText(table.ai.finalOpinion)}
+            </span>
+          </div>
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-[10px] text-zinc-500 flex items-center gap-1">
+              {!['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) && (
+                <span className="text-blue-400 hover:text-blue-300 cursor-pointer" title="과거 데이터 근거 (적중률 62.8%)">데이터 근거</span>
+              )}
+              참고 금액
+            </span>
+            <span className="text-sm font-mono font-bold text-zinc-200">
+              {['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) ? '-' : table.ai.recommendedAmount.toLocaleString() + '원'}
+            </span>
+          </div>
+        </div>
+        <div className="flex justify-between text-[10px] px-1 text-zinc-500">
+          <span>분석 신뢰도: {table.ai.finalConfidence}%</span>
+          <span className="text-amber-500/80">{table.ai.appliedRule}</span>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+function AiBadge({ model, opinion }: { model: string, opinion: AiOpinion }) {
+  const bgClass = getResultColor(opinion, 'bg');
+  const textClass = getResultColor(opinion, 'text');
+  const borderClass = getResultColor(opinion, 'border');
+  const label = getResultLabel(opinion);
+
+  return (
+    <div className={`px-1.5 py-0.5 rounded border flex items-center gap-1 ${bgClass} bg-opacity-20 ${textClass} ${borderClass}`}>
+      <span>{model}</span>
+      <span className="w-1 h-1 rounded-full bg-current opacity-70"></span>
+      <span className="font-bold">{label.charAt(0)}</span>
+    </div>
+  );
+}
+
+function getOpinionText(opinion: AiOpinion) {
+  return getResultLabel(opinion);
+}
+
+function getOpinionColor(opinion: AiOpinion) {
+  return getResultColor(opinion, 'text');
+}
+
+function StatusBadge({ status }: { status: TableStatus }) {
+  let text = '관찰 중';
+  let classes = 'bg-teal-500/10 text-teal-400 border-teal-500/20';
+
+  switch (status) {
+    case 'analyzing':
+      text = 'AI 분석 중';
+      classes = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+      break;
+    case 'rule_triggered':
+      text = '규칙 발동';
+      classes = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+      break;
+    case 'waiting_user':
+      text = '사용자 확인 대기';
+      classes = 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse';
+      break;
+    case 'checking_result':
+      text = '결과 확인 중';
+      classes = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+      break;
+    case 'paused':
+      text = '일시정지';
+      classes = 'bg-zinc-800 text-zinc-400 border-zinc-700';
+      break;
+    case 'error':
+      text = '데이터 오류';
+      classes = 'bg-red-500/10 text-red-400 border-red-500/20';
+      break;
+    case 'risk_blocked':
+      text = '위험 차단';
+      classes = 'bg-red-900/30 text-red-500 border-red-900/50';
+      break;
+    case 'betting':
+      text = '베팅가능';
+      classes = 'bg-amber-500/20 text-amber-500 border-amber-500/30';
+      break;
+    case 'waiting':
+      text = '결과대기';
+      classes = 'bg-zinc-800 text-zinc-400 border-zinc-700';
+      break;
+  }
+
+  return (
+    <span className={`text-[10px] px-1.5 py-0.5 rounded border flex items-center gap-1 ${classes}`}>
+      {status === 'analyzing' && <div className="w-1.5 h-1.5 rounded-full bg-current animate-ping mr-0.5"></div>}
+      {text}
+    </span>
+  );
+}
