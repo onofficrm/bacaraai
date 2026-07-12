@@ -1,0 +1,469 @@
+@charset "utf-8";
+/**
+ * Bacara AI — 회원 페이지 (로그인·가입·정보수정·비밀번호 찾기)
+ * 랜딩 페이지(zinc-950 / amber-500) 톤앤매너
+ */
+
+:root {
+  --bacara-bg: #09090b;
+  --bacara-surface: rgba(24, 24, 27, 0.92);
+  --bacara-surface-2: #18181b;
+  --bacara-border: #27272a;
+  --bacara-text: #fafafa;
+  --bacara-muted: #a1a1aa;
+  --bacara-dim: #71717a;
+  --bacara-amber: #f59e0b;
+  --bacara-amber-hover: #fbbf24;
+  --bacara-amber-soft: rgba(245, 158, 11, 0.12);
+  --bacara-radius: 16px;
+  --bacara-radius-lg: 24px;
+  --bacara-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+html:has(.onoff-platform--member),
+body:has(.onoff-platform--member) {
+  background: var(--bacara-bg) !important;
+  color: var(--bacara-text);
+}
+
+body:has(.onoff-platform--member) #hd,
+body:has(.onoff-platform--member) #ft,
+body:has(.onoff-platform--member) #aside,
+body:has(.onoff-platform--member) #container_title,
+body:has(.onoff-platform--member) .hd_pops,
+body:has(.onoff-platform--member) #tnb,
+body:has(.onoff-platform--member) #gnb,
+body:has(.onoff-platform--member) #wrapper_title {
+  display: none !important;
+}
+
+body:has(.onoff-platform--member) #wrapper,
+body:has(.onoff-platform--member) #container_wr,
+body:has(.onoff-platform--member) #container {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.onoff-platform--member {
+  --onoff-accent: var(--bacara-amber);
+  --onoff-accent-hover: var(--bacara-amber-hover);
+  --onoff-gold: var(--bacara-amber);
+  --onoff-radius: var(--bacara-radius-lg);
+  --onoff-shadow: var(--bacara-shadow);
+  max-width: 560px;
+  min-height: 100vh;
+  padding: 28px 16px 40px;
+  color: var(--bacara-text);
+}
+
+.onoff-platform--member[style*="max-width:640px"] {
+  max-width: 680px !important;
+}
+
+.onoff-platform--member:before {
+  background:
+    radial-gradient(ellipse at 12% 8%, rgba(245, 158, 11, 0.08), transparent 42%),
+    radial-gradient(ellipse at 88% 12%, rgba(59, 130, 246, 0.06), transparent 38%),
+    linear-gradient(180deg, #09090b 0%, #0c0c0f 50%, #09090b 100%) !important;
+}
+
+.onoff-platform--member:after {
+  display: none !important;
+}
+
+.onoff-platform__top {
+  display: block !important;
+  margin: 0 0 18px;
+  text-align: center;
+}
+
+.onoff-platform__top-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border: 1px solid var(--bacara-border) !important;
+  border-radius: 999px;
+  background: rgba(24, 24, 27, 0.8) !important;
+  box-shadow: none !important;
+  color: var(--bacara-text) !important;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+  backdrop-filter: blur(12px);
+}
+
+.onoff-platform__top-link:before {
+  background: var(--bacara-amber) !important;
+  box-shadow: 0 0 0 4px var(--bacara-amber-soft) !important;
+}
+
+.onoff-platform__top-link:hover {
+  border-color: rgba(245, 158, 11, 0.35) !important;
+  color: var(--bacara-amber) !important;
+  transform: none;
+}
+
+.onoff-platform__brand {
+  margin: 0 0 24px;
+}
+
+.onoff-platform__eyebrow {
+  border-color: rgba(245, 158, 11, 0.28) !important;
+  background: var(--bacara-amber-soft) !important;
+  color: var(--bacara-amber) !important;
+  letter-spacing: 0.18em !important;
+}
+
+.onoff-platform__brand-name {
+  font-size: 1.65rem !important;
+  color: var(--bacara-text) !important;
+  line-height: 1.25 !important;
+}
+
+.onoff-platform__page-label {
+  color: var(--bacara-muted) !important;
+  font-size: 1rem !important;
+}
+
+.onoff-platform__tabs {
+  background: var(--bacara-surface-2) !important;
+  border: 1px solid var(--bacara-border) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+.onoff-platform__tab {
+  color: var(--bacara-dim) !important;
+}
+
+.onoff-platform__tab.is-active {
+  color: var(--bacara-text) !important;
+  background: #27272a !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+}
+
+.onoff-platform__tab:not(.is-active):hover {
+  color: var(--bacara-text) !important;
+}
+
+.onoff-platform__card {
+  background: var(--bacara-surface) !important;
+  border: 1px solid var(--bacara-border) !important;
+  border-radius: var(--bacara-radius-lg) !important;
+  box-shadow: var(--bacara-shadow) !important;
+  padding: 36px 28px 32px !important;
+  backdrop-filter: blur(20px);
+}
+
+.onoff-platform__card:before {
+  background: linear-gradient(90deg, transparent, var(--bacara-amber), transparent) !important;
+}
+
+.onoff-platform .frm_input,
+.onoff-platform input[type="text"],
+.onoff-platform input[type="password"],
+.onoff-platform input[type="email"],
+.onoff-platform input[type="tel"],
+.onoff-platform select,
+.onoff-platform textarea {
+  border: 1px solid var(--bacara-border) !important;
+  border-radius: 12px !important;
+  background: rgba(9, 9, 11, 0.65) !important;
+  color: var(--bacara-text) !important;
+  min-height: 54px;
+  padding: 14px 16px !important;
+}
+
+.onoff-platform .frm_input::placeholder,
+.onoff-platform input::placeholder,
+.onoff-platform textarea::placeholder {
+  color: #52525b !important;
+}
+
+.onoff-platform .frm_input:focus,
+.onoff-platform input:focus,
+.onoff-platform select:focus,
+.onoff-platform textarea:focus {
+  border-color: rgba(245, 158, 11, 0.5) !important;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12) !important;
+  background: rgba(9, 9, 11, 0.9) !important;
+}
+
+.onoff-platform .btn_submit,
+.onoff-platform button.btn_submit {
+  background: var(--bacara-amber) !important;
+  color: #09090b !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 28px rgba(245, 158, 11, 0.22) !important;
+  font-weight: 800 !important;
+}
+
+.onoff-platform .btn_submit:hover {
+  background: var(--bacara-amber-hover) !important;
+  box-shadow: 0 16px 32px rgba(245, 158, 11, 0.28) !important;
+  transform: translateY(-1px);
+}
+
+.onoff-platform__outline-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;
+  margin-top: 14px;
+  border: 1px solid var(--bacara-border);
+  border-radius: 12px;
+  background: #27272a;
+  color: var(--bacara-muted);
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.onoff-platform__outline-btn:hover {
+  border-color: #3f3f46;
+  background: #3f3f46;
+  color: var(--bacara-text);
+}
+
+.onoff-platform #login_info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.onoff-platform #login_info a {
+  color: var(--bacara-dim);
+  font-size: 0.88rem;
+  text-decoration: none;
+}
+
+.onoff-platform #login_info a:hover {
+  color: var(--bacara-text);
+}
+
+.onoff-platform .chk_box label,
+.onoff-platform .fregister_agree label {
+  color: var(--bacara-muted) !important;
+  font-size: 0.92rem !important;
+}
+
+.onoff-platform #fregister > p {
+  color: var(--bacara-muted) !important;
+  margin-bottom: 24px !important;
+}
+
+.onoff-platform #fregister section,
+.onoff-platform .register_form_inner {
+  border: 1px solid var(--bacara-border) !important;
+  border-radius: 14px !important;
+  background: rgba(9, 9, 11, 0.45) !important;
+  padding: 20px !important;
+  margin-bottom: 14px !important;
+}
+
+.onoff-platform #fregister h2,
+.onoff-platform #register_form h2 {
+  color: var(--bacara-text) !important;
+  padding-bottom: 12px !important;
+  margin-bottom: 16px !important;
+  border-bottom: 1px solid var(--bacara-border) !important;
+}
+
+.onoff-platform #fregister textarea {
+  min-height: 120px;
+  background: rgba(9, 9, 11, 0.65) !important;
+  border-color: var(--bacara-border) !important;
+  color: var(--bacara-muted) !important;
+  font-size: 0.88rem !important;
+  line-height: 1.65 !important;
+}
+
+.onoff-platform .fregister_terms th {
+  background: #27272a !important;
+  color: var(--bacara-text) !important;
+}
+
+.onoff-platform .fregister_terms td {
+  background: transparent !important;
+  color: var(--bacara-muted) !important;
+}
+
+.onoff-platform .fregister_terms th,
+.onoff-platform .fregister_terms td {
+  border-color: var(--bacara-border) !important;
+}
+
+.onoff-platform #fregister_chkall {
+  color: var(--bacara-text) !important;
+  margin: 8px 0 20px !important;
+}
+
+.onoff-platform .register .btn_confirm .btn_close {
+  border-color: var(--bacara-border) !important;
+  background: #27272a !important;
+  color: var(--bacara-muted) !important;
+}
+
+.onoff-platform .register .btn_confirm .btn_close:hover {
+  background: #3f3f46 !important;
+  color: var(--bacara-text) !important;
+}
+
+.onoff-platform .register_form_inner label {
+  color: var(--bacara-muted) !important;
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+}
+
+.onoff-platform .btn_frmline,
+.onoff-platform .js-open-consent {
+  border-color: var(--bacara-border) !important;
+  background: #27272a !important;
+  color: var(--bacara-amber) !important;
+}
+
+.onoff-platform .btn_frmline:hover,
+.onoff-platform .js-open-consent:hover {
+  background: #3f3f46 !important;
+}
+
+.onoff-platform #mb_confirm p,
+.onoff-platform #find_info p,
+.onoff-platform #find_info h3,
+.onoff-platform #reg_result .result_txt,
+.onoff-platform #reg_result .reg_result_p {
+  color: var(--bacara-muted) !important;
+  line-height: 1.7;
+}
+
+.onoff-platform #mb_confirm strong,
+.onoff-platform #find_info h3,
+.onoff-platform #reg_result .reg_result_p strong {
+  color: var(--bacara-text) !important;
+}
+
+.onoff-platform #mb_confirm .confirm_id {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--bacara-dim);
+  font-size: 0.85rem;
+}
+
+.onoff-platform #mb_confirm_id {
+  display: block;
+  margin-bottom: 16px;
+  color: var(--bacara-amber);
+  font-weight: 800;
+}
+
+.onoff-platform #find_info h3 {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.onoff-platform #find_info .find_btn {
+  border-top-color: var(--bacara-border) !important;
+}
+
+.onoff-platform #find_info .cert_btn {
+  gap: 10px;
+}
+
+.onoff-platform #find_info .cert_btn .btn_submit {
+  margin-top: 0;
+}
+
+.onoff-platform #reg_result {
+  text-align: center;
+}
+
+.onoff-platform #reg_result .reg_result_p {
+  font-size: 1.1rem;
+  margin-bottom: 20px;
+}
+
+.onoff-platform #reg_result .reg_result_p i {
+  color: var(--bacara-amber);
+  font-size: 2rem;
+  margin-bottom: 12px;
+}
+
+.onoff-platform #reg_result .btn_confirm a,
+.onoff-platform #reg_result .btn_submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 200px;
+  margin-top: 20px;
+  padding: 14px 24px;
+  border-radius: 12px;
+  text-decoration: none;
+}
+
+.onoff-platform #result_email {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--bacara-border);
+  border-radius: 12px;
+  background: rgba(9, 9, 11, 0.5);
+  text-align: left;
+}
+
+.onoff-platform #result_email span {
+  display: block;
+  color: var(--bacara-dim);
+  font-size: 0.82rem;
+  margin-bottom: 4px;
+}
+
+.onoff-platform #result_email strong {
+  display: block;
+  color: var(--bacara-text);
+  margin-bottom: 12px;
+}
+
+.onoff-platform #pw_reset .new_win_con,
+.onoff-platform #pw_reset fieldset p {
+  color: var(--bacara-muted);
+}
+
+.onoff-platform #pw_reset b {
+  display: block;
+  margin: 12px 0 18px;
+  color: var(--bacara-amber);
+}
+
+.onoff-platform__footer {
+  margin-top: 24px;
+  text-align: center;
+  color: #52525b !important;
+  font-size: 0.82rem;
+}
+
+.onoff-platform .captcha {
+  margin-top: 16px;
+}
+
+.onoff-platform .captcha img {
+  border-radius: 8px;
+}
+
+@media (max-width: 767px) {
+  .onoff-platform__card {
+    padding: 28px 20px 24px !important;
+  }
+
+  .onoff-platform__brand-name {
+    font-size: 1.4rem !important;
+  }
+}

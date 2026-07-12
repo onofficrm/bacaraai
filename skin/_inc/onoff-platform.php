@@ -16,11 +16,13 @@ if (!function_exists('onoff_platform_member_styles')) {
 
         $tokens = G5_URL . '/css/icrm-design-tokens.css';
         $platform = G5_URL . '/css/onoff-platform.css';
+        $bacaraai = G5_URL . '/css/bacaraai-member.css';
         add_stylesheet('<link rel="stylesheet" href="' . htmlspecialchars($tokens, ENT_QUOTES, 'UTF-8') . '">', 0);
         add_stylesheet('<link rel="stylesheet" href="' . htmlspecialchars($platform, ENT_QUOTES, 'UTF-8') . '">', 1);
+        add_stylesheet('<link rel="stylesheet" href="' . htmlspecialchars($bacaraai, ENT_QUOTES, 'UTF-8') . '">', 2);
 
         if ($skin_url !== '') {
-            add_stylesheet('<link rel="stylesheet" href="' . htmlspecialchars($skin_url, ENT_QUOTES, 'UTF-8') . '/style.css">', 2);
+            add_stylesheet('<link rel="stylesheet" href="' . htmlspecialchars($skin_url, ENT_QUOTES, 'UTF-8') . '/style.css">', 3);
         }
     }
 }
@@ -79,7 +81,7 @@ if (!function_exists('onoff_platform_member_top_bar')) {
     /** 회원 화면 상단 홈페이지 제목 */
     function onoff_platform_member_top_bar()
     {
-        $title = onoff_platform_homepage_title();
+        $title = onoff_platform_site_brand_name();
         $url = defined('G5_URL') ? G5_URL : '/';
 
         echo '<div class="onoff-platform__top">';
@@ -90,13 +92,52 @@ if (!function_exists('onoff_platform_member_top_bar')) {
     }
 }
 
+if (!function_exists('onoff_platform_site_brand_name')) {
+    function onoff_platform_site_brand_name()
+    {
+        if (function_exists('g5site_cfg')) {
+            $name = trim((string) g5site_cfg('site_name', ''));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        return onoff_platform_homepage_title();
+    }
+}
+
+if (!function_exists('onoff_platform_member_login_url')) {
+    /** 로그인 후 이동 URL — 기본값은 시스템 빌더 페이지 */
+    function onoff_platform_member_login_url($url = '')
+    {
+        $url = trim((string) $url);
+        $home = defined('G5_URL') ? rtrim(G5_URL, '/') : '';
+
+        $system_id = 'bacaraai-system';
+        if (function_exists('g5site_cfg')) {
+            $cfg_id = trim((string) g5site_cfg('builder_system_bridge_id', ''));
+            if ($cfg_id !== '') {
+                $system_id = $cfg_id;
+            }
+        }
+
+        $system_url = $home . '/plugin/onoff-builder-bridge/page.php?id=' . rawurlencode($system_id);
+
+        if ($url === '' || $url === $home || $url === $home . '/') {
+            return $system_url;
+        }
+
+        return $url;
+    }
+}
+
 if (!function_exists('onoff_platform_member_brand')) {
     /** 로그인 박스 내 사이트명 + 페이지 부제 */
     function onoff_platform_member_brand($page_label = '')
     {
         global $g5;
 
-        $brand = onoff_platform_homepage_title();
+        $brand = onoff_platform_site_brand_name();
         $label = trim((string) $page_label);
         if ($label === '' && isset($g5['title'])) {
             $label = trim(get_text($g5['title']));
@@ -104,7 +145,7 @@ if (!function_exists('onoff_platform_member_brand')) {
         $label = $label !== '' ? $label : $brand;
 
         echo '<div class="onoff-platform__brand">';
-        echo '<p class="onoff-platform__eyebrow">MEMBER</p>';
+        echo '<p class="onoff-platform__eyebrow">BACARAAI PLATFORM</p>';
         echo '<p class="onoff-platform__brand-name">' . htmlspecialchars($brand, ENT_QUOTES, 'UTF-8') . '</p>';
         echo '<p class="onoff-platform__page-label">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</p>';
         echo '</div>';

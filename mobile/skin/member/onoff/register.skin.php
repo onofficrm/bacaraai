@@ -14,7 +14,7 @@ onoff_platform_member_styles($member_skin_url);
 
     <form  name="fregister" id="fregister" action="<?php echo $register_action_url ?>" onsubmit="return fregister_submit(this);" method="POST" autocomplete="off">
 
-    <p><i class="fa fa-check-circle" aria-hidden="true"></i> 회원가입약관 및 개인정보 수집 및 이용의 내용에 동의하셔야 회원가입 하실 수 있습니다.</p>
+    <p>회원가입약관 및 개인정보 수집·이용에 동의하시면 AI 분석 시스템을 이용할 수 있습니다.</p>
     
     <?php
     // 소셜로그인 사용시 소셜로그인 버튼
@@ -69,7 +69,7 @@ onoff_platform_member_styles($member_skin_url);
 	    
     <div class="btn_confirm">
     	<a href="<?php echo G5_BBS_URL ?>/login.php" class="btn_close">이미 계정이 있으신가요? 로그인</a>
-        <button type="submit" class="btn_submit">다음 단계</button>
+        <button type="submit" class="btn_submit">회원가입 계속</button>
     </div>
 
     </form>

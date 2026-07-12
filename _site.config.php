@@ -8,8 +8,8 @@ if (!defined('_GNUBOARD_')) {
 }
 
 $site_config = array(
-    'site_name'           => '샘플 사이트',
-    'site_desc'           => '빌더 디자인 적용이 쉬운 그누보드 베이스 템플릿',
+    'site_name'           => 'AI Baccarat Assistant',
+    'site_desc'           => '데이터 기반 바카라 게임 분석 도우미',
     'company_name'        => '회사명',
     'ceo_name'            => '대표자명',
     'business_no'         => '000-00-00000',
@@ -112,6 +112,8 @@ $site_config = array(
     'home_builder_bridge_id'    => 'bacaraai-landing',
     /* 로그인 후 진입하는 시스템 빌더 페이지 (project_id) */
     'builder_system_bridge_id'  => 'bacaraai-system',
+    /* 회원 스킨 (login/register 등) */
+    'platform_member_skin'      => 'onoff',
 );
 
 /**

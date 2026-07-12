@@ -13,7 +13,7 @@ onoff_platform_member_styles($member_skin_url);
         <?php onoff_platform_member_brand('로그인'); ?>
         <?php onoff_platform_member_tabs('login'); ?>
         <form name="flogin" action="<?php echo $login_action_url ?>" onsubmit="return flogin_submit(this);" method="post">
-        <input type="hidden" name="url" value="<?php echo $login_url ?>">
+        <input type="hidden" name="url" value="<?php echo htmlspecialchars(onoff_platform_member_login_url($login_url), ENT_QUOTES, 'UTF-8'); ?>">
         
         <fieldset id="login_fs">
             <legend>회원로그인</legend>

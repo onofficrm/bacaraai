@@ -1,44 +1,48 @@
 <?php
-if (!defined('_GNUBOARD_')) exit; // 개별 페이지 접근 불가
+if (!defined('_GNUBOARD_')) exit;
 
-// add_stylesheet('css 구문', 출력순서); 숫자가 작을 수록 먼저 출력됨
-add_stylesheet('<link rel="stylesheet" href="'.$member_skin_url.'/style.css">', 0);
+include_once G5_SKIN_PATH . '/_inc/onoff-platform.php';
+onoff_platform_member_styles($member_skin_url);
+
+$bacaraai_system_url = onoff_platform_member_login_url('');
 ?>
 
 <!-- 회원가입결과 시작 { -->
-<div id="reg_result" class="register">
+<div class="onoff-platform onoff-platform--member">
+<?php onoff_platform_member_top_bar(); ?>
+<div id="reg_result" class="register onoff-platform__card">
+    <?php onoff_platform_member_brand('회원가입 완료'); ?>
+
     <p class="reg_result_p">
-    	<i class="fa fa-gift" aria-hidden="true"></i><br>
-        <strong><?php echo get_text($mb['mb_name']); ?></strong>님의 회원가입을 진심으로 축하합니다.
+        <i class="fa fa-check-circle" aria-hidden="true"></i><br>
+        <strong><?php echo get_text($mb['mb_name']); ?></strong>님, 회원가입을 환영합니다.
     </p>
 
-    <?php if (is_use_email_certify()) {  ?>
+    <?php if (is_use_email_certify()) { ?>
     <p class="result_txt">
-        회원 가입 시 입력하신 이메일 주소로 인증메일이 발송되었습니다.<br>
-        발송된 인증메일을 확인하신 후 인증처리를 하시면 사이트를 원활하게 이용하실 수 있습니다.
+        입력하신 이메일로 인증 메일이 발송되었습니다.<br>
+        인증 완료 후 AI 분석 시스템을 이용할 수 있습니다.
     </p>
     <div id="result_email">
         <span>아이디</span>
-        <strong><?php echo $mb['mb_id'] ?></strong><br>
+        <strong><?php echo $mb['mb_id'] ?></strong>
         <span>이메일 주소</span>
         <strong><?php echo $mb['mb_email'] ?></strong>
     </div>
-    <p>
-        이메일 주소를 잘못 입력하셨다면, 사이트 관리자에게 문의해주시기 바랍니다.
-    </p>
-    <?php }  ?>
-
     <p class="result_txt">
-        회원님의 비밀번호는 아무도 알 수 없는 암호화 코드로 저장되므로 안심하셔도 좋습니다.<br>
-        아이디, 비밀번호 분실시에는 회원가입시 입력하신 이메일 주소를 이용하여 찾을 수 있습니다.
+        이메일 주소가 잘못되었다면 사이트 관리자에게 문의해 주세요.
     </p>
-
+    <?php } else { ?>
     <p class="result_txt">
-        회원 탈퇴는 언제든지 가능하며 일정기간이 지난 후, 회원님의 정보는 삭제하고 있습니다.<br>
-        감사합니다.
+        로그인 후 바로 AI Baccarat Assistant 시스템을 이용할 수 있습니다.
     </p>
+    <?php } ?>
+
+    <div class="btn_confirm">
+        <a href="<?php echo G5_BBS_URL ?>/login.php?url=<?php echo urlencode($bacaraai_system_url); ?>" class="btn_submit">로그인하고 시스템 입장</a>
+        <a href="<?php echo G5_URL; ?>" class="onoff-platform__outline-btn">랜딩 페이지로</a>
+    </div>
+</div>
+<?php onoff_platform_member_footer(); ?>
 </div>
 <!-- } 회원가입결과 끝 -->
-<div class="btn_confirm_reg">
-	<a href="<?php echo G5_URL ?>/" class="reg_btn_submit">메인으로</a>
-</div>
