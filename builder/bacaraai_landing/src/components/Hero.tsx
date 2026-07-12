@@ -29,9 +29,9 @@ export default function Hero() {
               GPT · Gemini · Claude 멀티 AI 분석
             </div>
             
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-6 leading-tight whitespace-pre-line">
-              감으로만 판단하던 게임을{'\n'}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white mb-6 leading-snug">
+              <span className="block">감으로만 판단하던 게임을</span>
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-500">
                 AI와 데이터로 다시 바라보다
               </span>
             </h1>
