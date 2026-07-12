@@ -47,10 +47,6 @@ if (!function_exists('onoff_builder_maybe_render_home')) {
             return false;
         }
 
-        if (defined('G5_IS_MOBILE') && G5_IS_MOBILE) {
-            return false;
-        }
-
         $id = onoff_builder_get_home_bridge_id();
         onoff_builder_render_import_page($id);
 

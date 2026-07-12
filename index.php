@@ -11,7 +11,10 @@ if (is_file(G5_PLUGIN_PATH . '/onoff-builder-bridge/bootstrap.php')) {
     }
 }
 
-include_once(G5_PATH.'/inc/onoff-builder-home.php');
+// 빌더 홈이 설정된 경우 온오프빌더 기본 홈(모바일 포함) 미노출
+if (!function_exists('onoff_builder_home_enabled') || !onoff_builder_home_enabled()) {
+    include_once(G5_PATH.'/inc/onoff-builder-home.php');
+}
 
 /*
  * [보존] 이전 루트 메인 출력 코드

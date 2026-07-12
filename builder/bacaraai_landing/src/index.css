@@ -9,10 +9,18 @@
 @layer base {
   body {
     @apply bg-zinc-950 text-zinc-100 font-sans antialiased selection:bg-amber-500/30 selection:text-amber-200;
+    overflow-x: hidden;
   }
   
   /* Smooth scrolling for anchor links */
   html {
     scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+}
+
+@layer utilities {
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
   }
 }
