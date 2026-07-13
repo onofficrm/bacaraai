@@ -49,7 +49,7 @@ export default function Reviews() {
             사용자들의 <span className="text-amber-500">실제 경험</span>
           </h2>
           <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-            AI Baccarat Assistant를 활용해 게임 습관을 개선한 사용자들의 이야기입니다.
+            바카라 AI 도우미를 활용해 게임 습관을 개선한 사용자들의 이야기입니다.
           </p>
         </div>
 

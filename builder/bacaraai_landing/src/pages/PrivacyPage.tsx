@@ -12,7 +12,7 @@ export default function PrivacyPage() {
         <h1 className="text-3xl font-bold text-white mb-8">개인정보처리방침</h1>
         <div className="prose prose-invert prose-zinc max-w-none text-zinc-400">
           <p>
-            AI Baccarat Assistant는 사용자의 개인정보 보호를 중요하게 생각하며, 관련 법령을 준수하기 위해 최선을 다하고 있습니다.
+            바카라 AI 도우미는 사용자의 개인정보 보호를 중요하게 생각하며, 관련 법령을 준수하기 위해 최선을 다하고 있습니다.
           </p>
           <h2 className="text-xl font-bold text-white mt-8 mb-4">1. 수집하는 개인정보 항목</h2>
           <p>

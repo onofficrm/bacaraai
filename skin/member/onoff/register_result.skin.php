@@ -34,7 +34,7 @@ $bacaraai_system_url = onoff_platform_member_login_url('');
     </p>
     <?php } else { ?>
     <p class="result_txt">
-        로그인 후 바로 AI Baccarat Assistant 시스템을 이용할 수 있습니다.
+        로그인 후 바로 바카라 AI 도우미 시스템을 이용할 수 있습니다.
     </p>
     <?php } ?>
 

@@ -91,7 +91,7 @@ export default function Problems() {
 
         <div className="text-center bg-amber-500/10 border border-amber-500/20 rounded-2xl p-8">
           <p className="text-lg text-amber-200/90 font-medium">
-            AI Baccarat Assistant는 사용자의 판단 과정과 규칙, 금액 및 위험 상태를 기록하고 분석하도록 설계되었습니다.
+            바카라 AI 도우미는 사용자의 판단 과정과 규칙, 금액 및 위험 상태를 기록하고 분석하도록 설계되었습니다.
           </p>
         </div>
       </div>

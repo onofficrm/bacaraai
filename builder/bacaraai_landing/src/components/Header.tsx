@@ -25,7 +25,7 @@ export default function Header() {
                 <ShieldAlert className="w-5 h-5 text-amber-500" />
               </div>
               <span className="font-bold text-lg tracking-tight text-white">
-                AI Baccarat Assistant
+                바카라 AI 도우미
               </span>
             </a>
           </div>

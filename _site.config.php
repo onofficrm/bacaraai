@@ -8,7 +8,7 @@ if (!defined('_GNUBOARD_')) {
 }
 
 $site_config = array(
-    'site_name'           => 'AI Baccarat Assistant',
+    'site_name'           => '바카라 AI 도우미',
     'site_desc'           => '데이터 기반 바카라 게임 분석 도우미',
     'company_name'        => '회사명',
     'ceo_name'            => '대표자명',

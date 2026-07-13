@@ -145,7 +145,7 @@ if (!function_exists('onoff_platform_member_brand')) {
         $label = $label !== '' ? $label : $brand;
 
         echo '<div class="onoff-platform__brand">';
-        echo '<p class="onoff-platform__eyebrow">BACARAAI PLATFORM</p>';
+        echo '<p class="onoff-platform__eyebrow">바카라 AI 도우미</p>';
         echo '<p class="onoff-platform__brand-name">' . htmlspecialchars($brand, ENT_QUOTES, 'UTF-8') . '</p>';
         echo '<p class="onoff-platform__page-label">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</p>';
         echo '</div>';

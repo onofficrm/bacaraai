@@ -1,14 +1,14 @@
 [
   {
     "id": "bacaraai-landing",
-    "name": "Bacara AI Landing",
+    "name": "바카라 AI 도우미 랜딩",
     "path": "bacaraai-landing",
     "entry": "index.html",
     "created_at": "2026-07-13 01:30:00"
   },
   {
     "id": "bacaraai-system",
-    "name": "Bacara AI System",
+    "name": "바카라 AI 도우미 시스템",
     "path": "bacaraai-system",
     "entry": "index.html",
     "created_at": "2026-07-13 01:30:00"

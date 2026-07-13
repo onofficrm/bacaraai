@@ -14,7 +14,7 @@ export default function LoginSection() {
             이미 계정이 있다면 바로 <span className="text-amber-500">로그인</span>하세요.
           </h2>
           <p className="text-lg text-zinc-400">
-            AI Baccarat Assistant 플랫폼은 로그인 후 이용할 수 있습니다.
+            바카라 AI 도우미 플랫폼은 로그인 후 이용할 수 있습니다.
           </p>
         </div>
 

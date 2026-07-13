@@ -12,7 +12,7 @@ export default function TermsPage() {
         <h1 className="text-3xl font-bold text-white mb-8">이용약관</h1>
         <div className="prose prose-invert prose-zinc max-w-none text-zinc-400">
           <p>
-            AI Baccarat Assistant 플랫폼 (이하 "서비스") 이용약관입니다. 본 약관은 서비스의 이용조건 및 절차 등에 관한 사항을 규정함을 목적으로 합니다.
+            바카라 AI 도우미 플랫폼 (이하 "서비스") 이용약관입니다. 본 약관은 서비스의 이용조건 및 절차 등에 관한 사항을 규정함을 목적으로 합니다.
           </p>
           <h2 className="text-xl font-bold text-white mt-8 mb-4">1. 책임의 한계</h2>
           <p>

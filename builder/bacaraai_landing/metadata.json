@@ -1,6 +1,6 @@
 {
-  "name": "AI Baccarat Assistant Landing",
-  "description": "Promotional landing page for the AI Baccarat Assistant platform.",
+  "name": "바카라 AI 도우미 랜딩",
+  "description": "바카라 AI 도우미 플랫폼 홍보 랜딩 페이지",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

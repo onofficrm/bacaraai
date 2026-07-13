@@ -127,7 +127,7 @@ export default function Features() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
-            AI Baccarat Assistant로 <span className="text-amber-500">할 수 있는 일</span>
+            바카라 AI 도우미로 <span className="text-amber-500">할 수 있는 일</span>
           </h2>
           <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
             게임 결과만 보여주는 것이 아니라 AI 분석, 사용자 규칙, 데이터와 위험 상태를 함께 확인합니다.

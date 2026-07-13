@@ -13,7 +13,7 @@ export default function Header({ onEmergencyStop, activeViewLabel }: HeaderProps
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-amber-500">
           <Activity size={24} className="animate-pulse" />
-          <h1 className="font-bold text-lg tracking-tight text-white hidden sm:block">AI Baccarat Assistant</h1>
+          <h1 className="font-bold text-lg tracking-tight text-white hidden sm:block">바카라 AI 도우미</h1>
         </div>
         
         {activeViewLabel && (

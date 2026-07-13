@@ -21,7 +21,7 @@ export default function LoginPage() {
               <div className="p-2 bg-zinc-900 rounded-xl group-hover:bg-zinc-800 transition-colors border border-zinc-800">
                 <ShieldAlert className="w-6 h-6 text-amber-500" />
               </div>
-              <span className="font-bold text-xl tracking-tight text-white">AI Baccarat Assistant</span>
+              <span className="font-bold text-xl tracking-tight text-white">바카라 AI 도우미</span>
             </a>
             <h1 className="text-3xl font-bold text-white mb-4 leading-tight">
               감으로만 판단하던 게임을<br />
@@ -78,7 +78,7 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-8 pt-6 border-t border-zinc-900 text-xs text-zinc-500 leading-relaxed">
-            AI Baccarat Assistant는 게임의 결과를 예측하거나 수익을 보장하는 시스템이 아닙니다. 제공되는 AI
+            바카라 AI 도우미는 게임의 결과를 예측하거나 수익을 보장하는 시스템이 아닙니다. 제공되는 AI
             분석과 통계 자료는 참고 정보일 뿐이며, 판단과 책임은 전적으로 사용자에게 있습니다.
           </div>
         </div>
@@ -92,7 +92,7 @@ export default function LoginPage() {
             <div className="p-2 bg-zinc-900 rounded-xl border border-zinc-800">
               <ShieldAlert className="w-6 h-6 text-amber-500" />
             </div>
-            <span className="font-bold text-xl tracking-tight text-white">AI Baccarat Assistant</span>
+            <span className="font-bold text-xl tracking-tight text-white">바카라 AI 도우미</span>
           </a>
         </div>
 
