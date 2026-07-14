@@ -168,22 +168,20 @@ if (!function_exists('onoff_platform_member_footer')) {
 }
 
 if (!function_exists('onoff_platform_member_tabs')) {
-    /** 로그인 / 회원가입 탭 */
+    /** 로그인 탭 (공개 회원가입 비활성) */
     function onoff_platform_member_tabs($active = 'login')
     {
         $login_url = (defined('G5_BBS_URL') ? G5_BBS_URL : '') . '/login.php';
-        $register_url = (defined('G5_BBS_URL') ? G5_BBS_URL : '') . '/register.php';
+        $lost_url = (defined('G5_BBS_URL') ? G5_BBS_URL : '') . '/password_lost.php';
 
         echo '<nav class="onoff-platform__tabs mb_log_cate" aria-label="회원 메뉴">';
-
         if ($active === 'login') {
             echo '<span class="onoff-platform__tab is-active" aria-current="page">로그인</span>';
-            echo '<a href="' . htmlspecialchars($register_url, ENT_QUOTES, 'UTF-8') . '" class="onoff-platform__tab">회원가입</a>';
+            echo '<a href="' . htmlspecialchars($lost_url, ENT_QUOTES, 'UTF-8') . '" class="onoff-platform__tab">비밀번호 찾기</a>';
         } else {
             echo '<a href="' . htmlspecialchars($login_url, ENT_QUOTES, 'UTF-8') . '" class="onoff-platform__tab">로그인</a>';
-            echo '<span class="onoff-platform__tab is-active" aria-current="page">회원가입</span>';
+            echo '<span class="onoff-platform__tab is-active" aria-current="page">안내</span>';
         }
-
         echo '</nav>';
     }
 }

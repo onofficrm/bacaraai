@@ -3,4 +3,5 @@ export const PLATFORM_LINKS = {
   landing: '/',
   login: '/bbs/login.php',
   profile: '/bbs/member_confirm.php?url=' + encodeURIComponent('/bbs/register_form.php'),
+  walletBalance: '/plugin/bacara_wallet/api/balance.php',
 };

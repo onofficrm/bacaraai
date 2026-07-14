@@ -1,0 +1,198 @@
+.bacara-wallet {
+  --bw-accent: #f59e0b;
+  --bw-ink: #18181b;
+  --bw-muted: #71717a;
+  --bw-line: #e4e4e7;
+  --bw-soft: #fafafa;
+}
+
+.bacara-wallet h2 {
+  margin: 0 0 8px;
+  font-size: 1.35rem;
+}
+
+.bacara-wallet .bw-desc {
+  margin: 0 0 20px;
+  color: var(--bw-muted);
+  line-height: 1.6;
+}
+
+.bacara-wallet .bw-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 22px;
+}
+
+.bacara-wallet .bw-tabs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--bw-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--bw-ink);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.bacara-wallet .bw-tabs a.is-active {
+  border-color: var(--bw-accent);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.bacara-wallet .bw-card {
+  margin-bottom: 20px;
+  padding: 20px 22px;
+  border: 1px solid var(--bw-line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.bacara-wallet .bw-card h3 {
+  margin: 0 0 14px;
+  font-size: 1.05rem;
+}
+
+.bacara-wallet .bw-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .bacara-wallet .bw-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bacara-wallet label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.bacara-wallet .frm_input,
+.bacara-wallet select,
+.bacara-wallet textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--bw-line);
+  border-radius: 10px;
+}
+
+.bacara-wallet .bw-hint {
+  margin-top: 6px;
+  color: var(--bw-muted);
+  font-size: 0.82rem;
+}
+
+.bacara-wallet .bw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.bacara-wallet .btn_submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: #18181b;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.bacara-wallet .btn_submit.bw-amber {
+  background: var(--bw-accent);
+  color: #18181b;
+}
+
+.bacara-wallet .btn_frmline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--bw-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--bw-ink);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.bacara-wallet .tbl_head01 {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.bacara-wallet .tbl_head01 th,
+.bacara-wallet .tbl_head01 td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--bw-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.bacara-wallet .tbl_head01 th {
+  background: var(--bw-soft);
+  font-size: 0.86rem;
+}
+
+.bacara-wallet .bw-money {
+  font-weight: 800;
+  color: #b45309;
+  font-variant-numeric: tabular-nums;
+}
+
+.bacara-wallet .bw-plus {
+  color: #047857;
+  font-weight: 700;
+}
+
+.bacara-wallet .bw-minus {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.bacara-wallet .bw-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.bacara-wallet .bw-search .frm_input {
+  max-width: 280px;
+}
+
+.bacara-wallet .bw-empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--bw-muted);
+  background: var(--bw-soft);
+  border-radius: 12px;
+}
+
+.bacara-wallet .bw-notice {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #78350f;
+  line-height: 1.55;
+}

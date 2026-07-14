@@ -100,11 +100,11 @@ export default function LoginPage() {
           <div className="mb-10 text-center lg:text-left">
             <h2 className="text-2xl font-bold text-white mb-2">플랫폼 로그인</h2>
             <p className="text-zinc-400 text-sm">
-              로그인 후 AI 분석 시스템으로 이동합니다. 계정이 없다면{' '}
-              <a href={PLATFORM_LINKS.register} className="text-amber-500 hover:text-amber-400">
-                회원가입
+              로그인 후 AI 분석 시스템으로 이동합니다. 계정은 관리자 발급만 가능하며,{' '}
+              <a href={PLATFORM_LINKS.telegram} className="text-amber-500 hover:text-amber-400">
+                텔레그램 문의
               </a>
-              을 진행해 주세요.
+              로 요청해 주세요.
             </p>
           </div>
 

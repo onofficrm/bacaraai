@@ -1,11 +1,14 @@
 import { Lock, Play, Pause, Square, Settings2 } from 'lucide-react';
+import useWallet from '../hooks/useWallet';
 
 interface SessionBarProps {
   onStartSession: () => void;
 }
 
 export default function SessionBar({ onStartSession }: SessionBarProps) {
-  // Format currency
+  const wallet = useWallet();
+  const seed = wallet.loading ? 0 : wallet.balance;
+
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('ko-KR').format(amount) + '원';
   };
@@ -17,12 +20,12 @@ export default function SessionBar({ onStartSession }: SessionBarProps) {
         {/* Financial Info Grid */}
         <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
           <div className="flex flex-col">
-            <span className="text-zinc-500 text-xs mb-1">시작 시드</span>
-            <span className="text-zinc-300 font-mono text-sm">{formatMoney(4000000)}</span>
+            <span className="text-zinc-500 text-xs mb-1">시작 시드 (가상머니)</span>
+            <span className="text-zinc-300 font-mono text-sm">{wallet.loading ? '불러오는 중...' : formatMoney(seed)}</span>
           </div>
           <div className="flex flex-col">
             <span className="text-zinc-500 text-xs mb-1">현재 자금</span>
-            <span className="text-white font-mono font-medium text-sm">{formatMoney(4260000)}</span>
+            <span className="text-white font-mono font-medium text-sm">{wallet.loading ? '...' : formatMoney(seed)}</span>
           </div>
           <div className="flex flex-col">
             <span className="text-zinc-500 text-xs mb-1">현재 손익</span>

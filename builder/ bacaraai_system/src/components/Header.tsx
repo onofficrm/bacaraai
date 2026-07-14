@@ -1,6 +1,7 @@
-import { Activity, LogOut, Maximize, Settings, ShieldAlert, Wifi } from 'lucide-react';
+import { Activity, LogOut, Maximize, Settings, ShieldAlert, Wallet } from 'lucide-react';
 import NotificationCenter from './NotificationCenter';
 import { PLATFORM_LINKS } from '../constants';
+import useWallet from '../hooks/useWallet';
 
 interface HeaderProps {
   onEmergencyStop?: () => void;
@@ -8,6 +9,9 @@ interface HeaderProps {
 }
 
 export default function Header({ onEmergencyStop, activeViewLabel }: HeaderProps) {
+  const wallet = useWallet();
+  const moneyText = new Intl.NumberFormat('ko-KR').format(wallet.balance) + '원';
+
   return (
     <header className="relative z-[200] h-[68px] bg-zinc-950 border-b border-zinc-800 flex items-center justify-between px-6 text-zinc-300 shrink-0">
       {/* Left */}
@@ -58,6 +62,11 @@ export default function Header({ onEmergencyStop, activeViewLabel }: HeaderProps
 
       {/* Right */}
       <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs sm:text-sm font-bold">
+          <Wallet size={14} />
+          <span className="hidden xs:inline">가상머니</span>
+          <span className="font-mono">{wallet.loading ? '...' : moneyText}</span>
+        </div>
         <div className="hidden sm:flex items-center gap-3 text-zinc-400">
           <button className="p-2 hover:bg-zinc-800 rounded-lg transition-colors" type="button" aria-label="전체 화면"><Maximize size={18} /></button>
           <NotificationCenter />

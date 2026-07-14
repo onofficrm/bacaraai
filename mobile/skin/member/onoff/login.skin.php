@@ -34,7 +34,7 @@ onoff_platform_member_styles($member_skin_url);
             </div>
         </fieldset> 
         </form>
-        <a href="<?php echo G5_BBS_URL ?>/register.php" class="onoff-platform__outline-btn">회원가입</a>
+        <p class="onoff-platform__page-label" style="margin:16px 0 0;text-align:center">계정은 관리자 발급만 가능합니다.</p>
         <?php @include_once(get_social_skin_path().'/social_login.skin.php'); // 소셜로그인 사용시 소셜로그인 버튼 ?>
     </div>
 

@@ -2,7 +2,7 @@ const SYSTEM_URL = '/plugin/onoff-builder-bridge/page.php?id=bacaraai-system';
 
 export const PLATFORM_LINKS = {
   loginCheck: '/bbs/login_check.php',
-  register: '/bbs/register.php',
+  register: '#', // 공개 회원가입 비활성 — 관리자 발급만
   passwordLost: '/bbs/password_lost.php',
   system: SYSTEM_URL,
   login: '/#/login',
