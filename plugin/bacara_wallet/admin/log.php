@@ -24,60 +24,58 @@ $result = sql_query(
 );
 ?>
 
-<div class="bacara-wallet">
-    <h2>가상머니 충전 내역</h2>
-    <p class="bw-desc">관리자 지급·차감·설정 기록을 확인합니다.</p>
+<?php bacara_wallet_admin_shell_start('가상머니 충전 내역', '관리자 지급·차감·설정 기록을 확인합니다.'); ?>
+<?php bacara_wallet_admin_nav('log'); ?>
 
-    <?php bacara_wallet_admin_nav('log'); ?>
+<div class="bw-card">
+    <form method="get" class="bw-search">
+        <input type="text" name="mb_id" value="<?php echo htmlspecialchars($mb_id, ENT_QUOTES, 'UTF-8'); ?>" class="frm_input" placeholder="아이디 필터">
+        <button type="submit" class="btn_submit bw-ghost">필터</button>
+    </form>
 
-    <div class="bw-card">
-        <form method="get" class="bw-search">
-            <input type="text" name="mb_id" value="<?php echo htmlspecialchars($mb_id, ENT_QUOTES, 'UTF-8'); ?>" class="frm_input" placeholder="아이디 필터">
-            <button type="submit" class="btn_submit">필터</button>
-        </form>
-
-        <?php if ($total < 1) { ?>
-            <div class="bw-empty">내역이 없습니다.</div>
-        <?php } else { ?>
-            <div class="tbl_head01 tbl_wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>일시</th>
-                            <th>회원</th>
-                            <th>변동</th>
-                            <th>잔액</th>
-                            <th>유형</th>
-                            <th>메모</th>
-                            <th>처리자</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php while ($row = sql_fetch_array($result)) {
-                        $delta = (int) $row['delta'];
-                        $delta_cls = $delta >= 0 ? 'bw-plus' : 'bw-minus';
-                        $delta_text = ($delta >= 0 ? '+' : '') . number_format($delta) . '원';
-                        ?>
-                        <tr>
-                            <td><?php echo htmlspecialchars($row['created_at'], ENT_QUOTES, 'UTF-8'); ?></td>
-                            <td><?php echo htmlspecialchars($row['mb_id'], ENT_QUOTES, 'UTF-8'); ?></td>
-                            <td class="<?php echo $delta_cls; ?>"><?php echo $delta_text; ?></td>
-                            <td class="bw-money"><?php echo bacara_wallet_format($row['balance_after']); ?></td>
-                            <td><?php echo htmlspecialchars($row['kind'], ENT_QUOTES, 'UTF-8'); ?></td>
-                            <td><?php echo htmlspecialchars($row['content'], ENT_QUOTES, 'UTF-8'); ?></td>
-                            <td><?php echo htmlspecialchars($row['admin_mb_id'], ENT_QUOTES, 'UTF-8'); ?></td>
-                        </tr>
-                    <?php } ?>
-                    </tbody>
-                </table>
-            </div>
-            <?php
-            $q = $mb_id !== '' ? 'mb_id=' . urlencode($mb_id) . '&' : '';
-            echo get_paging(G5_IS_MOBILE ? $config['cf_mobile_pages'] : $config['cf_write_pages'], $page, $total_page, bacara_wallet_admin_url('log.php') . '?' . $q . 'page=');
-            ?>
-        <?php } ?>
-    </div>
+    <?php if ($total < 1) { ?>
+        <div class="bw-empty">내역이 없습니다.</div>
+    <?php } else { ?>
+        <div class="tbl_head01 tbl_wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>일시</th>
+                        <th>회원</th>
+                        <th>변동</th>
+                        <th>잔액</th>
+                        <th>유형</th>
+                        <th>메모</th>
+                        <th>처리자</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php while ($row = sql_fetch_array($result)) {
+                    $delta = (int) $row['delta'];
+                    $delta_cls = $delta >= 0 ? 'bw-plus' : 'bw-minus';
+                    $delta_text = ($delta >= 0 ? '+' : '') . number_format($delta) . '원';
+                    ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($row['created_at'], ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars($row['mb_id'], ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td class="<?php echo $delta_cls; ?>"><?php echo $delta_text; ?></td>
+                        <td class="bw-money"><?php echo bacara_wallet_format($row['balance_after']); ?></td>
+                        <td><?php echo htmlspecialchars($row['kind'], ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars($row['content'], ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars($row['admin_mb_id'], ENT_QUOTES, 'UTF-8'); ?></td>
+                    </tr>
+                <?php } ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
+        $q = $mb_id !== '' ? 'mb_id=' . urlencode($mb_id) . '&' : '';
+        echo get_paging(G5_IS_MOBILE ? $config['cf_mobile_pages'] : $config['cf_write_pages'], $page, $total_page, bacara_wallet_admin_url('log.php') . '?' . $q . 'page=');
+        ?>
+    <?php } ?>
 </div>
+
+<?php bacara_wallet_admin_shell_end(); ?>
 
 <?php
 include_once G5_ADMIN_PATH . '/admin.tail.php';

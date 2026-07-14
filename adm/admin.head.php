@@ -141,6 +141,9 @@ if (!empty($_COOKIE['g5_admin_btn_gnb'])) {
         <ul class="gnb_ul">
             <?php
             $jj = 1;
+            if (!isset($amenu) || !is_array($amenu)) {
+                $amenu = array();
+            }
             foreach ($amenu as $key => $value) {
                 $href1 = $href2 = '';
 

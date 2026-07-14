@@ -1,10 +1,27 @@
 <?php
 $sub_menu = '200950';
+
 if (!defined('G5_IS_ADMIN')) {
     define('G5_IS_ADMIN', true);
 }
 
 require_once dirname(__FILE__) . '/../../../common.php';
+require_once G5_ADMIN_PATH . '/admin.lib.php';
+
+if (isset($token)) {
+    $token = @htmlspecialchars(strip_tags($token), ENT_QUOTES);
+}
+
+if (function_exists('run_event')) {
+    run_event('admin_common');
+}
+
+if (!isset($amenu) || !is_array($amenu)) {
+    $amenu = array();
+}
+if (!isset($menu) || !is_array($menu)) {
+    $menu = array();
+}
 
 if ($is_admin !== 'super') {
     alert('최고관리자만 접근할 수 있습니다.', G5_URL);
@@ -21,6 +38,22 @@ if (!function_exists('bacara_wallet_admin_url')) {
             $url .= '?' . http_build_query($query);
         }
         return $url;
+    }
+}
+
+if (!function_exists('bacara_wallet_admin_token')) {
+    function bacara_wallet_admin_token()
+    {
+        if (function_exists('get_admin_token')) {
+            return get_admin_token();
+        }
+
+        $token = function_exists('get_random_token_string')
+            ? get_random_token_string(16)
+            : md5(uniqid((string) mt_rand(), true));
+        set_session('ss_admin_token', $token);
+
+        return $token;
     }
 }
 
@@ -45,4 +78,25 @@ if (!function_exists('bacara_wallet_admin_nav')) {
     }
 }
 
-add_stylesheet('<link rel="stylesheet" href="' . G5_PLUGIN_URL . '/bacara_wallet/admin/style.css">', 10);
+if (!function_exists('bacara_wallet_admin_shell_start')) {
+    function bacara_wallet_admin_shell_start($title, $subtitle = '')
+    {
+        echo '<div class="bacara-wallet">';
+        echo '<header class="bw-hero">';
+        echo '<p class="bw-eyebrow">BACARA AI HELPER</p>';
+        echo '<h2>' . htmlspecialchars($title, ENT_QUOTES, 'UTF-8') . '</h2>';
+        if ($subtitle !== '') {
+            echo '<p class="bw-desc">' . htmlspecialchars($subtitle, ENT_QUOTES, 'UTF-8') . '</p>';
+        }
+        echo '</header>';
+    }
+}
+
+if (!function_exists('bacara_wallet_admin_shell_end')) {
+    function bacara_wallet_admin_shell_end()
+    {
+        echo '</div>';
+    }
+}
+
+add_stylesheet('<link rel="stylesheet" href="' . G5_PLUGIN_URL . '/bacara_wallet/admin/style.css?v=20260714">', 10);
