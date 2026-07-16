@@ -5,6 +5,7 @@ import { AiModelAnalysis, AiOpinion, GameResult, TableData } from '../types';
 import MartingaleVisualizer from './MartingaleVisualizer';
 import ActionGuidance from './ActionGuidance';
 import HelpTooltip from './HelpTooltip';
+import Roadmap from './Roadmap';
 import { playSfx } from '../audio/sfxEngine';
 
 interface RightPanelProps {
@@ -133,6 +134,21 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
       </div>
 
       <div className="p-3 flex flex-col gap-2">
+        {/* Game table record (roadmap) — always visible */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+          <div className="px-3 py-1.5 border-b border-zinc-800 flex items-center justify-between">
+            <span className="text-[11px] font-bold text-zinc-300">게임 테이블 기록</span>
+            <div className="flex items-center gap-2 text-[10px] text-zinc-500">
+              <span className="text-blue-400">P {table.stats.player}</span>
+              <span className="text-red-400">B {table.stats.banker}</span>
+              <span className="text-emerald-400">T {table.stats.tie}</span>
+            </div>
+          </div>
+          <div className="p-2">
+            <Roadmap data={table.roadmap} />
+          </div>
+        </div>
+
         {beginnerMode && (
           <div className={`rounded-lg border px-3 py-2 ${
             isRisk

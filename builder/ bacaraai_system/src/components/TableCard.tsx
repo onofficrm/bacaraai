@@ -85,38 +85,36 @@ export default function TableCard({
         </div>
       </div>
 
-      {!beginnerMode && <Roadmap data={table.roadmap} />}
+      <Roadmap data={table.roadmap} />
 
-      {!beginnerMode && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex items-center gap-3 text-xs">
-            <div className="flex flex-col">
-              <span className="text-zinc-500">Player(P)</span>
-              <span className="text-blue-400 font-mono font-bold">{table.stats.player}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-zinc-500">Banker(B)</span>
-              <span className="text-red-400 font-mono font-bold">{table.stats.banker}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-zinc-500">Tie(T)</span>
-              <span className="text-emerald-400 font-mono font-bold">{table.stats.tie}</span>
-            </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex items-center gap-3 text-xs">
+          <div className="flex flex-col">
+            <span className="text-zinc-500">Player(P)</span>
+            <span className="text-blue-400 font-mono font-bold">{table.stats.player}</span>
           </div>
-          
-          <div className="flex flex-col items-end text-xs justify-center gap-1">
-            <div className="flex items-center gap-1">
-              <span className="text-zinc-500">연속:</span>
-              <span className={`font-medium ${table.stats.currentStreak.includes('Player') ? 'text-blue-400' : table.stats.currentStreak.includes('Banker') ? 'text-red-400' : 'text-emerald-400'}`}>
-                {table.stats.currentStreak}
-              </span>
-            </div>
+          <div className="flex flex-col">
+            <span className="text-zinc-500">Banker(B)</span>
+            <span className="text-red-400 font-mono font-bold">{table.stats.banker}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-zinc-500">Tie(T)</span>
+            <span className="text-emerald-400 font-mono font-bold">{table.stats.tie}</span>
           </div>
         </div>
-      )}
+        
+        <div className="flex flex-col items-end text-xs justify-center gap-1">
+          <div className="flex items-center gap-1">
+            <span className="text-zinc-500">연속:</span>
+            <span className={`font-medium ${table.stats.currentStreak.includes('Player') ? 'text-blue-400' : table.stats.currentStreak.includes('Banker') ? 'text-red-400' : 'text-emerald-400'}`}>
+              {table.stats.currentStreak}
+            </span>
+          </div>
+        </div>
+      </div>
 
-      {/* Core AI summary — always visible; beginner focuses here */}
-      <div className={`${beginnerMode ? '' : 'mt-1 pt-3 border-t border-zinc-800/80'} flex flex-col gap-2`}>
+      {/* Core AI summary — always visible */}
+      <div className="mt-1 pt-3 border-t border-zinc-800/80 flex flex-col gap-2">
         {!beginnerMode && (
           <div className="hidden sm:flex justify-between items-center text-[10px]">
             <div className="flex gap-1.5">
