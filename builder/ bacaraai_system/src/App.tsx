@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { TableData } from './types';
 import TableToolbar, { SortOption, FilterOption } from './components/TableToolbar';
 import useBeginnerMode from './hooks/useBeginnerMode';
+import { installAudioUnlock, playSfx } from './audio/sfxEngine';
 
 const VIEW_LABELS: Record<ViewType, string> = {
   multitable: '라이브 테이블',
@@ -54,13 +55,27 @@ export default function App() {
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [isAutoReordered, setIsAutoReordered] = useState(false);
 
+  useEffect(() => {
+    installAudioUnlock();
+  }, []);
+
   const handleTableSelect = (id: string) => {
     setSelectedTableId(id);
     setIsRightPanelOpen(true);
+    const table = MOCK_TABLES.find((t) => t.id === id);
+    playSfx('tableSelect');
+    if (table?.status === 'rule_triggered' || table?.status === 'waiting_user') {
+      window.setTimeout(() => playSfx('ruleTrigger'), 120);
+    } else if (table?.status === 'risk_blocked') {
+      window.setTimeout(() => playSfx('risk'), 120);
+    } else if (table?.status === 'analyzing') {
+      window.setTimeout(() => playSfx('aiReady'), 120);
+    }
   };
 
   const toggleFavorite = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    playSfx('tick');
     setFavorites(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -169,14 +184,26 @@ export default function App() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
       <Header 
-        onEmergencyStop={() => setStopSessionType('losscut')} 
+        onEmergencyStop={() => {
+          playSfx('risk');
+          setStopSessionType('losscut');
+        }} 
         activeViewLabel={VIEW_LABELS[activeView]}
         beginnerMode={beginnerMode}
       />
-      <TopNav activeView={activeView} onChangeView={setActiveView} />
+      <TopNav
+        activeView={activeView}
+        onChangeView={(view) => {
+          playSfx('nav');
+          setActiveView(view);
+        }}
+      />
       {activeView === 'multitable' && (
         <SessionBar
-          onStartSession={() => setIsModalOpen(true)}
+          onStartSession={() => {
+            playSfx('ui');
+            setIsModalOpen(true);
+          }}
           beginnerMode={beginnerMode}
         />
       )}
@@ -240,10 +267,19 @@ export default function App() {
           </div>
         ) : activeView === 'settings' ? (
           <SettingsView 
-            onReplayOnboarding={() => setShowOnboarding(true)}
-            onStartRealSession={() => setIsModalOpen(true)}
+            onReplayOnboarding={() => {
+              playSfx('ui');
+              setShowOnboarding(true);
+            }}
+            onStartRealSession={() => {
+              playSfx('ui');
+              setIsModalOpen(true);
+            }}
             beginnerMode={beginnerMode}
-            onToggleBeginnerMode={toggleBeginnerMode}
+            onToggleBeginnerMode={() => {
+              playSfx('toggle');
+              toggleBeginnerMode();
+            }}
           />
         ) : activeView === 'lab' ? (
           <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">

@@ -1,4 +1,6 @@
 import { AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { useEffect } from 'react';
+import { playSfx } from '../audio/sfxEngine';
 
 interface StopSessionModalProps {
   type: 'wincut' | 'losscut' | 'error' | null;
@@ -6,6 +8,13 @@ interface StopSessionModalProps {
 }
 
 export default function StopSessionModal({ type, onClose }: StopSessionModalProps) {
+  useEffect(() => {
+    if (!type) return;
+    if (type === 'wincut') playSfx('win');
+    else if (type === 'losscut') playSfx('loss');
+    else playSfx('error');
+  }, [type]);
+
   if (!type) return null;
 
   let Icon = AlertTriangle;
@@ -48,13 +57,13 @@ export default function StopSessionModal({ type, onClose }: StopSessionModalProp
 
         <div className="flex gap-3 w-full">
           <button 
-            onClick={onClose}
+            onClick={() => { playSfx('ui'); onClose(); }}
             className="flex-1 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl font-bold transition-colors border border-zinc-800"
           >
             기록 확인
           </button>
           <button 
-            onClick={onClose}
+            onClick={() => { playSfx('sessionStop'); onClose(); }}
             className={`flex-1 py-3 rounded-xl font-bold transition-colors ${
               type === 'wincut' ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950' : 
               type === 'losscut' ? 'bg-red-500 hover:bg-red-600 text-white' : 

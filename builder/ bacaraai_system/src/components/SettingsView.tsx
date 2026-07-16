@@ -1,6 +1,8 @@
 import React from 'react';
-import { Settings, RefreshCw, PowerOff, Play, MonitorPlay, Sparkles } from 'lucide-react';
+import { Settings, RefreshCw, PowerOff, Play, MonitorPlay, Sparkles, Volume2 } from 'lucide-react';
 import ScreenHelpBanner from './ScreenHelpBanner';
+import useSoundSettings from '../hooks/useSoundSettings';
+import { previewSfx, type SfxName } from '../audio/sfxEngine';
 
 interface SettingsViewProps {
   onReplayOnboarding: () => void;
@@ -9,12 +11,29 @@ interface SettingsViewProps {
   onToggleBeginnerMode?: () => void;
 }
 
+const PREVIEW_SOUNDS: { id: SfxName; label: string }[] = [
+  { id: 'chip', label: '칩' },
+  { id: 'chipHeavy', label: '고액 칩' },
+  { id: 'betConfirm', label: '베팅 확정' },
+  { id: 'sessionStart', label: '세션 시작' },
+  { id: 'ruleTrigger', label: '규칙 발동' },
+  { id: 'aiReady', label: 'AI 의견' },
+  { id: 'notification', label: '알림' },
+  { id: 'risk', label: '위험' },
+  { id: 'win', label: '윈컷' },
+  { id: 'loss', label: '로스컷' },
+  { id: 'shuffle', label: '셔플' },
+  { id: 'sessionStop', label: '종료' },
+];
+
 export default function SettingsView({
   onReplayOnboarding,
   onStartRealSession,
   beginnerMode = true,
   onToggleBeginnerMode,
 }: SettingsViewProps) {
+  const sound = useSoundSettings();
+
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-zinc-950">
       <div className="max-w-4xl mx-auto flex flex-col gap-6">
@@ -31,6 +50,93 @@ export default function SettingsView({
         <ScreenHelpBanner screen="settings" beginnerMode={beginnerMode} />
 
         <div className="grid gap-6">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+            <h3 className="font-bold text-lg text-zinc-100 mb-4 flex items-center gap-2">
+              <Volume2 className="text-amber-500" size={20} />
+              사운드 효과
+            </h3>
+            <p className="text-sm text-zinc-400 mb-5 leading-relaxed">
+              칩·베팅·세션·위험·윈컷/로스컷 등 게임형 효과음입니다. 브라우저에서 첫 클릭 후부터 재생됩니다.
+            </p>
+
+            <div className="space-y-4 mb-5">
+              <div className="flex justify-between items-center py-2 border-b border-zinc-800/50">
+                <div>
+                  <div className="text-sm font-medium text-zinc-200">효과음</div>
+                  <div className="text-xs text-zinc-500 mt-1">버튼·베팅·알림·세션 이벤트 소리</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sound.toggleEnabled();
+                    if (!sound.enabled) previewSfx('toggle');
+                  }}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                    sound.enabled
+                      ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                      : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                  }`}
+                >
+                  {sound.enabled ? '켜짐' : '꺼짐'}
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center gap-4 py-2 border-b border-zinc-800/50">
+                <div className="shrink-0">
+                  <div className="text-sm font-medium text-zinc-200">볼륨</div>
+                  <div className="text-xs text-zinc-500 mt-1">{Math.round(sound.volume * 100)}%</div>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round(sound.volume * 100)}
+                  onChange={(e) => sound.setVolume(Number(e.target.value) / 100)}
+                  onMouseUp={() => previewSfx('chip')}
+                  onTouchEnd={() => previewSfx('chip')}
+                  className="flex-1 accent-amber-500"
+                  disabled={!sound.enabled}
+                />
+              </div>
+
+              <div className="flex justify-between items-center py-2 border-b border-zinc-800/50">
+                <div>
+                  <div className="text-sm font-medium text-zinc-200">분위기음</div>
+                  <div className="text-xs text-zinc-500 mt-1">낮은 배경 톤 + 은은한 테이블 소음</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sound.toggleAmbient();
+                    previewSfx('ui');
+                  }}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                    sound.ambient
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                      : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                  }`}
+                >
+                  {sound.ambient ? '켜짐' : '꺼짐'}
+                </button>
+              </div>
+            </div>
+
+            <div className="text-xs text-zinc-500 mb-3">미리듣기</div>
+            <div className="flex flex-wrap gap-2">
+              {PREVIEW_SOUNDS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => previewSfx(item.id)}
+                  disabled={!sound.enabled}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 disabled:opacity-40 transition-colors"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
             <h3 className="font-bold text-lg text-zinc-100 mb-4 flex items-center gap-2">
               <Sparkles className="text-amber-500" size={20} />
@@ -102,16 +208,6 @@ export default function SettingsView({
                   className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-2 rounded-lg text-sm transition-colors"
                 >
                   시작하기
-                </button>
-              </div>
-              
-              <div className="flex justify-between items-center py-3 border-b border-zinc-800/50">
-                <div>
-                  <div className="text-sm font-medium text-zinc-200">알림 소리</div>
-                  <div className="text-xs text-zinc-500 mt-1">위험 감지 및 마틴 성공 시 소리 재생</div>
-                </div>
-                <button className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-4 py-1.5 rounded-full text-xs font-bold">
-                  켜짐
                 </button>
               </div>
             </div>

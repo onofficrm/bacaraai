@@ -1,5 +1,5 @@
 import { X, Calculator, Info } from 'lucide-react';
-import { useState } from 'react';
+import { playSfx } from '../audio/sfxEngine';
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -8,6 +8,12 @@ interface SessionModalProps {
 
 export default function SessionModal({ isOpen, onClose }: SessionModalProps) {
   if (!isOpen) return null;
+
+  const start = (mode: 'observe' | 'shadow' | 'live') => {
+    playSfx('sessionStart');
+    if (mode === 'shadow') window.setTimeout(() => playSfx('shuffle'), 280);
+    onClose();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -20,7 +26,7 @@ export default function SessionModal({ isOpen, onClose }: SessionModalProps) {
               <SettingsIcon />
               세션 설정
             </h2>
-            <button onClick={onClose} className="md:hidden text-zinc-400 hover:text-white">
+            <button onClick={() => { playSfx('ui'); onClose(); }} className="md:hidden text-zinc-400 hover:text-white">
               <X size={24} />
             </button>
           </div>
@@ -43,7 +49,7 @@ export default function SessionModal({ isOpen, onClose }: SessionModalProps) {
         {/* Right Summary Panel */}
         <div className="w-full md:w-80 bg-zinc-950 p-6 lg:p-8 border-l border-zinc-800 flex flex-col">
           <div className="hidden md:flex justify-end mb-6">
-            <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
+            <button onClick={() => { playSfx('ui'); onClose(); }} className="text-zinc-500 hover:text-white transition-colors">
               <X size={20} />
             </button>
           </div>
@@ -72,13 +78,25 @@ export default function SessionModal({ isOpen, onClose }: SessionModalProps) {
           </div>
 
           <div className="flex flex-col gap-3 mt-8">
-            <button className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium transition-colors">
+            <button
+              type="button"
+              onClick={() => start('observe')}
+              className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium transition-colors"
+            >
               관찰 모드로 시작
             </button>
-            <button className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-colors shadow-lg shadow-indigo-600/20">
+            <button
+              type="button"
+              onClick={() => start('shadow')}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-colors shadow-lg shadow-indigo-600/20"
+            >
               섀도 모드로 시작 (가상 시뮬레이션)
             </button>
-            <button className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg font-bold transition-colors">
+            <button
+              type="button"
+              onClick={() => start('live')}
+              className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg font-bold transition-colors"
+            >
               세션 시작
             </button>
           </div>

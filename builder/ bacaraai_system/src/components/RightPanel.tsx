@@ -5,6 +5,7 @@ import { AiModelAnalysis, AiOpinion, GameResult, TableData } from '../types';
 import MartingaleVisualizer from './MartingaleVisualizer';
 import ActionGuidance from './ActionGuidance';
 import HelpTooltip from './HelpTooltip';
+import { playSfx } from '../audio/sfxEngine';
 
 interface RightPanelProps {
   table: TableData | null;
@@ -177,7 +178,7 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-medium text-zinc-400">실행할 베팅 금액</label>
                     <button 
-                      onClick={() => setBetAmount(0)}
+                      onClick={() => { playSfx('ui'); setBetAmount(0); }}
                       className="text-[10px] text-zinc-500 hover:text-white px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors"
                     >
                       초기화
@@ -210,9 +211,12 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
                         key={chip.label}
                         onClick={() => {
                           if (chip.value === 'DOUBLE') {
+                            playSfx('chipHeavy');
                             setBetAmount(prev => prev * 2);
                           } else {
-                            setBetAmount(prev => prev + (chip.value as number));
+                            const amount = chip.value as number;
+                            playSfx(amount >= 100000 ? 'chipHeavy' : 'chip');
+                            setBetAmount(prev => prev + amount);
                           }
                         }}
                         className={`w-14 h-14 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 ${chip.color}`}
@@ -229,12 +233,16 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
                 </div>
                 
                 <div className="grid grid-cols-2 gap-2 mt-1">
-                  <button className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => playSfx('skip')}
+                    className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
+                  >
                     이번 회차 건너뛰기
                   </button>
                   <button 
                     onClick={() => {
-                      // 실제 베팅 API 연결 시 이곳에서 호출
+                      playSfx('betConfirm');
                       console.log(`[베팅 기록 저장] 타겟: ${table.ai.finalOpinion}, 금액: ${betAmount}`);
                       alert(`[내부 기록 완료]\n${getOpinionText(table.ai.finalOpinion)}에 ${betAmount.toLocaleString()}원 베팅을 진행했습니다.`);
                     }}
@@ -249,10 +257,10 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
 
             {['WAIT', 'SKIP', 'PAUSE', 'STOP', 'DATA_ERROR'].includes(table.ai.finalOpinion) && (
               <div className="grid grid-cols-2 gap-2 mt-2">
-                <button className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors">
+                <button type="button" onClick={() => playSfx('skip')} className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors">
                   관찰 계속
                 </button>
-                <button className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors">
+                <button type="button" onClick={() => playSfx('ruleTrigger')} className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors">
                   강제 개입
                 </button>
               </div>

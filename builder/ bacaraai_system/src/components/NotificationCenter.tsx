@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MOCK_NOTIFICATIONS } from '../data';
 import { Notification } from '../types';
+import { playSfx } from '../audio/sfxEngine';
 
 export default function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
@@ -40,11 +41,13 @@ export default function NotificationCenter() {
   }, [isOpen]);
 
   const markAllAsRead = () => {
+    playSfx('ui');
     setNotifications(notifications.map(n => ({ ...n, read: true })));
   };
 
   const removeNotification = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    playSfx('tick');
     setNotifications(notifications.filter(n => n.id !== id));
   };
 
@@ -97,7 +100,11 @@ export default function NotificationCenter() {
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          const next = !isOpen;
+          setIsOpen(next);
+          if (next) playSfx(unreadCount > 0 ? 'notification' : 'ui');
+        }}
         className="relative p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
         aria-expanded={isOpen}
         aria-haspopup="dialog"

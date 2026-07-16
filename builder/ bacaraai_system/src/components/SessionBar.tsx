@@ -1,6 +1,7 @@
 import { Lock, Play, Pause, Square, Settings2 } from 'lucide-react';
 import useWallet from '../hooks/useWallet';
 import HelpTooltip from './HelpTooltip';
+import { playSfx } from '../audio/sfxEngine';
 
 interface SessionBarProps {
   onStartSession: () => void;
@@ -105,13 +106,13 @@ export default function SessionBar({ onStartSession, beginnerMode = true }: Sess
             <Play size={16} fill="currentColor" />
             세션 시작
           </button>
-          <button className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors">
+          <button className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors" onClick={() => playSfx('sessionPause')}>
             <Pause size={18} />
           </button>
-          <button className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors">
+          <button className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors" onClick={() => playSfx('sessionStop')}>
             <Square size={18} />
           </button>
-          <button className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors ml-2">
+          <button className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors ml-2" onClick={() => playSfx('ui')}>
             <Settings2 size={18} />
           </button>
         </div>
