@@ -2,6 +2,7 @@ import { getResultColor, getResultLabel } from '../utils/colors';
 import React from 'react';
 import { Maximize2, Star, EyeOff, Activity, BarChart2 } from 'lucide-react';
 import { AiOpinion, TableData, TableStatus } from '../types';
+import { STATUS_GUIDE } from '../help/glossary';
 import Roadmap from './Roadmap';
 
 interface TableCardProps {
@@ -167,50 +168,45 @@ function getOpinionColor(opinion: AiOpinion) {
 }
 
 function StatusBadge({ status }: { status: TableStatus }) {
-  let text = '관찰 중';
+  let text = STATUS_GUIDE[status]?.label || '관찰 중';
   let classes = 'bg-teal-500/10 text-teal-400 border-teal-500/20';
+  const tip = STATUS_GUIDE[status]?.tip || '테이블 상태를 확인하세요.';
 
   switch (status) {
     case 'analyzing':
-      text = 'AI 분석 중';
       classes = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
       break;
     case 'rule_triggered':
-      text = '규칙 발동';
       classes = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
       break;
     case 'waiting_user':
-      text = '사용자 확인 대기';
       classes = 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse';
       break;
     case 'checking_result':
-      text = '결과 확인 중';
       classes = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
       break;
     case 'paused':
-      text = '일시정지';
       classes = 'bg-zinc-800 text-zinc-400 border-zinc-700';
       break;
     case 'error':
-      text = '데이터 오류';
       classes = 'bg-red-500/10 text-red-400 border-red-500/20';
       break;
     case 'risk_blocked':
-      text = '위험 차단';
       classes = 'bg-red-900/30 text-red-500 border-red-900/50';
       break;
     case 'betting':
-      text = '베팅가능';
       classes = 'bg-amber-500/20 text-amber-500 border-amber-500/30';
       break;
     case 'waiting':
-      text = '결과대기';
       classes = 'bg-zinc-800 text-zinc-400 border-zinc-700';
       break;
   }
 
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded border flex items-center gap-1 ${classes}`}>
+    <span
+      title={tip}
+      className={`text-[10px] px-1.5 py-0.5 rounded border flex items-center gap-1 ${classes}`}
+    >
       {status === 'analyzing' && <div className="w-1.5 h-1.5 rounded-full bg-current animate-ping mr-0.5"></div>}
       {text}
     </span>

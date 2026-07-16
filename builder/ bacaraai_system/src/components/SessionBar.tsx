@@ -1,11 +1,13 @@
 import { Lock, Play, Pause, Square, Settings2 } from 'lucide-react';
 import useWallet from '../hooks/useWallet';
+import HelpTooltip from './HelpTooltip';
 
 interface SessionBarProps {
   onStartSession: () => void;
+  beginnerMode?: boolean;
 }
 
-export default function SessionBar({ onStartSession }: SessionBarProps) {
+export default function SessionBar({ onStartSession, beginnerMode = true }: SessionBarProps) {
   const wallet = useWallet();
   const seed = wallet.loading ? 0 : wallet.balance;
 
@@ -15,12 +17,20 @@ export default function SessionBar({ onStartSession }: SessionBarProps) {
 
   return (
     <div className="bg-zinc-900 border-b border-zinc-800 p-4">
+      {beginnerMode && (
+        <p className="text-[11px] text-zinc-500 mb-3 leading-relaxed">
+          가상머니는 연습용 시드입니다. 실제 돈이 아니며, 관리자가 지급한 금액 안에서만 시뮬레이션합니다.
+        </p>
+      )}
       <div className="flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center">
         
         {/* Financial Info Grid */}
         <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
           <div className="flex flex-col">
-            <span className="text-zinc-500 text-xs mb-1">시작 시드 (가상머니)</span>
+            <span className="text-zinc-500 text-xs mb-1 inline-flex items-center gap-1">
+              시작 시드
+              {beginnerMode && <HelpTooltip termId="seed" />}
+            </span>
             <span className="text-zinc-300 font-mono text-sm">{wallet.loading ? '불러오는 중...' : formatMoney(seed)}</span>
           </div>
           <div className="flex flex-col">
@@ -36,7 +46,10 @@ export default function SessionBar({ onStartSession }: SessionBarProps) {
             <span className="text-zinc-300 font-mono text-sm">{formatMoney(10000)}</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-zinc-500 text-xs mb-1">현재 마틴</span>
+            <span className="text-zinc-500 text-xs mb-1 inline-flex items-center gap-1">
+              현재 마틴
+              {beginnerMode && <HelpTooltip termId="martin" />}
+            </span>
             <span className="text-amber-400 font-mono font-medium text-sm">2 / 8단계</span>
           </div>
           <div className="flex flex-col col-span-2">
@@ -49,7 +62,10 @@ export default function SessionBar({ onStartSession }: SessionBarProps) {
         <div className="w-full lg:w-[400px] flex flex-col gap-2">
           <div className="flex justify-between text-xs">
             <div className="flex flex-col gap-0.5">
-              <span className="text-zinc-500">로스컷 <Lock size={10} className="inline mb-0.5" /></span>
+              <span className="text-zinc-500 inline-flex items-center gap-1">
+                로스컷 <Lock size={10} className="inline" />
+                {beginnerMode && <HelpTooltip termId="losscut" />}
+              </span>
               <span className="text-red-400 font-mono">-{formatMoney(2000000)}</span>
             </div>
             <div className="flex flex-col gap-0.5 text-center">
@@ -57,21 +73,20 @@ export default function SessionBar({ onStartSession }: SessionBarProps) {
               <span className="text-emerald-400 font-mono">+{formatMoney(260000)}</span>
             </div>
             <div className="flex flex-col gap-0.5 text-right">
-              <span className="text-zinc-500">윈컷</span>
+              <span className="text-zinc-500 inline-flex items-center justify-end gap-1">
+                윈컷
+                {beginnerMode && <HelpTooltip termId="wincut" />}
+              </span>
               <span className="text-blue-400 font-mono">+{formatMoney(1000000)}</span>
             </div>
           </div>
           
           {/* Gauge Bar */}
           <div className="h-2 w-full bg-zinc-800 rounded-full relative overflow-hidden flex">
-            {/* 0 point is at 2/3 of the bar since loss is -2M and win is +1M */}
-            {/* Total range = 3,000,000. Loss is -2M (0%), 0 is (66.6%), Win is +1M (100%) */}
             <div className="absolute left-[66.6%] top-0 bottom-0 w-[1px] bg-zinc-600 z-10"></div>
-            
-            {/* Current position: +260k out of 1M -> 26% of the right side */}
             <div 
               className="absolute h-full bg-emerald-500 rounded-full transition-all duration-500"
-              style={{ left: '66.6%', width: '8.6%' }} // (260k / 3M) * 100 = 8.6%
+              style={{ left: '66.6%', width: '8.6%' }}
             ></div>
           </div>
           

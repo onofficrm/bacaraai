@@ -3,14 +3,17 @@ import { Activity,  ChevronDown, ChevronUp, FileText, Info, ShieldAlert, SkipFor
 import React, { useState } from 'react';
 import { AiModelAnalysis, AiOpinion, GameResult, TableData } from '../types';
 import MartingaleVisualizer from './MartingaleVisualizer';
+import ActionGuidance from './ActionGuidance';
+import HelpTooltip from './HelpTooltip';
 
 interface RightPanelProps {
   table: TableData | null;
   isOpen?: boolean;
   onClose?: () => void;
+  beginnerMode?: boolean;
 }
 
-export default function RightPanel({ table, isOpen = true, onClose }: RightPanelProps) {
+export default function RightPanel({ table, isOpen = true, onClose, beginnerMode = true }: RightPanelProps) {
   const [betAmount, setBetAmount] = useState<number>(0);
 
   React.useEffect(() => {
@@ -81,6 +84,12 @@ export default function RightPanel({ table, isOpen = true, onClose }: RightPanel
       </div>
 
       <div className="p-4 flex flex-col gap-4">
+        <ActionGuidance
+          opinion={table.ai.finalOpinion}
+          consensus={table.ai.consensus}
+          beginnerMode={beginnerMode}
+        />
+
         {/* Final Recommendation Card */}
         <div className="bg-zinc-900 border border-amber-500/30 rounded-xl overflow-hidden shadow-lg shadow-amber-900/10">
           <div className="bg-amber-950/30 px-4 py-3 border-b border-amber-500/20 flex justify-between items-center">
@@ -88,8 +97,9 @@ export default function RightPanel({ table, isOpen = true, onClose }: RightPanel
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
               <h3 className="font-bold text-amber-500 text-sm">최종 참고 의견</h3>
             </div>
-            <span className="text-[10px] text-zinc-400 bg-zinc-950 px-2 py-0.5 rounded-full border border-zinc-800">
+            <span className="text-[10px] text-zinc-400 bg-zinc-950 px-2 py-0.5 rounded-full border border-zinc-800 inline-flex items-center gap-1">
               일치도: {table.ai.consensus}
+              {beginnerMode && <HelpTooltip termId="consensus" />}
             </span>
           </div>
           

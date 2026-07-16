@@ -14,18 +14,29 @@ import TableZoomModal from './components/TableZoomModal';
 import RuleCreationModal from './components/RuleCreationModal';
 import StopSessionModal from './components/StopSessionModal';
 import RuleLabView from "./components/RuleLabView";
-import HistoryTab from './components/HistoryTab';
-import TableToolbar, { SortOption, FilterOption } from './components/TableToolbar';
 import DataInsightCenter from './components/DataInsightCenter';
 import OnboardingModal from './components/OnboardingModal';
 import SettingsView from './components/SettingsView';
-import { MOCK_TABLES, MOCK_RULES, MOCK_HISTORY } from './data';
+import HelpGuideView from './components/HelpGuideView';
+import ScreenHelpBanner from './components/ScreenHelpBanner';
+import { MOCK_TABLES } from './data';
 import { Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TableData } from './types';
+import TableToolbar, { SortOption, FilterOption } from './components/TableToolbar';
+import useBeginnerMode from './hooks/useBeginnerMode';
+
+const VIEW_LABELS: Record<ViewType, string> = {
+  multitable: '라이브 테이블',
+  lab: '규칙 연구실',
+  insight: '데이터 및 기록',
+  settings: '설정',
+  help: '도움말',
+};
 
 export default function App() {
   const [activeView, setActiveView] = useState<ViewType>('multitable');
+  const { beginnerMode, toggleBeginnerMode, setBeginnerMode } = useBeginnerMode();
   
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return localStorage.getItem('onboardingComplete') !== 'true';
@@ -83,7 +94,7 @@ export default function App() {
       if (t.status === 'rule_triggered') counts.rule_triggered++;
       if (t.status === 'analyzing') counts.ai_analyzing++;
       if (t.status === 'waiting_user') counts.waiting_user++;
-      if (t.status === 'checking_result') counts.martingale++; // Assuming checking_result implies some martingale state for mock
+      if (t.status === 'checking_result') counts.martingale++;
       if (t.status === 'risk_blocked') counts.risk_blocked++;
       if (t.status === 'error' || t.ai.finalOpinion === 'DATA_ERROR') counts.data_error++;
       if (['WAIT', 'SKIP', 'PAUSE'].includes(t.ai.finalOpinion)) counts.wait_skip++;
@@ -97,7 +108,7 @@ export default function App() {
     let score = 0;
     if (t.status === 'waiting_user') score += 1000;
     if (t.status === 'rule_triggered') score += 900;
-    if (t.status === 'checking_result') score += 800; // martingale indicator
+    if (t.status === 'checking_result') score += 800;
     if (t.ai.consensus && t.ai.consensus.includes('/3')) score += 700;
     if (t.status === 'analyzing') score += 600;
     if (t.timer && t.timer < 10) score += 500;
@@ -110,7 +121,6 @@ export default function App() {
   const filteredAndSortedTables = useMemo(() => {
     let tables = [...MOCK_TABLES];
 
-    // Filter
     tables = tables.filter(t => {
       switch (filterBy) {
         case 'rule_triggered': return t.status === 'rule_triggered';
@@ -125,7 +135,6 @@ export default function App() {
       }
     });
 
-    // Sort
     tables.sort((a, b) => {
       switch (sortBy) {
         case 'auto': {
@@ -147,7 +156,6 @@ export default function App() {
     return tables;
   }, [filterBy, sortBy, favorites]);
 
-  // Simulate auto reordering indicator
   useEffect(() => {
     if (sortBy === 'auto') {
       setIsAutoReordered(true);
@@ -160,72 +168,96 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
-      {/* Top Navigation */}
       <Header 
         onEmergencyStop={() => setStopSessionType('losscut')} 
-        activeViewLabel={activeView === 'multitable' ? '라이브 테이블' : activeView === 'insight' ? '데이터 및 기록' : activeView === 'lab' ? '규칙 연구실' : '설정'} 
+        activeViewLabel={VIEW_LABELS[activeView]}
+        beginnerMode={beginnerMode}
       />
       <TopNav activeView={activeView} onChangeView={setActiveView} />
-      <SessionBar onStartSession={() => setIsModalOpen(true)} />
+      {activeView === 'multitable' && (
+        <SessionBar
+          onStartSession={() => setIsModalOpen(true)}
+          beginnerMode={beginnerMode}
+        />
+      )}
       
       <main className="flex-1 flex overflow-hidden pb-16 sm:pb-0">
         {activeView === 'multitable' ? (
           <>
-            {/* Central Multi-Table Grid */}
             <div className="flex-1 p-4 lg:p-6 overflow-y-auto custom-scrollbar flex flex-col">
-          <TableToolbar 
-            sortBy={sortBy} 
-            onSortChange={setSortBy} 
-            filterBy={filterBy} 
-            onFilterChange={setFilterBy} 
-            filterCounts={filterCounts} 
-            isAutoReordered={isAutoReordered} 
-          />
-          <motion.div layout className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 lg:gap-6 flex-1 content-start">
-            <AnimatePresence>
-              {filteredAndSortedTables.map(table => (
-                <motion.div
-                  key={table.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <TableCard 
-                    table={table} 
-                    isSelected={table.id === selectedTableId}
-                    isFavorite={favorites.has(table.id)}
-                    onSelect={handleTableSelect}
-                    onZoom={setZoomedTableId}
-                    onToggleFavorite={toggleFavorite}
-                  />
-                </motion.div>
-              ))}
-              {filteredAndSortedTables.length === 0 && (
-                <div className="col-span-full flex flex-col items-center justify-center h-64 text-zinc-500 gap-2">
-                  <Activity size={32} className="opacity-50" />
-                  <p>필터 조건에 맞는 테이블이 없습니다.</p>
-                </div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        </div>
-        <RightPanel 
-          table={selectedTable} 
-          isOpen={isRightPanelOpen}
-          onClose={() => setIsRightPanelOpen(false)}
-        />
+              <ScreenHelpBanner screen="multitable" beginnerMode={beginnerMode} />
+              <TableToolbar 
+                sortBy={sortBy} 
+                onSortChange={setSortBy} 
+                filterBy={filterBy} 
+                onFilterChange={setFilterBy} 
+                filterCounts={filterCounts} 
+                isAutoReordered={isAutoReordered} 
+              />
+              <motion.div layout className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 lg:gap-6 flex-1 content-start">
+                <AnimatePresence>
+                  {filteredAndSortedTables.map(table => (
+                    <motion.div
+                      key={table.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <TableCard 
+                        table={table} 
+                        isSelected={table.id === selectedTableId}
+                        isFavorite={favorites.has(table.id)}
+                        onSelect={handleTableSelect}
+                        onZoom={setZoomedTableId}
+                        onToggleFavorite={toggleFavorite}
+                      />
+                    </motion.div>
+                  ))}
+                  {filteredAndSortedTables.length === 0 && (
+                    <div className="col-span-full flex flex-col items-center justify-center h-64 text-zinc-500 gap-2">
+                      <Activity size={32} className="opacity-50" />
+                      <p>필터 조건에 맞는 테이블이 없습니다.</p>
+                    </div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            </div>
+            <RightPanel 
+              table={selectedTable} 
+              isOpen={isRightPanelOpen}
+              onClose={() => setIsRightPanelOpen(false)}
+              beginnerMode={beginnerMode}
+            />
           </>
         ) : activeView === 'insight' ? (
-          <DataInsightCenter />
+          <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+            <div className="p-4 lg:px-6 pt-4 lg:pt-6">
+              <ScreenHelpBanner screen="insight" beginnerMode={beginnerMode} />
+            </div>
+            <DataInsightCenter />
+          </div>
         ) : activeView === 'settings' ? (
           <SettingsView 
             onReplayOnboarding={() => setShowOnboarding(true)}
             onStartRealSession={() => setIsModalOpen(true)}
+            beginnerMode={beginnerMode}
+            onToggleBeginnerMode={toggleBeginnerMode}
           />
         ) : activeView === 'lab' ? (
-          <RuleLabView />
+          <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+            <div className="p-4 lg:px-6 pt-4 lg:pt-6">
+              <ScreenHelpBanner screen="lab" beginnerMode={beginnerMode} />
+            </div>
+            <RuleLabView />
+          </div>
+        ) : activeView === 'help' ? (
+          <HelpGuideView
+            beginnerMode={beginnerMode}
+            onToggleBeginnerMode={toggleBeginnerMode}
+            onReplayOnboarding={() => setShowOnboarding(true)}
+          />
         ) : (
           <div className="flex-1 flex items-center justify-center text-zinc-500 bg-zinc-950">
             <div className="flex flex-col items-center gap-2">
@@ -246,14 +278,15 @@ export default function App() {
         onClose={() => {
           setShowOnboarding(false);
           localStorage.setItem('onboardingComplete', 'true');
+          setBeginnerMode(true);
         }}
         onStartSetup={() => {
           setShowOnboarding(false);
           localStorage.setItem('onboardingComplete', 'true');
+          setBeginnerMode(true);
           setIsModalOpen(true);
         }}
       />
     </div>
   );
 }
-

@@ -2,13 +2,15 @@ import { Activity, LogOut, Maximize, Settings, ShieldAlert, Wallet } from 'lucid
 import NotificationCenter from './NotificationCenter';
 import { PLATFORM_LINKS } from '../constants';
 import useWallet from '../hooks/useWallet';
+import HelpTooltip from './HelpTooltip';
 
 interface HeaderProps {
   onEmergencyStop?: () => void;
   activeViewLabel?: string;
+  beginnerMode?: boolean;
 }
 
-export default function Header({ onEmergencyStop, activeViewLabel }: HeaderProps) {
+export default function Header({ onEmergencyStop, activeViewLabel, beginnerMode = true }: HeaderProps) {
   const wallet = useWallet();
   const moneyText = new Intl.NumberFormat('ko-KR').format(wallet.balance) + '원';
 
@@ -65,6 +67,7 @@ export default function Header({ onEmergencyStop, activeViewLabel }: HeaderProps
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs sm:text-sm font-bold">
           <Wallet size={14} />
           <span className="hidden xs:inline">가상머니</span>
+          {beginnerMode && <HelpTooltip termId="virtual-money" />}
           <span className="font-mono">{wallet.loading ? '...' : moneyText}</span>
         </div>
         <div className="hidden sm:flex items-center gap-3 text-zinc-400">
