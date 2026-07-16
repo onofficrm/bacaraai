@@ -86,15 +86,9 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
       </div>
 
       <div className="p-3 flex flex-col gap-3">
-        <ActionGuidance
-          opinion={table.ai.finalOpinion}
-          consensus={table.ai.consensus}
-          beginnerMode={beginnerMode}
-        />
-
-        {/* Final Recommendation Card */}
+        {/* Opinion + Betting first (priority) */}
         <div className="bg-zinc-900 border border-amber-500/30 rounded-xl overflow-hidden shadow-lg shadow-amber-900/10">
-          <div className="bg-amber-950/30 px-3 py-2.5 border-b border-amber-500/20 flex justify-between items-center">
+          <div className="bg-amber-950/30 px-3 py-2 border-b border-amber-500/20 flex justify-between items-center">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
               <h3 className="font-bold text-amber-500 text-sm">최종 참고 의견</h3>
@@ -105,7 +99,7 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
             </span>
           </div>
           
-          <div className="p-3 flex flex-col gap-3">
+          <div className="p-3 flex flex-col gap-2.5">
             <div className="flex justify-between items-center">
               <span className={`text-2xl font-bold tracking-tight ${getOpinionColor(table.ai.finalOpinion)}`}>
                 {getOpinionText(table.ai.finalOpinion)}
@@ -114,130 +108,70 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
                 {['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) ? '-' : table.ai.recommendedAmount.toLocaleString() + '원'}
               </span>
             </div>
-            
+
+            {/* Betting Execution UI — elevated above secondary analysis */}
             {!['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) && (
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 flex flex-col gap-2">
+              <div className="flex flex-col gap-2 border-t border-amber-500/15 pt-2.5">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-zinc-400 flex items-center gap-1.5"><Activity size={12} className="text-amber-500" /> 유사 상황 추천 근거</span>
-                  <button className="text-[10px] text-amber-500 hover:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">상세 보기</button>
+                  <label className="text-xs font-medium text-zinc-400">실행할 베팅 금액</label>
+                  <button 
+                    onClick={() => { playSfx('ui'); setBetAmount(0); }}
+                    className="text-[10px] text-zinc-500 hover:text-white px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors"
+                  >
+                    초기화
+                  </button>
                 </div>
-                <div className="flex justify-between items-end">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] text-zinc-500">과거 적중률 (유사 패턴 4,218건)</span>
-                    <span className="text-sm font-bold text-zinc-200">62.8%</span>
-                  </div>
-                  <div className="flex flex-col gap-0.5 text-right">
-                    <span className="text-[10px] text-zinc-500">다음 예상 분포</span>
-                    <div className="flex items-center gap-2 text-[10px] font-mono">
-                      <span className="text-blue-400">P:48</span>
-                      <span className="text-red-400">B:42</span>
-                      <span className="text-emerald-400">T:10</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs">
-              <div className="flex justify-between">
-                <span className="text-zinc-500">적용 규칙</span>
-                <span className="text-zinc-300">{table.ai.appliedRule}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">현재 마틴</span>
-                <span className="text-zinc-300">2 / 8단계</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-500">데이터 상태</span>
-                <span className="text-teal-400">정상</span>
-              </div>
-            </div>
-
-            {['SKIP', 'PAUSE', 'STOP', 'DATA_ERROR'].includes(table.ai.finalOpinion) && table.ai.skipReasons && (
-              <div className="bg-zinc-950 border border-zinc-800 rounded p-3 text-xs mt-1">
-                <div className="text-amber-500 font-bold mb-2">관망/중단 사유</div>
-                <ul className="flex flex-col gap-1.5 text-zinc-300">
-                  {table.ai.skipReasons.map((reason, i) => (
-                    <li key={i} className="flex items-start gap-1.5">
-                      <span className="text-zinc-600 mt-0.5">•</span>
-                      <span className="leading-relaxed">{reason}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="text-[10px] text-zinc-500 leading-tight bg-zinc-950 p-2 rounded flex items-start gap-1.5 mt-2">
-              <Info size={12} className="shrink-0 mt-0.5" />
-              AI 분석은 결과를 보장하지 않으며 최종 판단은 사용자에게 있습니다.
-            </div>
-
-            {/* Betting Execution UI */}
-            {!['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) && (
-              <div className="mt-1 flex flex-col gap-2.5 border-t border-zinc-800/80 pt-3">
-                <div className="flex flex-col gap-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-medium text-zinc-400">실행할 베팅 금액</label>
-                    <button 
-                      onClick={() => { playSfx('ui'); setBetAmount(0); }}
-                      className="text-[10px] text-zinc-500 hover:text-white px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors"
-                    >
-                      초기화
-                    </button>
-                  </div>
                   
-                  <div className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-3 flex items-center justify-between">
-                    <span className={`text-sm font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
-                      {getOpinionText(table.ai.finalOpinion)}
-                    </span>
-                    <div className="flex items-center">
-                      <span className="font-mono font-bold text-white text-lg">{betAmount.toLocaleString()}</span>
-                      <span className="text-zinc-500 text-sm ml-1">원</span>
-                    </div>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex items-center justify-between">
+                  <span className={`text-sm font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
+                    {getOpinionText(table.ai.finalOpinion)}
+                  </span>
+                  <div className="flex items-center">
+                    <span className="font-mono font-bold text-white text-lg">{betAmount.toLocaleString()}</span>
+                    <span className="text-zinc-500 text-sm ml-1">원</span>
                   </div>
+                </div>
 
-                  {/* Chips Selection */}
-                  <div className="flex flex-wrap justify-center gap-2.5 mt-2 pb-1">
-                    {[
-                      { label: '1천', value: 1000, color: 'bg-zinc-200 text-zinc-900 border-zinc-400' },
-                      { label: '5천', value: 5000, color: 'bg-red-600 text-white border-red-800' },
-                      { label: '1만', value: 10000, color: 'bg-blue-600 text-white border-blue-800' },
-                      { label: '5만', value: 50000, color: 'bg-emerald-600 text-white border-emerald-800' },
-                      { label: '10만', value: 100000, color: 'bg-purple-600 text-white border-purple-800' },
-                      { label: '50만', value: 500000, color: 'bg-amber-500 text-amber-950 border-amber-700' },
-                      { label: '100만', value: 1000000, color: 'bg-zinc-900 text-yellow-500 border-yellow-700' },
-                      { label: '2배', value: 'DOUBLE', color: 'bg-zinc-800 text-white border-zinc-950' },
-                    ].map(chip => (
-                      <button
-                        key={chip.label}
-                        onClick={() => {
-                          if (chip.value === 'DOUBLE') {
-                            playSfx('chipHeavy');
-                            setBetAmount(prev => prev * 2);
-                          } else {
-                            const amount = chip.value as number;
-                            playSfx(amount >= 100000 ? 'chipHeavy' : 'chip');
-                            setBetAmount(prev => prev + amount);
-                          }
-                        }}
-                        className={`w-12 h-12 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 ${chip.color}`}
-                        style={{
-                          boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.2), 0 4px 6px -1px rgba(0,0,0,0.5)'
-                        }}
-                      >
-                        <div className="w-8 h-8 rounded-full border border-current flex items-center justify-center bg-black/10 text-[10px] font-bold">
-                          {chip.label}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {[
+                    { label: '1천', value: 1000, color: 'bg-zinc-200 text-zinc-900 border-zinc-400' },
+                    { label: '5천', value: 5000, color: 'bg-red-600 text-white border-red-800' },
+                    { label: '1만', value: 10000, color: 'bg-blue-600 text-white border-blue-800' },
+                    { label: '5만', value: 50000, color: 'bg-emerald-600 text-white border-emerald-800' },
+                    { label: '10만', value: 100000, color: 'bg-purple-600 text-white border-purple-800' },
+                    { label: '50만', value: 500000, color: 'bg-amber-500 text-amber-950 border-amber-700' },
+                    { label: '100만', value: 1000000, color: 'bg-zinc-900 text-yellow-500 border-yellow-700' },
+                    { label: '2배', value: 'DOUBLE', color: 'bg-zinc-800 text-white border-zinc-950' },
+                  ].map(chip => (
+                    <button
+                      key={chip.label}
+                      onClick={() => {
+                        if (chip.value === 'DOUBLE') {
+                          playSfx('chipHeavy');
+                          setBetAmount(prev => prev * 2);
+                        } else {
+                          const amount = chip.value as number;
+                          playSfx(amount >= 100000 ? 'chipHeavy' : 'chip');
+                          setBetAmount(prev => prev + amount);
+                        }
+                      }}
+                      className={`w-11 h-11 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 ${chip.color}`}
+                      style={{
+                        boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.2), 0 4px 6px -1px rgba(0,0,0,0.5)'
+                      }}
+                    >
+                      <div className="w-7 h-7 rounded-full border border-current flex items-center justify-center bg-black/10 text-[10px] font-bold">
+                        {chip.label}
+                      </div>
+                    </button>
+                  ))}
                 </div>
                 
-                <div className="grid grid-cols-2 gap-2 sticky bottom-0 -mx-3 px-3 pb-1 pt-2 bg-zinc-950/95 backdrop-blur-sm border-t border-zinc-800/70">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => playSfx('skip')}
-                    className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
+                    className="py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
                   >
                     이번 회차 건너뛰기
                   </button>
@@ -247,7 +181,7 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
                       console.log(`[베팅 기록 저장] 타겟: ${table.ai.finalOpinion}, 금액: ${betAmount}`);
                       alert(`[내부 기록 완료]\n${getOpinionText(table.ai.finalOpinion)}에 ${betAmount.toLocaleString()}원 베팅을 진행했습니다.`);
                     }}
-                    className="py-2.5 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg text-sm font-bold transition-colors shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none flex items-center justify-center gap-2"
+                    className="py-2 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg text-sm font-bold transition-colors shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none flex items-center justify-center gap-2"
                     disabled={table.status === 'risk_blocked' || betAmount <= 0}
                   >
                     베팅 기록 및 확정
@@ -257,16 +191,79 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
             )}
 
             {['WAIT', 'SKIP', 'PAUSE', 'STOP', 'DATA_ERROR'].includes(table.ai.finalOpinion) && (
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <button type="button" onClick={() => playSfx('skip')} className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors">
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => playSfx('skip')} className="py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors">
                   관찰 계속
                 </button>
-                <button type="button" onClick={() => playSfx('ruleTrigger')} className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors">
+                <button type="button" onClick={() => playSfx('ruleTrigger')} className="py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors">
                   강제 개입
                 </button>
               </div>
             )}
           </div>
+        </div>
+
+        <ActionGuidance
+          opinion={table.ai.finalOpinion}
+          consensus={table.ai.consensus}
+          beginnerMode={beginnerMode}
+        />
+
+        {!['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-2.5 flex flex-col gap-2">
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-zinc-400 flex items-center gap-1.5"><Activity size={12} className="text-amber-500" /> 유사 상황 추천 근거</span>
+              <button className="text-[10px] text-amber-500 hover:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">상세 보기</button>
+            </div>
+            <div className="flex justify-between items-end">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-zinc-500">과거 적중률 (유사 패턴 4,218건)</span>
+                <span className="text-sm font-bold text-zinc-200">62.8%</span>
+              </div>
+              <div className="flex flex-col gap-0.5 text-right">
+                <span className="text-[10px] text-zinc-500">다음 예상 분포</span>
+                <div className="flex items-center gap-2 text-[10px] font-mono">
+                  <span className="text-blue-400">P:48</span>
+                  <span className="text-red-400">B:42</span>
+                  <span className="text-emerald-400">T:10</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-y-1.5 gap-x-4 text-xs px-0.5">
+          <div className="flex justify-between">
+            <span className="text-zinc-500">적용 규칙</span>
+            <span className="text-zinc-300">{table.ai.appliedRule}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">현재 마틴</span>
+            <span className="text-zinc-300">2 / 8단계</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">데이터 상태</span>
+            <span className="text-teal-400">정상</span>
+          </div>
+        </div>
+
+        {['SKIP', 'PAUSE', 'STOP', 'DATA_ERROR'].includes(table.ai.finalOpinion) && table.ai.skipReasons && (
+          <div className="bg-zinc-950 border border-zinc-800 rounded p-3 text-xs">
+            <div className="text-amber-500 font-bold mb-2">관망/중단 사유</div>
+            <ul className="flex flex-col gap-1.5 text-zinc-300">
+              {table.ai.skipReasons.map((reason, i) => (
+                <li key={i} className="flex items-start gap-1.5">
+                  <span className="text-zinc-600 mt-0.5">•</span>
+                  <span className="leading-relaxed">{reason}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="text-[10px] text-zinc-500 leading-tight bg-zinc-950 p-2 rounded flex items-start gap-1.5">
+          <Info size={12} className="shrink-0 mt-0.5" />
+          AI 분석은 결과를 보장하지 않으며 최종 판단은 사용자에게 있습니다.
         </div>
 
         {/* AI Detail Cards */}
