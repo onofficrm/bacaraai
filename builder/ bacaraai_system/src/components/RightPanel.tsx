@@ -66,13 +66,18 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
         <div className="flex-1 border border-zinc-800 border-dashed rounded-xl flex items-center justify-center text-zinc-600 bg-zinc-900/30">
           <div className="text-center px-6">
             <Info size={32} className="mx-auto mb-4 opacity-50" />
-            <p className="text-sm font-medium mb-2 text-zinc-400">테이블을 선택해주세요</p>
-            <p className="text-xs opacity-70">테이블 선택 시 GPT, Gemini, Claude의 실시간 게임 분석 의견이 표시됩니다.</p>
+            <p className="text-sm font-medium mb-2 text-zinc-300">① 테이블을 선택해주세요</p>
+            <p className="text-xs opacity-70 leading-relaxed">
+              가운데 카드를 누르면 AI 의견과 베팅 안내가 여기에 나타납니다.
+            </p>
           </div>
         </div>
       </div>
     );
   }
+
+  const opinionLabel = getOpinionText(table.ai.finalOpinion, beginnerMode);
+  const isRisk = table.status === 'risk_blocked';
 
   return (
     <>
@@ -87,7 +92,12 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
         <div className="px-4 py-3 border-b border-zinc-800/80 sticky top-0 bg-zinc-950/95 backdrop-blur-sm z-10">
           <div className="flex justify-between items-start gap-3">
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-white tracking-tight truncate">{table.name}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-white tracking-tight truncate">{table.name}</h2>
+                <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded shrink-0">
+                  선택됨
+                </span>
+              </div>
               <div className="text-[11px] text-zinc-500 font-mono mt-0.5 flex gap-1.5">
                 <span>{table.gameCode}</span>
                 <span>•</span>
@@ -123,14 +133,35 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
       </div>
 
       <div className="p-3 flex flex-col gap-2">
-        {/* Action-first card: one-line recommend + execute */}
+        {beginnerMode && (
+          <div className={`rounded-lg border px-3 py-2 ${
+            isRisk
+              ? 'border-red-500/30 bg-red-500/10'
+              : isPassive
+                ? 'border-zinc-700 bg-zinc-900'
+                : 'border-teal-500/30 bg-teal-500/10'
+          }`}>
+            <p className={`text-xs font-bold mb-0.5 ${isRisk ? 'text-red-300' : isPassive ? 'text-zinc-300' : 'text-teal-300'}`}>
+              지금 할 일
+            </p>
+            <p className="text-[11px] text-zinc-300 leading-relaxed">
+              {isRisk
+                ? '위험 한도에 걸려 이번 회차는 쉬세요.'
+                : isPassive
+                  ? `지금은 ${opinionLabel} 상태입니다. 관망하거나 다른 테이블을 보세요.`
+                  : `① 금액 확인 → ② 베팅 확정 · 추천 ${opinionLabel} / ${(table.ai.recommendedAmount).toLocaleString()}원`}
+            </p>
+          </div>
+        )}
+
+        {/* Action-first card */}
         <div className="bg-zinc-900 border border-amber-500/30 rounded-xl overflow-hidden">
           <div className="px-3 py-2 border-b border-amber-500/20 bg-amber-950/25 flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 min-w-0 text-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
               <span className="text-zinc-500 shrink-0">추천</span>
               <span className={`font-bold text-base ${getOpinionColor(table.ai.finalOpinion)}`}>
-                {getOpinionText(table.ai.finalOpinion)}
+                {opinionLabel}
               </span>
               <span className="text-zinc-700">·</span>
               <span className="font-mono text-zinc-300">
@@ -145,7 +176,12 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
           </div>
 
           <div className="p-3 flex flex-col gap-2">
-            {!isPassive ? (
+            {isRisk ? (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-3 text-center">
+                <p className="text-sm font-bold text-red-300 mb-1">이번 회차는 쉬세요</p>
+                <p className="text-[11px] text-zinc-400">로스컷·마틴 한도 때문에 베팅이 막혀 있습니다.</p>
+              </div>
+            ) : !isPassive ? (
               <>
                 <div className="flex justify-between items-center">
                   <label className="text-xs font-bold text-zinc-200">실행 금액</label>
@@ -174,7 +210,7 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
 
                 <div className="bg-zinc-950 border border-amber-500/30 rounded-lg px-3 py-2 flex items-center justify-between">
                   <span className={`text-sm font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
-                    {getOpinionText(table.ai.finalOpinion)}
+                    {opinionLabel}
                   </span>
                   <div className="flex items-baseline gap-1">
                     <span className="font-mono font-bold text-white text-xl leading-none">{betAmount.toLocaleString()}</span>
@@ -237,6 +273,18 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
                   {showMoreChips ? '고액 칩 접기' : '고액 · 2배'}
                 </button>
 
+                {/* Confirm summary */}
+                <div className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-center">
+                  <p className="text-[10px] text-zinc-500 mb-0.5">확정 전 확인</p>
+                  <p className="text-sm font-bold text-zinc-100">
+                    <span className={getOpinionColor(table.ai.finalOpinion)}>{opinionLabel}</span>
+                    <span className="text-zinc-600 mx-1.5">·</span>
+                    <span className="font-mono">{betAmount.toLocaleString()}원</span>
+                    <span className="text-zinc-600 mx-1.5">·</span>
+                    <span>{table.name}</span>
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -250,10 +298,10 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
                     onClick={() => {
                       playSfx('betConfirm');
                       console.log(`[베팅 기록 저장] 타겟: ${table.ai.finalOpinion}, 금액: ${betAmount}`);
-                      alert(`[내부 기록 완료]\n${getOpinionText(table.ai.finalOpinion)}에 ${betAmount.toLocaleString()}원 베팅을 진행했습니다.`);
+                      alert(`[내부 기록 완료]\n${opinionLabel}에 ${betAmount.toLocaleString()}원 베팅을 진행했습니다.`);
                     }}
                     className="py-2.5 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg text-sm font-bold transition-colors shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
-                    disabled={table.status === 'risk_blocked' || betAmount <= 0}
+                    disabled={betAmount <= 0}
                   >
                     베팅 확정
                   </button>
@@ -315,7 +363,7 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
 
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500 px-0.5">
           <span>규칙 <span className="text-zinc-300">{table.ai.appliedRule}</span></span>
-          <span>마틴 <span className="text-zinc-300">2/8</span></span>
+          <span>{beginnerMode ? '금액 단계' : '마틴'} <span className="text-zinc-300">2/8</span></span>
           <span>데이터 <span className="text-teal-400">정상</span></span>
         </div>
 
@@ -482,8 +530,8 @@ function ResultDot({ result, isLast, compact = false }: { key?: React.Key, resul
   );
 }
 
-function getOpinionText(opinion: AiOpinion) {
-  return getResultLabel(opinion);
+function getOpinionText(opinion: AiOpinion, friendly = false) {
+  return getResultLabel(opinion, friendly);
 }
 
 function getOpinionColor(opinion: AiOpinion) {

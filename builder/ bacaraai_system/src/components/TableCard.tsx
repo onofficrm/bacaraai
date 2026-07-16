@@ -1,6 +1,6 @@
 import { getResultColor, getResultLabel } from '../utils/colors';
 import React from 'react';
-import { Maximize2, Star, EyeOff, Activity, BarChart2 } from 'lucide-react';
+import { Maximize2, Star } from 'lucide-react';
 import { AiOpinion, TableData, TableStatus } from '../types';
 import { STATUS_GUIDE } from '../help/glossary';
 import Roadmap from './Roadmap';
@@ -9,18 +9,27 @@ interface TableCardProps {
   table: TableData;
   isSelected?: boolean;
   isFavorite?: boolean;
+  beginnerMode?: boolean;
   onSelect?: (id: string) => void;
   onZoom?: (id: string) => void;
   onToggleFavorite?: (id: string, e: React.MouseEvent) => void;
 }
 
-export default function TableCard({ table, isSelected, isFavorite, onSelect, onZoom, onToggleFavorite }: TableCardProps) {
+export default function TableCard({
+  table,
+  isSelected,
+  isFavorite,
+  beginnerMode = true,
+  onSelect,
+  onZoom,
+  onToggleFavorite,
+}: TableCardProps) {
   const isBetting = table.status === 'betting' || table.status === 'rule_triggered' || table.status === 'waiting_user';
+  const isPassive = ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion);
   
-  // Determine border and styling based on status
-  let cardClass = "bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors group rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden ";
+  let cardClass = "bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors group rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden cursor-pointer ";
   if (isSelected) {
-    cardClass += " ring-2 ring-amber-500/50 ";
+    cardClass += " ring-2 ring-amber-500 border-amber-500/60 shadow-lg shadow-amber-900/20 ";
   }
   if (table.status === 'rule_triggered') {
     cardClass += " border-amber-500/50 ";
@@ -30,8 +39,6 @@ export default function TableCard({ table, isSelected, isFavorite, onSelect, onZ
 
   return (
     <div className={cardClass} onClick={() => onSelect?.(table.id)}>
-      
-      {/* Blocked overlay */}
       {table.status === 'risk_blocked' && (
         <div className="absolute inset-0 bg-red-950/20 backdrop-blur-[1px] z-10 flex items-center justify-center">
           <div className="bg-zinc-900 border border-red-900 text-red-400 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 shadow-lg">
@@ -41,12 +48,18 @@ export default function TableCard({ table, isSelected, isFavorite, onSelect, onZ
         </div>
       )}
 
-      {/* Card Header */}
       <div className="flex justify-between items-start">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-zinc-100">{table.name}</h3>
-            <span className="text-xs text-zinc-500 font-mono">{table.gameCode}</span>
+            {isSelected && (
+              <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                선택됨
+              </span>
+            )}
+            {!beginnerMode && (
+              <span className="text-xs text-zinc-500 font-mono">{table.gameCode}</span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <StatusBadge status={table.status} />
@@ -54,7 +67,7 @@ export default function TableCard({ table, isSelected, isFavorite, onSelect, onZ
               isBetting ? 'text-amber-500' : 'text-zinc-400'
             }`}>
               <div className={`w-1.5 h-1.5 rounded-full ${isBetting ? 'bg-amber-500 animate-ping' : 'bg-zinc-500'}`}></div>
-              {table.timer}s
+              {table.timer}초
             </div>
           </div>
         </div>
@@ -72,74 +85,79 @@ export default function TableCard({ table, isSelected, isFavorite, onSelect, onZ
         </div>
       </div>
 
-      {/* Roadmap Area */}
-      <Roadmap data={table.roadmap} />
+      {!beginnerMode && <Roadmap data={table.roadmap} />}
 
-      {/* Stats Area */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex items-center gap-3 text-xs">
-          <div className="flex flex-col">
-            <span className="text-zinc-500">P</span>
-            <span className="text-blue-400 font-mono font-bold">{table.stats.player}</span>
+      {!beginnerMode && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex items-center gap-3 text-xs">
+            <div className="flex flex-col">
+              <span className="text-zinc-500">Player(P)</span>
+              <span className="text-blue-400 font-mono font-bold">{table.stats.player}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-zinc-500">Banker(B)</span>
+              <span className="text-red-400 font-mono font-bold">{table.stats.banker}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-zinc-500">Tie(T)</span>
+              <span className="text-emerald-400 font-mono font-bold">{table.stats.tie}</span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-zinc-500">B</span>
-            <span className="text-red-400 font-mono font-bold">{table.stats.banker}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-zinc-500">T</span>
-            <span className="text-emerald-400 font-mono font-bold">{table.stats.tie}</span>
+          
+          <div className="flex flex-col items-end text-xs justify-center gap-1">
+            <div className="flex items-center gap-1">
+              <span className="text-zinc-500">연속:</span>
+              <span className={`font-medium ${table.stats.currentStreak.includes('Player') ? 'text-blue-400' : table.stats.currentStreak.includes('Banker') ? 'text-red-400' : 'text-emerald-400'}`}>
+                {table.stats.currentStreak}
+              </span>
+            </div>
           </div>
         </div>
-        
-        <div className="flex flex-col items-end text-xs justify-center gap-1">
-          <div className="flex items-center gap-1">
-            <span className="text-zinc-500">연속:</span>
-            <span className={`font-medium ${table.stats.currentStreak.includes('Player') ? 'text-blue-400' : table.stats.currentStreak.includes('Banker') ? 'text-red-400' : 'text-emerald-400'}`}>
-              {table.stats.currentStreak}
-            </span>
-          </div>
-        </div>
-      </div>
+      )}
 
-      {/* AI Analysis Area */}
-      <div className="mt-1 pt-3 border-t border-zinc-800/80 flex flex-col gap-2">
-        <div className="hidden sm:flex justify-between items-center text-[10px]">
-          <div className="flex gap-1.5">
-            <AiBadge model="GPT" opinion={table.ai.gpt.opinion} />
-            <AiBadge model="Gem" opinion={table.ai.gemini.opinion} />
-            <AiBadge model="Cld" opinion={table.ai.claude.opinion} />
+      {/* Core AI summary — always visible; beginner focuses here */}
+      <div className={`${beginnerMode ? '' : 'mt-1 pt-3 border-t border-zinc-800/80'} flex flex-col gap-2`}>
+        {!beginnerMode && (
+          <div className="hidden sm:flex justify-between items-center text-[10px]">
+            <div className="flex gap-1.5">
+              <AiBadge model="GPT" opinion={table.ai.gpt.opinion} />
+              <AiBadge model="Gem" opinion={table.ai.gemini.opinion} />
+              <AiBadge model="Cld" opinion={table.ai.claude.opinion} />
+            </div>
+            <div className="text-zinc-500 font-medium">
+              일치도: <span className={table.ai.consensus.includes('3/3') ? 'text-amber-400' : 'text-zinc-300'}>{table.ai.consensus}</span>
+            </div>
           </div>
-          <div className="text-zinc-500 font-medium">
-            일치도: <span className={table.ai.consensus.includes('3/3') ? 'text-amber-400' : 'text-zinc-300'}>{table.ai.consensus}</span>
-          </div>
-        </div>
+        )}
         
-                <div className="bg-zinc-950 rounded border border-zinc-800/80 p-2 flex justify-between items-center mt-1">
+        <div className={`rounded border p-2.5 flex justify-between items-center ${
+          isSelected ? 'bg-amber-500/5 border-amber-500/30' : 'bg-zinc-950 border-zinc-800/80'
+        }`}>
           <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-zinc-500">최종 참고 의견</span>
+            <span className="text-[10px] text-zinc-500">AI 의견</span>
             <span className={`text-sm font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
-              {getOpinionText(table.ai.finalOpinion)}
+              {getOpinionText(table.ai.finalOpinion, beginnerMode)}
             </span>
           </div>
           <div className="flex flex-col items-end gap-0.5">
-            <span className="text-[10px] text-zinc-500 flex items-center gap-1">
-              {!['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) && (
-                <span className="text-blue-400 hover:text-blue-300 cursor-pointer" title="과거 데이터 근거 (적중률 62.8%)">데이터 근거</span>
-              )}
-              참고 금액
-            </span>
+            <span className="text-[10px] text-zinc-500">참고 금액</span>
             <span className="text-sm font-mono font-bold text-zinc-200">
-              {['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) ? '-' : table.ai.recommendedAmount.toLocaleString() + '원'}
+              {isPassive ? '-' : table.ai.recommendedAmount.toLocaleString() + '원'}
             </span>
           </div>
         </div>
-        <div className="flex justify-between text-[10px] px-1 text-zinc-500">
-          <span>분석 신뢰도: {table.ai.finalConfidence}%</span>
-          <span className="text-amber-500/80">{table.ai.appliedRule}</span>
-        </div>
-      </div>
 
+        {beginnerMode ? (
+          <p className="text-[11px] text-zinc-500 px-0.5">
+            {isSelected ? '오른쪽에서 금액을 확인하고 확정하세요.' : '카드를 눌러 자세히 보세요.'}
+          </p>
+        ) : (
+          <div className="flex justify-between text-[10px] px-1 text-zinc-500">
+            <span>분석 신뢰도: {table.ai.finalConfidence}%</span>
+            <span className="text-amber-500/80">{table.ai.appliedRule}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -159,8 +177,8 @@ function AiBadge({ model, opinion }: { model: string, opinion: AiOpinion }) {
   );
 }
 
-function getOpinionText(opinion: AiOpinion) {
-  return getResultLabel(opinion);
+function getOpinionText(opinion: AiOpinion, friendly = false) {
+  return getResultLabel(opinion, friendly);
 }
 
 function getOpinionColor(opinion: AiOpinion) {

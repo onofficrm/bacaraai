@@ -43,12 +43,12 @@ export function getResultColor(result: string, type: 'bg' | 'text' | 'border' = 
   return type === 'bg' ? 'bg-zinc-700' : type === 'text' ? 'text-zinc-500' : 'border-zinc-700';
 }
 
-export function getResultLabel(result: string) {
+export function getResultLabel(result: string, friendly = false) {
   if (!result) return '-';
   const upper = result.toUpperCase();
-  if (upper === 'PLAYER' || upper === 'P') return 'P';
-  if (upper === 'BANKER' || upper === 'B') return 'B';
-  if (upper === 'TIE' || upper === 'T') return 'T';
+  if (upper === 'PLAYER' || upper === 'P') return friendly ? 'Player(P)' : 'P';
+  if (upper === 'BANKER' || upper === 'B') return friendly ? 'Banker(B)' : 'B';
+  if (upper === 'TIE' || upper === 'T') return friendly ? 'Tie(T)' : 'T';
   if (upper === 'WAIT' || upper === 'SKIP' || upper === 'OBSERVE') return '관망';
   if (upper === 'PAUSE') return '일시정지';
   if (upper === 'STOP') return '중단';
