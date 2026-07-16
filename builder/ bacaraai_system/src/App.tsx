@@ -190,6 +190,7 @@ export default function App() {
         }} 
         activeViewLabel={VIEW_LABELS[activeView]}
         beginnerMode={beginnerMode}
+        onOpenSettings={() => setActiveView('settings')}
       />
       <TopNav
         activeView={activeView}

@@ -1,18 +1,81 @@
-import { Activity, LogOut, Maximize, Settings, ShieldAlert, Wallet } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Activity, LogOut, Maximize2, Minimize2, Settings, ShieldAlert, Wallet } from 'lucide-react';
 import NotificationCenter from './NotificationCenter';
 import { PLATFORM_LINKS } from '../constants';
 import useWallet from '../hooks/useWallet';
 import HelpTooltip from './HelpTooltip';
+import { playSfx } from '../audio/sfxEngine';
 
 interface HeaderProps {
   onEmergencyStop?: () => void;
   activeViewLabel?: string;
   beginnerMode?: boolean;
+  onOpenSettings?: () => void;
 }
 
-export default function Header({ onEmergencyStop, activeViewLabel, beginnerMode = true }: HeaderProps) {
+function isFullscreenActive() {
+  return Boolean(
+    document.fullscreenElement ||
+      (document as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement,
+  );
+}
+
+async function enterFullscreen() {
+  const el = document.documentElement as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+  };
+  if (el.requestFullscreen) {
+    await el.requestFullscreen();
+  } else if (el.webkitRequestFullscreen) {
+    await el.webkitRequestFullscreen();
+  }
+}
+
+async function exitFullscreen() {
+  const doc = document as Document & {
+    webkitExitFullscreen?: () => Promise<void> | void;
+  };
+  if (document.exitFullscreen) {
+    await document.exitFullscreen();
+  } else if (doc.webkitExitFullscreen) {
+    await doc.webkitExitFullscreen();
+  }
+}
+
+export default function Header({
+  onEmergencyStop,
+  activeViewLabel,
+  beginnerMode = true,
+  onOpenSettings,
+}: HeaderProps) {
   const wallet = useWallet();
   const moneyText = new Intl.NumberFormat('ko-KR').format(wallet.balance) + '원';
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    const sync = () => setFullscreen(isFullscreenActive());
+    sync();
+    document.addEventListener('fullscreenchange', sync);
+    document.addEventListener('webkitfullscreenchange', sync as EventListener);
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+      document.removeEventListener('webkitfullscreenchange', sync as EventListener);
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (isFullscreenActive()) {
+        await exitFullscreen();
+        playSfx('ui');
+      } else {
+        await enterFullscreen();
+        playSfx('sessionStart');
+      }
+    } catch {
+      playSfx('error');
+    }
+  };
 
   return (
     <header className="relative z-[200] h-[68px] bg-zinc-950 border-b border-zinc-800 flex items-center justify-between px-6 text-zinc-300 shrink-0">
@@ -40,7 +103,6 @@ export default function Header({ onEmergencyStop, activeViewLabel, beginnerMode 
 
       {/* Center - System Status */}
       <div className="hidden xl:flex items-center gap-6 text-sm bg-zinc-900/50 border border-zinc-800/50 px-4 py-1.5 rounded-full">
-        {/* Demo Mode Badge */}
         <div className="flex items-center gap-1.5 bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded text-xs font-bold border border-amber-500/30">
           <Activity size={12} />
           데모 데이터 사용 중
@@ -71,9 +133,35 @@ export default function Header({ onEmergencyStop, activeViewLabel, beginnerMode 
           <span className="font-mono">{wallet.loading ? '...' : moneyText}</span>
         </div>
         <div className="hidden sm:flex items-center gap-3 text-zinc-400">
-          <button className="p-2 hover:bg-zinc-800 rounded-lg transition-colors" type="button" aria-label="전체 화면"><Maximize size={18} /></button>
+          <button
+            className={`p-2 hover:bg-zinc-800 rounded-lg transition-colors ${
+              fullscreen ? 'text-amber-400 bg-amber-500/10' : ''
+            }`}
+            type="button"
+            aria-label={fullscreen ? '전체 화면 종료' : '전체 화면'}
+            aria-pressed={fullscreen}
+            title={
+              fullscreen
+                ? '전체 화면 종료 (Esc)'
+                : '전체 화면으로 보기 — 테이블을 넓게 모니터링'
+            }
+            onClick={() => void toggleFullscreen()}
+          >
+            {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          </button>
           <NotificationCenter />
-          <button className="p-2 hover:bg-zinc-800 rounded-lg transition-colors" type="button" aria-label="설정"><Settings size={18} /></button>
+          <button
+            className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
+            type="button"
+            aria-label="설정"
+            title="설정"
+            onClick={() => {
+              playSfx('ui');
+              onOpenSettings?.();
+            }}
+          >
+            <Settings size={18} />
+          </button>
         </div>
         <a
           href={PLATFORM_LINKS.logout}
