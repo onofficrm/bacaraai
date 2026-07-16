@@ -45,22 +45,22 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
       )}
       
       {/* Panel */}
-      <div className={`fixed inset-y-0 right-0 z-50 w-[85vw] max-w-sm xl:max-w-none sm:w-80 2xl:w-[420px] xl:static border-l border-zinc-800 bg-zinc-950 flex-col overflow-y-auto custom-scrollbar animate-in slide-in-from-right xl:animate-none transition-transform ${isOpen ? 'flex' : 'hidden xl:flex'}`}>
+      <div className={`fixed inset-y-0 right-0 z-50 w-[85vw] max-w-sm xl:max-w-none sm:w-80 2xl:w-[420px] xl:static h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex-col overflow-y-auto custom-scrollbar animate-in slide-in-from-right xl:animate-none transition-transform ${isOpen ? 'flex' : 'hidden xl:flex'}`}>
         {/* Header Info */}
-        <div className="p-6 pb-4 border-b border-zinc-800/80 sticky top-0 bg-zinc-950/90 backdrop-blur-sm z-10">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">{table.name}</h2>
-              <div className="text-xs text-zinc-500 font-mono mt-1 flex gap-2">
+        <div className="px-4 py-3 border-b border-zinc-800/80 sticky top-0 bg-zinc-950/95 backdrop-blur-sm z-10">
+          <div className="flex justify-between items-start gap-3">
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-white tracking-tight truncate">{table.name}</h2>
+              <div className="text-[11px] text-zinc-500 font-mono mt-0.5 flex gap-1.5">
                 <span>{table.gameCode}</span>
                 <span>•</span>
                 <span>{table.stats.shoeNumber}</span>
               </div>
             </div>
-            <div className="flex items-start gap-4">
+            <div className="flex items-start gap-3 shrink-0">
               <div className="text-right">
-                <div className="text-sm text-zinc-400">회차: <span className="font-mono text-zinc-200">{table.stats.currentRound}회</span></div>
-                <div className="text-sm text-zinc-400 mt-1">마감: <span className="font-mono text-amber-500 font-bold">{table.timer}초</span></div>
+                <div className="text-[11px] text-zinc-400">회차: <span className="font-mono text-zinc-200">{table.stats.currentRound}회</span></div>
+                <div className="text-[11px] text-zinc-400 mt-0.5">마감: <span className="font-mono text-amber-500 font-bold">{table.timer}초</span></div>
               </div>
               {onClose && (
                 <button onClick={onClose} className="xl:hidden p-1 bg-zinc-900 text-zinc-400 hover:text-white rounded-full">
@@ -70,21 +70,22 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
             </div>
           </div>
 
-        <div className="flex items-center gap-4 text-sm mt-4">
-          <span className="text-zinc-500">현재 연속:</span>
-          <span className={`font-bold ${table.stats.currentStreak.includes('Player') ? 'text-blue-400' : table.stats.currentStreak.includes('Banker') ? 'text-red-400' : 'text-emerald-400'}`}>
-            {table.stats.currentStreak}
-          </span>
-        </div>
-
-        <div className="mt-4 flex gap-1.5 flex-wrap">
-          {table.stats.recentResults.map((res, i) => (
-            <ResultDot key={i} result={res} isLast={i === table.stats.recentResults.length - 1} />
-          ))}
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="text-[11px] min-w-0">
+            <span className="text-zinc-500 mr-1">연속</span>
+            <span className={`font-bold ${table.stats.currentStreak.includes('Player') ? 'text-blue-400' : table.stats.currentStreak.includes('Banker') ? 'text-red-400' : 'text-emerald-400'}`}>
+              {table.stats.currentStreak}
+            </span>
+          </div>
+          <div className="flex gap-1 overflow-hidden justify-end max-w-[210px]">
+            {table.stats.recentResults.slice(-10).map((res, i, arr) => (
+              <ResultDot key={`${res}-${i}`} result={res} isLast={i === arr.length - 1} compact />
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="p-4 flex flex-col gap-4">
+      <div className="p-3 flex flex-col gap-3">
         <ActionGuidance
           opinion={table.ai.finalOpinion}
           consensus={table.ai.consensus}
@@ -93,7 +94,7 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
 
         {/* Final Recommendation Card */}
         <div className="bg-zinc-900 border border-amber-500/30 rounded-xl overflow-hidden shadow-lg shadow-amber-900/10">
-          <div className="bg-amber-950/30 px-4 py-3 border-b border-amber-500/20 flex justify-between items-center">
+          <div className="bg-amber-950/30 px-3 py-2.5 border-b border-amber-500/20 flex justify-between items-center">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
               <h3 className="font-bold text-amber-500 text-sm">최종 참고 의견</h3>
@@ -104,7 +105,7 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
             </span>
           </div>
           
-          <div className="p-4 flex flex-col gap-4">
+          <div className="p-3 flex flex-col gap-3">
             <div className="flex justify-between items-center">
               <span className={`text-2xl font-bold tracking-tight ${getOpinionColor(table.ai.finalOpinion)}`}>
                 {getOpinionText(table.ai.finalOpinion)}
@@ -115,7 +116,7 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
             </div>
             
             {!['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) && (
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 mt-1 flex flex-col gap-2">
+              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 flex flex-col gap-2">
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-zinc-400 flex items-center gap-1.5"><Activity size={12} className="text-amber-500" /> 유사 상황 추천 근거</span>
                   <button className="text-[10px] text-amber-500 hover:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">상세 보기</button>
@@ -173,7 +174,7 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
 
             {/* Betting Execution UI */}
             {!['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) && (
-              <div className="mt-2 flex flex-col gap-3 border-t border-zinc-800/80 pt-4">
+              <div className="mt-1 flex flex-col gap-2.5 border-t border-zinc-800/80 pt-3">
                 <div className="flex flex-col gap-2">
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-medium text-zinc-400">실행할 베팅 금액</label>
@@ -196,7 +197,7 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
                   </div>
 
                   {/* Chips Selection */}
-                  <div className="flex flex-wrap justify-center gap-3 mt-3 pb-2">
+                  <div className="flex flex-wrap justify-center gap-2.5 mt-2 pb-1">
                     {[
                       { label: '1천', value: 1000, color: 'bg-zinc-200 text-zinc-900 border-zinc-400' },
                       { label: '5천', value: 5000, color: 'bg-red-600 text-white border-red-800' },
@@ -219,12 +220,12 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
                             setBetAmount(prev => prev + amount);
                           }
                         }}
-                        className={`w-14 h-14 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 ${chip.color}`}
+                        className={`w-12 h-12 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 ${chip.color}`}
                         style={{
                           boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.2), 0 4px 6px -1px rgba(0,0,0,0.5)'
                         }}
                       >
-                        <div className="w-10 h-10 rounded-full border border-current flex items-center justify-center bg-black/10 text-[11px] font-bold">
+                        <div className="w-8 h-8 rounded-full border border-current flex items-center justify-center bg-black/10 text-[10px] font-bold">
                           {chip.label}
                         </div>
                       </button>
@@ -232,7 +233,7 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-2 mt-1">
+                <div className="grid grid-cols-2 gap-2 sticky bottom-0 -mx-3 px-3 pb-1 pt-2 bg-zinc-950/95 backdrop-blur-sm border-t border-zinc-800/70">
                   <button
                     type="button"
                     onClick={() => playSfx('skip')}
@@ -380,12 +381,12 @@ function AiDetailCard({ title, model, color }: { title: string, model: AiModelAn
   );
 }
 
-function ResultDot({ result, isLast }: { key?: React.Key, result: GameResult, isLast: boolean }) {
+function ResultDot({ result, isLast, compact = false }: { key?: React.Key, result: GameResult, isLast: boolean, compact?: boolean }) {
   const bgColor = getResultColor(result, 'bg');
   const label = getResultLabel(result);
 
   return (
-    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${bgColor} ${isLast ? 'ring-2 ring-white/30 scale-110 shadow-lg' : ''}`}>
+    <div className={`${compact ? 'w-4 h-4 text-[9px]' : 'w-5 h-5 text-[10px]'} rounded-full flex items-center justify-center font-bold text-white ${bgColor} ${isLast ? 'ring-2 ring-white/30 scale-110 shadow-lg' : ''}`}>
       {result}
     </div>
   );
