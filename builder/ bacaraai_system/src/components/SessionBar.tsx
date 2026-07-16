@@ -21,9 +21,9 @@ export default function SessionBar({ onStartSession, beginnerMode = true }: Sess
 
   return (
     <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2.5">
-      <div className="flex flex-col gap-2">
-        {/* Row 1: controls (left) + funds */}
-        <div className="flex flex-wrap items-center gap-2.5">
+      <div className="flex flex-col gap-2 w-full">
+        {/* Row 1: controls + funds across full width */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 w-full">
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={onStartSession}
@@ -55,20 +55,18 @@ export default function SessionBar({ onStartSession, beginnerMode = true }: Sess
             </button>
           </div>
 
-          <div className="h-7 w-px bg-zinc-800 hidden sm:block" />
+          <div className="h-7 w-px bg-zinc-800 hidden sm:block shrink-0" />
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs min-w-0">
+          <div className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-1 text-xs min-w-0">
             <span className="text-zinc-500 inline-flex items-center gap-0.5">
               시드
               {beginnerMode && <HelpTooltip termId="seed" />}
               <span className="text-zinc-200 font-mono ml-1">{wallet.loading ? '...' : formatMoney(seed)}</span>
             </span>
-            <span className="text-zinc-700">·</span>
             <span className="text-zinc-500">
               자금
               <span className="text-white font-mono font-medium ml-1">{wallet.loading ? '...' : formatMoney(seed)}</span>
             </span>
-            <span className="text-zinc-700">·</span>
             <span className="text-zinc-500">
               손익
               <span className="text-emerald-400 font-mono font-bold ml-1">+{formatMoney(260000)}</span>
@@ -88,30 +86,33 @@ export default function SessionBar({ onStartSession, beginnerMode = true }: Sess
           </div>
         </div>
 
-        {/* Row 2: cut gauge — full width but capped for readability */}
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/90 px-3 py-2 max-w-3xl">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="shrink-0 min-w-[88px]">
+        {/* Row 2: full-width cut gauge — fills the right empty space intentionally */}
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/90 px-3 py-2 w-full">
+          <div className="flex items-center gap-3 sm:gap-5 w-full">
+            <div className="shrink-0">
               <div className="text-[10px] text-zinc-500 inline-flex items-center gap-1 mb-0.5">
                 <Lock size={9} className="text-red-400/80" />
                 로스컷
                 {beginnerMode && <HelpTooltip termId="losscut" />}
               </div>
-              <div className="text-xs sm:text-sm font-mono font-bold text-red-400 tabular-nums leading-none">
+              <div className="text-sm font-mono font-bold text-red-400 tabular-nums leading-none">
                 -{formatMoney(2000000)}
+              </div>
+              <div className="text-[10px] text-zinc-500 font-mono mt-1 tabular-nums">
+                여유 {formatMoney(2260000)}
               </div>
             </div>
 
-            <div className="flex-1 min-w-0 flex flex-col gap-1">
+            <div className="flex-1 min-w-0 flex flex-col gap-1.5 px-1">
               <div className="flex justify-center">
                 <div className="text-center">
                   <div className="text-[10px] text-zinc-500 leading-none mb-0.5">현재 손익</div>
-                  <div className="text-sm font-mono font-bold text-emerald-400 tabular-nums leading-none">
+                  <div className="text-base font-mono font-bold text-emerald-400 tabular-nums leading-none">
                     +{formatMoney(260000)}
                   </div>
                 </div>
               </div>
-              <div className="h-2 w-full bg-zinc-800 rounded-full relative overflow-hidden">
+              <div className="h-2.5 w-full bg-zinc-800 rounded-full relative overflow-hidden">
                 <div
                   className="absolute top-0 bottom-0 w-0.5 bg-zinc-500 z-10"
                   style={{ left: `${zeroAt}%` }}
@@ -122,19 +123,18 @@ export default function SessionBar({ onStartSession, beginnerMode = true }: Sess
                   style={{ left: `${zeroAt}%`, width: `${fillWidth}%` }}
                 />
               </div>
-              <div className="flex justify-between text-[10px] text-zinc-500 font-mono tabular-nums">
-                <span>여유 {formatMoney(2260000)}</span>
-                <span>목표까지 {formatMoney(740000)}</span>
-              </div>
             </div>
 
-            <div className="shrink-0 min-w-[88px] text-right">
+            <div className="shrink-0 text-right">
               <div className="text-[10px] text-zinc-500 inline-flex items-center justify-end gap-1 mb-0.5 w-full">
                 윈컷
                 {beginnerMode && <HelpTooltip termId="wincut" />}
               </div>
-              <div className="text-xs sm:text-sm font-mono font-bold text-blue-400 tabular-nums leading-none">
+              <div className="text-sm font-mono font-bold text-blue-400 tabular-nums leading-none">
                 +{formatMoney(1000000)}
+              </div>
+              <div className="text-[10px] text-zinc-500 font-mono mt-1 tabular-nums">
+                목표까지 {formatMoney(740000)}
               </div>
             </div>
           </div>
