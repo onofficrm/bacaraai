@@ -49,6 +49,9 @@ if($config['cf_add_meta'])
     echo $config['cf_add_meta'].PHP_EOL;
 ?>
 <title><?php echo $g5_head_title; ?></title>
+<meta name="theme-color" content="#09090b">
+<link rel="icon" type="image/png" href="<?php echo G5_URL; ?>/favicon.png">
+<link rel="apple-touch-icon" href="<?php echo G5_URL; ?>/apple-touch-icon.png">
 <?php
 $shop_css = '';
 if (defined('_SHOP_')) $shop_css = '_shop';
