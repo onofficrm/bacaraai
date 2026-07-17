@@ -5,6 +5,7 @@
 # DB·민감 설정
 data/dbconfig.php
 data/dbconfig.local.php
+data/bacaraai-live.config.php
 data/icrm.config.php
 data/onoff-builder.config.php
 data/seo-meta.config.php
