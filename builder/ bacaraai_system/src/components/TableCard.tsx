@@ -62,13 +62,40 @@ export default function TableCard({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <StatusBadge status={table.status} />
-            <div className={`text-xs font-mono font-bold flex items-center gap-1 ${
-              isBetting ? 'text-amber-500' : 'text-zinc-400'
-            }`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${isBetting ? 'bg-amber-500 animate-ping' : 'bg-zinc-500'}`}></div>
-              {table.timer}초
-            </div>
+            {table.live ? (
+              <>
+                <span
+                  title={table.live.error || 'DB 결과를 2초마다 확인합니다.'}
+                  className={`text-[10px] px-1.5 py-0.5 rounded border inline-flex items-center gap-1 ${
+                    table.live.connected
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                      : table.live.loading
+                        ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                        : 'bg-red-500/10 text-red-400 border-red-500/30'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full bg-current ${
+                      table.live.connected || table.live.loading ? 'animate-pulse' : ''
+                    }`}
+                  />
+                  {table.live.connected ? 'LIVE' : table.live.loading ? '연결 중' : '연결 오류'}
+                </span>
+                <span className="text-[10px] font-mono text-zinc-500">
+                  {formatDetectedAt(table.live.latestDetectedAt)}
+                </span>
+              </>
+            ) : (
+              <>
+                <StatusBadge status={table.status} />
+                <div className={`text-xs font-mono font-bold flex items-center gap-1 ${
+                  isBetting ? 'text-amber-500' : 'text-zinc-400'
+                }`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${isBetting ? 'bg-amber-500 animate-ping' : 'bg-zinc-500'}`}></div>
+                  {table.timer}초
+                </div>
+              </>
+            )}
           </div>
         </div>
         
@@ -181,6 +208,12 @@ function getOpinionText(opinion: AiOpinion, friendly = false) {
 
 function getOpinionColor(opinion: AiOpinion) {
   return getResultColor(opinion, 'text');
+}
+
+function formatDetectedAt(value: string | null): string {
+  if (!value) return '결과 대기';
+  const time = value.match(/\d{2}:\d{2}:\d{2}/)?.[0];
+  return time ? `최근 ${time}` : value;
 }
 
 function StatusBadge({ status }: { status: TableStatus }) {

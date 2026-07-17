@@ -26,6 +26,7 @@ import { TableData } from './types';
 import TableToolbar, { SortOption, FilterOption } from './components/TableToolbar';
 import useBeginnerMode from './hooks/useBeginnerMode';
 import useSession from './hooks/useSession';
+import useLiveTable from './hooks/useLiveTable';
 import { installAudioUnlock, playSfx } from './audio/sfxEngine';
 
 const VIEW_LABELS: Record<ViewType, string> = {
@@ -40,6 +41,8 @@ export default function App() {
   const [activeView, setActiveView] = useState<ViewType>('multitable');
   const { beginnerMode, toggleBeginnerMode, setBeginnerMode } = useBeginnerMode();
   const session = useSession();
+  const liveTable = useLiveTable(MOCK_TABLES[0], 'MD2709');
+  const tables = useMemo(() => [liveTable, ...MOCK_TABLES.slice(1)], [liveTable]);
   
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return localStorage.getItem('onboardingComplete') !== 'true';
@@ -73,7 +76,7 @@ export default function App() {
   const handleTableSelect = (id: string) => {
     setSelectedTableId(id);
     setIsRightPanelOpen(true);
-    const table = MOCK_TABLES.find((t) => t.id === id);
+    const table = tables.find((t) => t.id === id);
     playSfx('tableSelect');
     if (table?.status === 'rule_triggered' || table?.status === 'waiting_user') {
       window.setTimeout(() => playSfx('ruleTrigger'), 120);
@@ -96,16 +99,16 @@ export default function App() {
   };
 
   const selectedTable = useMemo(() => {
-    return MOCK_TABLES.find(t => t.id === selectedTableId) || null;
-  }, [selectedTableId]);
+    return tables.find(t => t.id === selectedTableId) || null;
+  }, [selectedTableId, tables]);
 
   const zoomedTable = useMemo(() => {
-    return MOCK_TABLES.find(t => t.id === zoomedTableId) || null;
-  }, [zoomedTableId]);
+    return tables.find(t => t.id === zoomedTableId) || null;
+  }, [zoomedTableId, tables]);
 
   const filterCounts = useMemo(() => {
     const counts: Record<FilterOption, number> = {
-      all: MOCK_TABLES.length,
+      all: tables.length,
       rule_triggered: 0,
       ai_analyzing: 0,
       waiting_user: 0,
@@ -116,7 +119,7 @@ export default function App() {
       favorite: 0
     };
 
-    MOCK_TABLES.forEach(t => {
+    tables.forEach(t => {
       if (t.status === 'rule_triggered') counts.rule_triggered++;
       if (t.status === 'analyzing') counts.ai_analyzing++;
       if (t.status === 'waiting_user') counts.waiting_user++;
@@ -128,7 +131,7 @@ export default function App() {
     });
 
     return counts;
-  }, [favorites]);
+  }, [favorites, tables]);
 
   const getPriorityScore = (t: TableData) => {
     let score = 0;
@@ -145,9 +148,9 @@ export default function App() {
   };
 
   const filteredAndSortedTables = useMemo(() => {
-    let tables = [...MOCK_TABLES];
+    let visibleTables = [...tables];
 
-    tables = tables.filter(t => {
+    visibleTables = visibleTables.filter(t => {
       switch (filterBy) {
         case 'rule_triggered': return t.status === 'rule_triggered';
         case 'ai_analyzing': return t.status === 'analyzing';
@@ -161,7 +164,7 @@ export default function App() {
       }
     });
 
-    tables.sort((a, b) => {
+    visibleTables.sort((a, b) => {
       switch (sortBy) {
         case 'auto': {
           const scoreB = getPriorityScore(b);
@@ -179,8 +182,8 @@ export default function App() {
       }
     });
 
-    return tables;
-  }, [filterBy, sortBy, favorites]);
+    return visibleTables;
+  }, [filterBy, sortBy, favorites, tables]);
 
   useEffect(() => {
     if (sortBy === 'auto') {
@@ -286,7 +289,7 @@ export default function App() {
             </div>
             <RightPanel 
               table={selectedTable}
-              tables={MOCK_TABLES}
+              tables={tables}
               isOpen={isRightPanelOpen}
               onClose={() => setIsRightPanelOpen(false)}
               onSelectTable={handleTableSelect}

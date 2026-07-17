@@ -37,6 +37,13 @@ export interface TableData {
   gameCode: string;
   status: TableStatus;
   timer: number;
+  live?: {
+    connected: boolean;
+    loading: boolean;
+    latestId: number | null;
+    latestDetectedAt: string | null;
+    error: string | null;
+  };
   roadmap: GameResult[][]; // 2D array for columns
   stats: TableStats;
   ai: {
