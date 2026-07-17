@@ -1,5 +1,4 @@
 import { Lock, Play, Pause, Square, Settings2 } from 'lucide-react';
-import useWallet from '../hooks/useWallet';
 import HelpTooltip from './HelpTooltip';
 import { playSfx } from '../audio/sfxEngine';
 
@@ -12,9 +11,6 @@ export default function SessionBar({
   onStartSession,
   beginnerMode = true,
 }: SessionBarProps) {
-  const wallet = useWallet();
-  const seed = wallet.loading ? 0 : wallet.balance;
-
   const formatMoney = (amount: number) => {
     return new Intl.NumberFormat('ko-KR').format(amount) + '원';
   };
@@ -61,18 +57,6 @@ export default function SessionBar({
 
         {/* Compact session summary */}
         <div className="flex items-center gap-3 text-[11px] whitespace-nowrap shrink-0 overflow-x-auto">
-          <span className="text-zinc-500">
-            자금
-            <span className="text-zinc-200 font-mono ml-1">
-              {wallet.loading ? '...' : formatMoney(seed)}
-            </span>
-          </span>
-          <span className="text-zinc-500">
-            손익
-            <span className="text-emerald-400 font-mono font-bold ml-1">
-              +{formatMoney(260000)}
-            </span>
-          </span>
           <span className="text-zinc-500 inline-flex items-center">
             {beginnerMode ? '단계' : '마틴'}
             <span className="text-amber-400 font-mono font-bold ml-1">2/8</span>
