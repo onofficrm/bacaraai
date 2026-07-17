@@ -1,21 +1,16 @@
 import { Lock, Play, Pause, Square, Settings2 } from 'lucide-react';
 import useWallet from '../hooks/useWallet';
 import HelpTooltip from './HelpTooltip';
-import BeginnerFlowSteps from './BeginnerFlowSteps';
 import { playSfx } from '../audio/sfxEngine';
 
 interface SessionBarProps {
   onStartSession: () => void;
   beginnerMode?: boolean;
-  flowStep?: 1 | 2 | 3;
-  selectedTableName?: string | null;
 }
 
 export default function SessionBar({
   onStartSession,
   beginnerMode = true,
-  flowStep = 1,
-  selectedTableName = null,
 }: SessionBarProps) {
   const wallet = useWallet();
   const seed = wallet.loading ? 0 : wallet.balance;
@@ -30,10 +25,6 @@ export default function SessionBar({
   return (
     <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2.5">
       <div className="flex flex-col gap-2 w-full">
-        {beginnerMode && (
-          <BeginnerFlowSteps step={flowStep} tableName={selectedTableName} />
-        )}
-
         {/* Row 1: controls + funds */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 w-full">
           <div className="flex items-center gap-1.5 shrink-0">

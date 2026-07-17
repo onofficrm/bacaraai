@@ -181,12 +181,6 @@ export default function App() {
     }
   }, [sortBy]);
 
-  const flowStep: 1 | 2 | 3 = !selectedTable
-    ? 1
-    : ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(selectedTable.ai.finalOpinion)
-      ? 2
-      : 3;
-
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
       <Header 
@@ -212,8 +206,6 @@ export default function App() {
             setIsModalOpen(true);
           }}
           beginnerMode={beginnerMode}
-          flowStep={flowStep}
-          selectedTableName={selectedTable?.name ?? null}
         />
       )}
       
