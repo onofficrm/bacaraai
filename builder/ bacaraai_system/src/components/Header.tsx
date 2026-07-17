@@ -5,12 +5,22 @@ import { PLATFORM_LINKS } from '../constants';
 import useWallet from '../hooks/useWallet';
 import HelpTooltip from './HelpTooltip';
 import { playSfx } from '../audio/sfxEngine';
+import {
+  formatElapsed,
+  modeLabel,
+  type SessionMode,
+  type SessionStatus,
+} from '../hooks/useSession';
 
 interface HeaderProps {
   onEmergencyStop?: () => void;
   activeViewLabel?: string;
   beginnerMode?: boolean;
   onOpenSettings?: () => void;
+  sessionStatus?: SessionStatus;
+  sessionMode?: SessionMode | null;
+  sessionElapsedMs?: number;
+  onSessionModeChange?: (mode: SessionMode) => void;
 }
 
 function isFullscreenActive() {
@@ -47,10 +57,15 @@ export default function Header({
   activeViewLabel,
   beginnerMode = true,
   onOpenSettings,
+  sessionStatus = 'idle',
+  sessionMode = null,
+  sessionElapsedMs = 0,
+  onSessionModeChange,
 }: HeaderProps) {
   const wallet = useWallet();
   const moneyText = new Intl.NumberFormat('ko-KR').format(wallet.balance) + '원';
   const [fullscreen, setFullscreen] = useState(false);
+  const isActive = sessionStatus === 'running' || sessionStatus === 'paused';
 
   useEffect(() => {
     const sync = () => setFullscreen(isFullscreenActive());
@@ -93,11 +108,26 @@ export default function Header({
           </div>
         )}
 
-        <select className="bg-zinc-800 text-emerald-400 border border-zinc-700 px-3 py-1.5 rounded-lg text-xs font-bold outline-none cursor-pointer hover:bg-zinc-700 transition-colors">
-          <option>관찰 모드</option>
-          <option>AI 추천 모드</option>
-          <option>섀도 모드</option>
-          <option>규칙 시뮬레이션 모드</option>
+        <select
+          value={sessionMode ?? ''}
+          onChange={(e) => {
+            const value = e.target.value as SessionMode;
+            if (!value) return;
+            playSfx('ui');
+            onSessionModeChange?.(value);
+          }}
+          className={`bg-zinc-800 border border-zinc-700 px-3 py-1.5 rounded-lg text-xs font-bold outline-none cursor-pointer hover:bg-zinc-700 transition-colors ${
+            sessionMode === 'shadow'
+              ? 'text-indigo-400'
+              : sessionMode === 'live'
+                ? 'text-amber-400'
+                : 'text-emerald-400'
+          }`}
+        >
+          {!sessionMode && <option value="">대기 중</option>}
+          <option value="observe">관찰 모드</option>
+          <option value="live">AI 추천 모드</option>
+          <option value="shadow">섀도 모드</option>
         </select>
       </div>
 
@@ -109,18 +139,44 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-          <span className="font-bold text-blue-400">세션 진행 중</span>
+          <span
+            className={`w-2 h-2 rounded-full ${
+              sessionStatus === 'running'
+                ? 'bg-blue-500 animate-pulse'
+                : sessionStatus === 'paused'
+                  ? 'bg-amber-400'
+                  : 'bg-zinc-600'
+            }`}
+          />
+          <span
+            className={`font-bold ${
+              sessionStatus === 'running'
+                ? 'text-blue-400'
+                : sessionStatus === 'paused'
+                  ? 'text-amber-400'
+                  : 'text-zinc-500'
+            }`}
+          >
+            {sessionStatus === 'running'
+              ? `${modeLabel(sessionMode)} 진행 중`
+              : sessionStatus === 'paused'
+                ? '세션 일시정지'
+                : '세션 대기'}
+          </span>
         </div>
         <div className="h-4 w-[1px] bg-zinc-800"></div>
         <div className="flex items-center gap-2">
           <span className="text-zinc-500">진행 시간</span>
-          <span className="font-mono font-medium text-zinc-200">38분 24초</span>
+          <span className="font-mono font-medium text-zinc-200">
+            {isActive ? formatElapsed(sessionElapsedMs) : '0분 00초'}
+          </span>
         </div>
         <div className="h-4 w-[1px] bg-zinc-800"></div>
         <div className="flex items-center gap-2 text-xs">
           <span className="text-zinc-500">마지막 업데이트:</span>
-          <span className="text-emerald-400">방금 전</span>
+          <span className={isActive ? 'text-emerald-400' : 'text-zinc-500'}>
+            {isActive ? '방금 전' : '—'}
+          </span>
         </div>
       </div>
 

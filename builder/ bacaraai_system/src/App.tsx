@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { TableData } from './types';
 import TableToolbar, { SortOption, FilterOption } from './components/TableToolbar';
 import useBeginnerMode from './hooks/useBeginnerMode';
+import useSession from './hooks/useSession';
 import { installAudioUnlock, playSfx } from './audio/sfxEngine';
 
 const VIEW_LABELS: Record<ViewType, string> = {
@@ -38,6 +39,7 @@ const VIEW_LABELS: Record<ViewType, string> = {
 export default function App() {
   const [activeView, setActiveView] = useState<ViewType>('multitable');
   const { beginnerMode, toggleBeginnerMode, setBeginnerMode } = useBeginnerMode();
+  const session = useSession();
   
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return localStorage.getItem('onboardingComplete') !== 'true';
@@ -186,11 +188,22 @@ export default function App() {
       <Header 
         onEmergencyStop={() => {
           playSfx('risk');
+          session.stopSession();
           setStopSessionType('losscut');
         }} 
         activeViewLabel={VIEW_LABELS[activeView]}
         beginnerMode={beginnerMode}
         onOpenSettings={() => setActiveView('settings')}
+        sessionStatus={session.status}
+        sessionMode={session.mode}
+        sessionElapsedMs={session.elapsedMs}
+        onSessionModeChange={(mode) => {
+          if (session.status === 'idle') {
+            setIsModalOpen(true);
+            return;
+          }
+          session.setMode(mode);
+        }}
       />
       <TopNav
         activeView={activeView}
@@ -201,11 +214,20 @@ export default function App() {
       />
       {activeView === 'multitable' && (
         <SessionBar
-          onStartSession={() => {
+          onOpenSettings={() => {
             playSfx('ui');
             setIsModalOpen(true);
           }}
+          onPause={session.pauseSession}
+          onResume={session.resumeSession}
+          onStop={() => {
+            session.stopSession();
+          }}
           beginnerMode={beginnerMode}
+          status={session.status}
+          config={session.config}
+          pnl={session.pnl}
+          martinStage={session.martinStage}
         />
       )}
       
@@ -308,10 +330,23 @@ export default function App() {
         )}
       </main>
 
-      <SessionModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <SessionModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        initialConfig={session.config}
+        onStart={(mode, config) => {
+          session.startSession(mode, config);
+        }}
+      />
       <RuleCreationModal isOpen={isRuleModalOpen} onClose={() => setIsRuleModalOpen(false)} />
       <TableZoomModal table={zoomedTable} onClose={() => setZoomedTableId(null)} />
-      <StopSessionModal type={stopSessionType} onClose={() => setStopSessionType(null)} />
+      <StopSessionModal
+        type={stopSessionType}
+        onClose={() => {
+          setStopSessionType(null);
+          session.stopSession();
+        }}
+      />
       
       <OnboardingModal 
         isOpen={showOnboarding} 
