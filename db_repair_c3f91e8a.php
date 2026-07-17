@@ -24,6 +24,7 @@ $host = isset($_POST['host']) ? (string) $_POST['host'] : 'wuk2002.sldb.iwinv.ne
 $user = isset($_POST['user']) ? (string) $_POST['user'] : 'bacaraai';
 $password = isset($_POST['password']) ? (string) $_POST['password'] : '';
 $database = isset($_POST['database']) ? (string) $_POST['database'] : 'bacaraai';
+$force = isset($_POST['force']) && $_POST['force'] === '1';
 
 if ($password === '') {
     http_response_code(400);
@@ -32,22 +33,38 @@ if ($password === '') {
 }
 
 mysqli_report(MYSQLI_REPORT_OFF);
-$db = @mysqli_connect($host, $user, $password, $database);
-if (!$db) {
+$db = false;
+$connect_error = '';
+$mysqli = mysqli_init();
+if ($mysqli) {
+    @mysqli_options($mysqli, MYSQLI_OPT_CONNECT_TIMEOUT, 5);
+    $db = @mysqli_real_connect($mysqli, $host, $user, $password, $database)
+        ? $mysqli
+        : false;
+    if (!$db) {
+        $connect_error = mysqli_connect_error();
+        if ($mysqli instanceof mysqli) {
+            @mysqli_close($mysqli);
+        }
+    }
+}
+$has_g5 = false;
+
+if ($db) {
+    $tables_ok = @mysqli_query($db, "SHOW TABLES LIKE 'g5_config'");
+    $has_g5 = $tables_ok && mysqli_num_rows($tables_ok) > 0;
+} elseif (!$force) {
     http_response_code(400);
     echo json_encode(array(
         'ok' => false,
         'message' => 'Homepage DB connection failed',
-        'error' => mysqli_connect_error(),
+        'error' => $connect_error,
         'host' => $host,
         'user' => $user,
         'database' => $database,
     ), JSON_UNESCAPED_UNICODE);
     exit;
 }
-
-$tables_ok = @mysqli_query($db, "SHOW TABLES LIKE 'g5_config'");
-$has_g5 = $tables_ok && mysqli_num_rows($tables_ok) > 0;
 
 $config_path = __DIR__ . '/data/dbconfig.php';
 $live_path = __DIR__ . '/data/bacaraai-live.config.php';
@@ -162,7 +179,9 @@ if ($live_password !== '') {
 
 echo json_encode(array(
     'ok' => true,
-    'message' => 'Homepage DB configuration repaired',
+    'message' => $db ? 'Homepage DB configuration repaired' : 'Homepage DB configuration written (connection still denied)',
+    'connected' => (bool) $db,
+    'connect_error' => $connect_error,
     'has_g5_config' => $has_g5,
     'live_config_written' => $live_written,
 ), JSON_UNESCAPED_UNICODE);
