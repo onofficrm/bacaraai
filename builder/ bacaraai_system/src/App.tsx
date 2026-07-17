@@ -262,9 +262,11 @@ export default function App() {
               </motion.div>
             </div>
             <RightPanel 
-              table={selectedTable} 
+              table={selectedTable}
+              tables={MOCK_TABLES}
               isOpen={isRightPanelOpen}
               onClose={() => setIsRightPanelOpen(false)}
+              onSelectTable={handleTableSelect}
               beginnerMode={beginnerMode}
             />
           </>

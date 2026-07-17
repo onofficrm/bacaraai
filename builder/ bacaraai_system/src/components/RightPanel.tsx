@@ -6,16 +6,26 @@ import MartingaleVisualizer from './MartingaleVisualizer';
 import ActionGuidance from './ActionGuidance';
 import HelpTooltip from './HelpTooltip';
 import Roadmap from './Roadmap';
+import EmptyRightPanel from './EmptyRightPanel';
 import { playSfx } from '../audio/sfxEngine';
 
 interface RightPanelProps {
   table: TableData | null;
+  tables?: TableData[];
   isOpen?: boolean;
   onClose?: () => void;
+  onSelectTable?: (id: string) => void;
   beginnerMode?: boolean;
 }
 
-export default function RightPanel({ table, isOpen = true, onClose, beginnerMode = true }: RightPanelProps) {
+export default function RightPanel({
+  table,
+  tables = [],
+  isOpen = true,
+  onClose,
+  onSelectTable,
+  beginnerMode = true,
+}: RightPanelProps) {
   const [betAmount, setBetAmount] = useState<number>(0);
   const [showMoreChips, setShowMoreChips] = useState(false);
   const [showEvidence, setShowEvidence] = useState(false);
@@ -63,17 +73,32 @@ export default function RightPanel({ table, isOpen = true, onClose, beginnerMode
 
   if (!table) {
     return (
-      <div className={`xl:flex w-80 2xl:w-[420px] border-l border-zinc-800 p-6 flex-col bg-zinc-950 shrink-0 ${isOpen ? 'flex fixed inset-y-0 right-0 z-50' : 'hidden'}`}>
-        <div className="flex-1 border border-zinc-800 border-dashed rounded-xl flex items-center justify-center text-zinc-600 bg-zinc-900/30">
-          <div className="text-center px-6">
-            <Info size={32} className="mx-auto mb-4 opacity-50" />
-            <p className="text-sm font-medium mb-2 text-zinc-300">① 테이블을 선택해주세요</p>
-            <p className="text-xs opacity-70 leading-relaxed">
-              가운데 카드를 누르면 AI 의견과 베팅 안내가 여기에 나타납니다.
-            </p>
+      <>
+        {isOpen && (
+          <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm xl:hidden" onClick={onClose} />
+        )}
+        <div
+          className={`fixed inset-y-0 right-0 z-50 w-[85vw] max-w-sm xl:max-w-none sm:w-80 2xl:w-[420px] xl:static h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex-col shrink-0 ${
+            isOpen ? 'flex' : 'hidden xl:flex'
+          }`}
+        >
+          <div className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
+            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">시작하기</span>
+            {onClose && (
+              <button type="button" onClick={onClose} className="xl:hidden p-1 text-zinc-500 hover:text-white">
+                <X size={18} />
+              </button>
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+            <EmptyRightPanel
+              tables={tables}
+              onSelectTable={onSelectTable ?? (() => undefined)}
+              beginnerMode={beginnerMode}
+            />
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
