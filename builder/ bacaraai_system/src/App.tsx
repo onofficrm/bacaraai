@@ -61,6 +61,15 @@ export default function App() {
     installAudioUnlock();
   }, []);
 
+  useEffect(() => {
+    session.setCutHandler((type) => {
+      playSfx(type === 'wincut' ? 'win' : 'loss');
+      session.pauseSession();
+      setStopSessionType(type);
+    });
+    return () => session.setCutHandler(null);
+  }, [session.setCutHandler, session.pauseSession]);
+
   const handleTableSelect = (id: string) => {
     setSelectedTableId(id);
     setIsRightPanelOpen(true);
@@ -282,6 +291,17 @@ export default function App() {
               onClose={() => setIsRightPanelOpen(false)}
               onSelectTable={handleTableSelect}
               beginnerMode={beginnerMode}
+              sessionStatus={session.status}
+              sessionMode={session.mode}
+              suggestedBet={session.suggestedBet}
+              maxBet={session.config.maxBet}
+              availableBankroll={session.availableBankroll}
+              pendingBet={session.pendingBet}
+              lastBetResult={session.lastBetResult}
+              onPlaceBet={session.placeBet}
+              onSkip={session.skipRound}
+              onOpenSessionSettings={() => setIsModalOpen(true)}
+              onClearBetResult={session.clearLastBetResult}
             />
           </>
         ) : activeView === 'insight' ? (

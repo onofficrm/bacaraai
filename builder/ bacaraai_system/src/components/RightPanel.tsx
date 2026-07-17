@@ -8,6 +8,15 @@ import HelpTooltip from './HelpTooltip';
 import Roadmap from './Roadmap';
 import EmptyRightPanel from './EmptyRightPanel';
 import { playSfx } from '../audio/sfxEngine';
+import {
+  formatMoney,
+  type BetSide,
+  type LastBetResult,
+  type PendingBet,
+  type PlaceBetResult,
+  type SessionMode,
+  type SessionStatus,
+} from '../hooks/useSession';
 
 interface RightPanelProps {
   table: TableData | null;
@@ -16,6 +25,22 @@ interface RightPanelProps {
   onClose?: () => void;
   onSelectTable?: (id: string) => void;
   beginnerMode?: boolean;
+  sessionStatus?: SessionStatus;
+  sessionMode?: SessionMode | null;
+  suggestedBet?: number;
+  maxBet?: number;
+  availableBankroll?: number;
+  pendingBet?: PendingBet | null;
+  lastBetResult?: LastBetResult | null;
+  onPlaceBet?: (input: {
+    tableId: string;
+    tableName: string;
+    side: BetSide;
+    amount: number;
+  }) => PlaceBetResult;
+  onSkip?: (tableId: string) => void;
+  onOpenSessionSettings?: () => void;
+  onClearBetResult?: () => void;
 }
 
 export default function RightPanel({
@@ -25,26 +50,63 @@ export default function RightPanel({
   onClose,
   onSelectTable,
   beginnerMode = true,
+  sessionStatus = 'idle',
+  sessionMode = null,
+  suggestedBet = 0,
+  maxBet = 2_000_000,
+  availableBankroll = 0,
+  pendingBet = null,
+  lastBetResult = null,
+  onPlaceBet,
+  onSkip,
+  onOpenSessionSettings,
+  onClearBetResult,
 }: RightPanelProps) {
   const [betAmount, setBetAmount] = useState<number>(0);
   const [showMoreChips, setShowMoreChips] = useState(false);
   const [showEvidence, setShowEvidence] = useState(false);
   const [showAiDetails, setShowAiDetails] = useState(false);
   const [showRisk, setShowRisk] = useState(false);
+  const [forceBet, setForceBet] = useState(false);
+  const [betError, setBetError] = useState<string | null>(null);
 
   React.useEffect(() => {
-    if (table?.ai?.recommendedAmount) {
-      setBetAmount(table.ai.recommendedAmount);
-    }
+    const preferred =
+      sessionStatus === 'running' && suggestedBet > 0
+        ? suggestedBet
+        : table?.ai?.recommendedAmount || 0;
+    setBetAmount(preferred);
     setShowMoreChips(false);
     setShowEvidence(false);
     setShowAiDetails(false);
     setShowRisk(false);
-  }, [table?.id, table?.ai?.recommendedAmount]);
+    setForceBet(false);
+    setBetError(null);
+  }, [table?.id, table?.ai?.recommendedAmount, suggestedBet, sessionStatus]);
+
+  React.useEffect(() => {
+    if (!lastBetResult) return;
+    if (lastBetResult.won === true) playSfx('win');
+    else if (lastBetResult.won === false) playSfx('loss');
+    else playSfx('tick');
+  }, [lastBetResult?.id]);
 
   const isPassive = table
-    ? ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion)
+    ? ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) &&
+      !forceBet
     : true;
+
+  const canBetSide =
+    table?.ai.finalOpinion === 'PLAYER' ||
+    table?.ai.finalOpinion === 'BANKER' ||
+    forceBet;
+
+  const betSide: BetSide =
+    table?.ai.finalOpinion === 'BANKER' ? 'BANKER' : 'PLAYER';
+
+  const isSettling = Boolean(pendingBet && table && pendingBet.tableId === table.id);
+  const sessionReady = sessionStatus === 'running';
+  const observeBlocked = sessionMode === 'observe';
 
   const primaryChips = [
     { label: '1천', value: 1000, color: 'bg-zinc-200 text-zinc-900 border-zinc-400' },
@@ -60,15 +122,55 @@ export default function RightPanel({
     { label: '2배', value: 'DOUBLE' as const, color: 'bg-zinc-800 text-white border-zinc-950' },
   ];
 
+  const clampAmount = (amount: number) =>
+    Math.max(0, Math.min(amount, maxBet, availableBankroll || amount));
+
   const addChip = (chip: { label: string; value: number | 'DOUBLE'; color: string }) => {
+    if (isSettling) return;
     if (chip.value === 'DOUBLE') {
       playSfx('chipHeavy');
-      setBetAmount((prev) => prev * 2);
+      setBetAmount((prev) => clampAmount(prev * 2 || suggestedBet || 1000));
     } else {
       const amount = chip.value as number;
       playSfx(amount >= 100000 ? 'chipHeavy' : 'chip');
-      setBetAmount((prev) => prev + amount);
+      setBetAmount((prev) => clampAmount(prev + amount));
     }
+    setBetError(null);
+  };
+
+  const handleConfirmBet = () => {
+    if (!table || !onPlaceBet) return;
+    if (!sessionReady) {
+      setBetError('먼저 세션을 시작해 주세요.');
+      playSfx('error');
+      return;
+    }
+    if (observeBlocked) {
+      setBetError('관찰 모드에서는 베팅할 수 없습니다.');
+      playSfx('error');
+      return;
+    }
+    if (!canBetSide) {
+      setBetError('Player/Banker 추천일 때만 베팅할 수 있습니다.');
+      playSfx('error');
+      return;
+    }
+
+    const result = onPlaceBet({
+      tableId: table.id,
+      tableName: table.name,
+      side: betSide,
+      amount: betAmount,
+    });
+
+    if (!result.ok) {
+      setBetError(result.error);
+      playSfx('error');
+      return;
+    }
+
+    setBetError(null);
+    playSfx('betConfirm');
   };
 
   if (!table) {
@@ -217,6 +319,85 @@ export default function RightPanel({
           </div>
 
           <div className="p-3 flex flex-col gap-2">
+            {!sessionReady && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+                <p className="text-xs font-bold text-amber-300 mb-1">세션이 필요합니다</p>
+                <p className="text-[11px] text-zinc-400 mb-2">베팅 전에 세션을 시작해 주세요.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSfx('ui');
+                    onOpenSessionSettings?.();
+                  }}
+                  className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg text-xs font-bold"
+                >
+                  세션 설정 열기
+                </button>
+              </div>
+            )}
+
+            {sessionReady && observeBlocked && (
+              <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-[11px] text-zinc-400">
+                관찰 모드에서는 기록만 가능합니다. 헤더에서 AI 추천/섀도 모드로 바꾸면 베팅할 수 있습니다.
+              </div>
+            )}
+
+            {isSettling && (
+              <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2.5 text-center">
+                <p className="text-sm font-bold text-sky-300 animate-pulse">결과 확인 중…</p>
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  {pendingBet?.side === 'BANKER' ? 'Banker' : 'Player'} · {formatMoney(pendingBet?.amount || 0)}
+                </p>
+              </div>
+            )}
+
+            {lastBetResult && lastBetResult.tableId === table.id && !isSettling && (
+              <div
+                className={`rounded-lg border px-3 py-2.5 ${
+                  lastBetResult.won === true
+                    ? 'border-emerald-500/30 bg-emerald-500/10'
+                    : lastBetResult.won === false
+                      ? 'border-rose-500/30 bg-rose-500/10'
+                      : 'border-zinc-700 bg-zinc-900'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p
+                      className={`text-xs font-bold mb-0.5 ${
+                        lastBetResult.won === true
+                          ? 'text-emerald-300'
+                          : lastBetResult.won === false
+                            ? 'text-rose-300'
+                            : 'text-zinc-300'
+                      }`}
+                    >
+                      {lastBetResult.amount > 0 ? '베팅 결과' : '건너뛰기'}
+                    </p>
+                    <p className="text-[11px] text-zinc-300 leading-relaxed">{lastBetResult.message}</p>
+                    {lastBetResult.amount > 0 && (
+                      <p className="text-[11px] font-mono mt-1 text-zinc-400">
+                        손익 {formatMoney(lastBetResult.pnlDelta, true)}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="text-[10px] text-zinc-500 hover:text-zinc-300"
+                    onClick={() => onClearBetResult?.()}
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {betError && (
+              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300">
+                {betError}
+              </div>
+            )}
+
             {isRisk ? (
               <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-3 text-center">
                 <p className="text-sm font-bold text-red-300 mb-1">이번 회차는 쉬세요</p>
@@ -227,12 +408,26 @@ export default function RightPanel({
                 <div className="flex justify-between items-center">
                   <label className="text-xs font-bold text-zinc-200">실행 금액</label>
                   <div className="flex items-center gap-2">
+                    {suggestedBet > 0 && betAmount !== suggestedBet && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playSfx('ui');
+                          setBetAmount(clampAmount(suggestedBet));
+                          setBetError(null);
+                        }}
+                        className="text-[10px] text-amber-400 hover:text-amber-300"
+                      >
+                        단계 금액
+                      </button>
+                    )}
                     {betAmount !== table.ai.recommendedAmount && (
                       <button
                         type="button"
                         onClick={() => {
                           playSfx('ui');
-                          setBetAmount(table.ai.recommendedAmount);
+                          setBetAmount(clampAmount(table.ai.recommendedAmount));
+                          setBetError(null);
                         }}
                         className="text-[10px] text-amber-400 hover:text-amber-300"
                       >
@@ -241,7 +436,11 @@ export default function RightPanel({
                     )}
                     <button
                       type="button"
-                      onClick={() => { playSfx('ui'); setBetAmount(0); }}
+                      onClick={() => {
+                        playSfx('ui');
+                        setBetAmount(0);
+                        setBetError(null);
+                      }}
                       className="text-[10px] text-zinc-500 hover:text-white px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 transition-colors"
                     >
                       초기화
@@ -250,8 +449,8 @@ export default function RightPanel({
                 </div>
 
                 <div className="bg-zinc-950 border border-amber-500/30 rounded-lg px-3 py-2 flex items-center justify-between">
-                  <span className={`text-sm font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
-                    {opinionLabel}
+                  <span className={`text-sm font-bold ${getOpinionColor(betSide === 'BANKER' ? 'BANKER' : 'PLAYER')}`}>
+                    {betSide === 'BANKER' ? (beginnerMode ? 'Banker(B)' : 'BANKER') : (beginnerMode ? 'Player(P)' : 'PLAYER')}
                   </span>
                   <div className="flex items-baseline gap-1">
                     <span className="font-mono font-bold text-white text-xl leading-none">{betAmount.toLocaleString()}</span>
@@ -261,7 +460,7 @@ export default function RightPanel({
 
                 {beginnerMode && (
                   <p className="text-[11px] text-zinc-500 leading-snug -mt-0.5">
-                    칩으로 맞춘 뒤 확정 · AI는 참고용
+                    잔여 {formatMoney(availableBankroll)} · 최대 {formatMoney(maxBet)} · AI는 참고용
                   </p>
                 )}
 
@@ -271,7 +470,8 @@ export default function RightPanel({
                       key={chip.label}
                       type="button"
                       onClick={() => addChip(chip)}
-                      className={`w-10 h-10 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 ${chip.color}`}
+                      disabled={isSettling || !sessionReady || observeBlocked}
+                      className={`w-10 h-10 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 ${chip.color}`}
                       style={{
                         boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.2), 0 4px 6px -1px rgba(0,0,0,0.5)'
                       }}
@@ -290,7 +490,8 @@ export default function RightPanel({
                         key={chip.label}
                         type="button"
                         onClick={() => addChip(chip)}
-                        className={`w-10 h-10 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 ${chip.color}`}
+                        disabled={isSettling || !sessionReady || observeBlocked}
+                        className={`w-10 h-10 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 ${chip.color}`}
                         style={{
                           boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.2), 0 4px 6px -1px rgba(0,0,0,0.5)'
                         }}
@@ -314,11 +515,12 @@ export default function RightPanel({
                   {showMoreChips ? '고액 칩 접기' : '고액 · 2배'}
                 </button>
 
-                {/* Confirm summary */}
                 <div className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-center">
                   <p className="text-[10px] text-zinc-500 mb-0.5">확정 전 확인</p>
                   <p className="text-sm font-bold text-zinc-100">
-                    <span className={getOpinionColor(table.ai.finalOpinion)}>{opinionLabel}</span>
+                    <span className={getOpinionColor(betSide === 'BANKER' ? 'BANKER' : 'PLAYER')}>
+                      {betSide === 'BANKER' ? 'Banker' : 'Player'}
+                    </span>
                     <span className="text-zinc-600 mx-1.5">·</span>
                     <span className="font-mono">{betAmount.toLocaleString()}원</span>
                     <span className="text-zinc-600 mx-1.5">·</span>
@@ -329,31 +531,47 @@ export default function RightPanel({
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => playSfx('skip')}
-                    className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
+                    onClick={() => {
+                      playSfx('skip');
+                      onSkip?.(table.id);
+                      setBetError(null);
+                    }}
+                    disabled={isSettling}
+                    className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
                   >
                     건너뛰기
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      playSfx('betConfirm');
-                      console.log(`[베팅 기록 저장] 타겟: ${table.ai.finalOpinion}, 금액: ${betAmount}`);
-                      alert(`[내부 기록 완료]\n${opinionLabel}에 ${betAmount.toLocaleString()}원 베팅을 진행했습니다.`);
-                    }}
+                    onClick={handleConfirmBet}
                     className="py-2.5 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg text-sm font-bold transition-colors shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
-                    disabled={betAmount <= 0}
+                    disabled={betAmount <= 0 || isSettling || !sessionReady || observeBlocked}
                   >
-                    베팅 확정
+                    {isSettling ? '확인 중…' : '베팅 확정'}
                   </button>
                 </div>
               </>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => playSfx('skip')} className="py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSfx('skip');
+                    onSkip?.(table.id);
+                  }}
+                  className="py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
+                >
                   관찰 계속
                 </button>
-                <button type="button" onClick={() => playSfx('ruleTrigger')} className="py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSfx('ruleTrigger');
+                    setForceBet(true);
+                    setBetError(null);
+                  }}
+                  className="py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
+                >
                   강제 개입
                 </button>
               </div>
