@@ -5,9 +5,7 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
-$expected = 'c9d5e13f02b86a47f5e9b2d1c0a8g674';
 $token = isset($_REQUEST['token']) ? (string) $_REQUEST['token'] : '';
-// token uses hex only
 $expected = 'c9d5e13f02b86a47f5e9b2d1c0a8f674';
 if (!hash_equals($expected, $token)) {
     http_response_code(403);
