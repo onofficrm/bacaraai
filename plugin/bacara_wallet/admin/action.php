@@ -2,13 +2,18 @@
 require_once dirname(__FILE__) . '/_bootstrap.php';
 include_once G5_LIB_PATH . '/register.lib.php';
 
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    alert('올바른 방법으로 이용해 주세요.', bacara_wallet_admin_url());
+}
+
 if (function_exists('check_admin_token')) {
     check_admin_token();
 } else {
     $posted = isset($_POST['token']) ? (string) $_POST['token'] : '';
     $session_token = get_session('ss_admin_token');
+    set_session('ss_admin_token', '');
     if ($posted === '' || $session_token === '' || !hash_equals((string) $session_token, $posted)) {
-        alert('올바른 방법으로 이용해 주세요.');
+        alert('올바른 방법으로 이용해 주세요.', bacara_wallet_admin_url());
     }
 }
 

@@ -99,4 +99,42 @@ if (!function_exists('bacara_wallet_admin_shell_end')) {
     }
 }
 
-add_stylesheet('<link rel="stylesheet" href="' . G5_PLUGIN_URL . '/bacara_wallet/admin/style.css?v=20260714">', 10);
+add_stylesheet('<link rel="stylesheet" href="' . G5_PLUGIN_URL . '/bacara_wallet/admin/style.css?v=20260719">', 10);
+
+// admin.js 는 admin.tail 에서 늦게 로드되므로 ready 시점에 플러그인 토큰 API로 재정의
+$bacara_wallet_token_url = G5_PLUGIN_URL . '/bacara_wallet/admin/ajax.token.php';
+add_javascript(
+    '<script>
+(function () {
+  function bacaraWalletBindAjaxToken() {
+    window.get_ajax_token = function () {
+      var token = "";
+      var admin_csrf_token_key = (typeof g5_admin_csrf_token_key !== "undefined") ? g5_admin_csrf_token_key : "";
+      jQuery.ajax({
+        type: "POST",
+        url: ' . json_encode($bacara_wallet_token_url) . ',
+        data: { admin_csrf_token_key: admin_csrf_token_key },
+        cache: false,
+        async: false,
+        dataType: "json",
+        success: function (data) {
+          if (data && data.error) {
+            alert(data.error);
+            if (data.url) {
+              document.location.href = data.url;
+            }
+            return false;
+          }
+          token = data && data.token ? data.token : "";
+        }
+      });
+      return token;
+    };
+  }
+  jQuery(bacaraWalletBindAjaxToken);
+  setTimeout(bacaraWalletBindAjaxToken, 0);
+  setTimeout(bacaraWalletBindAjaxToken, 100);
+})();
+</script>',
+    100
+);

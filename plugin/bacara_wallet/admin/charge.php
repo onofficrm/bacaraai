@@ -7,7 +7,6 @@ include_once G5_ADMIN_PATH . '/admin.head.php';
 $mb_id = isset($_GET['mb_id']) ? trim($_GET['mb_id']) : '';
 $mb = $mb_id !== '' ? get_member($mb_id) : array();
 $balance = !empty($mb['mb_id']) ? bacara_wallet_get_balance($mb['mb_id']) : 0;
-$token = bacara_wallet_admin_token();
 ?>
 
 <?php bacara_wallet_admin_shell_start('가상머니 충전', '회원에게 가상 게임머니(시드)를 충전·차감하거나 잔액을 직접 설정합니다.'); ?>
@@ -35,7 +34,7 @@ $token = bacara_wallet_admin_token();
         </div>
 
         <form method="post" action="<?php echo htmlspecialchars(bacara_wallet_admin_url('action.php'), ENT_QUOTES, 'UTF-8'); ?>">
-            <input type="hidden" name="token" value="<?php echo get_text($token); ?>">
+            <input type="hidden" name="token" value="">
             <input type="hidden" name="mode" value="charge">
             <input type="hidden" name="mb_id" value="<?php echo htmlspecialchars($mb['mb_id'], ENT_QUOTES, 'UTF-8'); ?>">
 

@@ -4,7 +4,6 @@ require_once dirname(__FILE__) . '/_bootstrap.php';
 $g5['title'] = '회원 생성';
 include_once G5_ADMIN_PATH . '/admin.head.php';
 
-$token = bacara_wallet_admin_token();
 ?>
 
 <?php bacara_wallet_admin_shell_start('회원 생성', '공개 가입 없이 관리자가 아이디·비밀번호를 부여하고 초기 가상머니(시드)를 함께 지급합니다.'); ?>
@@ -13,7 +12,7 @@ $token = bacara_wallet_admin_token();
 <div class="bw-card">
     <h3>새 회원 정보</h3>
     <form method="post" action="<?php echo htmlspecialchars(bacara_wallet_admin_url('action.php'), ENT_QUOTES, 'UTF-8'); ?>" autocomplete="off">
-        <input type="hidden" name="token" value="<?php echo get_text($token); ?>">
+        <input type="hidden" name="token" value="">
         <input type="hidden" name="mode" value="create_member">
 
         <div class="bw-grid">
