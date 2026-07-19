@@ -31,6 +31,9 @@ if (!is_file($live_path)) {
     exit;
 }
 
+if (!defined('_GNUBOARD_')) {
+    define('_GNUBOARD_', true);
+}
 $live = include $live_path;
 if (!is_array($live) || empty($live['host']) || empty($live['user']) || !array_key_exists('password', $live) || empty($live['database'])) {
     http_response_code(500);
