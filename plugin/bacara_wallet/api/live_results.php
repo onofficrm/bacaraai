@@ -50,11 +50,13 @@ if (is_file($live_cfg_file)) {
         && !empty($live_cfg['database'])
     ) {
         mysqli_report(MYSQLI_REPORT_OFF);
+        $live_port = !empty($live_cfg['port']) ? (int) $live_cfg['port'] : 3306;
         $live_link = @mysqli_connect(
             $live_cfg['host'],
             $live_cfg['user'],
             $live_cfg['password'],
-            $live_cfg['database']
+            $live_cfg['database'],
+            $live_port
         );
         if ($live_link) {
             @mysqli_set_charset($live_link, G5_DB_CHARSET);
