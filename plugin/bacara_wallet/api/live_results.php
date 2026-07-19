@@ -4,11 +4,9 @@
  *
  * GET table_name=MD2729&limit=120
  *
- * game_no 가 바뀌면 새 게임으로 간주하고,
- * 최신 game_no 의 결과만 반환합니다.
- *
- * 홈페이지 DB(G5)와 스코어 테이블 접속정보가 다를 수 있어
- * data/bacaraai-live.config.php 가 있으면 그 계정으로 조회합니다.
+ * - 최신 game_no 결과만 반환 (game_no 변경 = 새 게임)
+ * - score account 는 live config 의 account 우선, 없으면 로그인 ID,
+ *   그래도 없으면 awesome / 테이블 전체 fallback
  */
 include_once dirname(__FILE__) . '/../../../common.php';
 
@@ -38,20 +36,21 @@ if (!preg_match('/^[A-Z0-9_-]{1,40}$/', $table_name)) {
 
 $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 120;
 $limit = max(1, min(300, $limit));
-$account = $member['mb_id'];
 
 $live_cfg_file = G5_DATA_PATH . '/bacaraai-live.config.php';
 $live_link = null;
 $use_live_cfg = false;
+$live_cfg = array();
 
 if (is_file($live_cfg_file)) {
-    $live_cfg = include $live_cfg_file;
-    if (is_array($live_cfg)
-        && !empty($live_cfg['host'])
-        && !empty($live_cfg['user'])
-        && array_key_exists('password', $live_cfg)
-        && !empty($live_cfg['database'])
+    $loaded = include $live_cfg_file;
+    if (is_array($loaded)
+        && !empty($loaded['host'])
+        && !empty($loaded['user'])
+        && array_key_exists('password', $loaded)
+        && !empty($loaded['database'])
     ) {
+        $live_cfg = $loaded;
         mysqli_report(MYSQLI_REPORT_OFF);
         $live_port = !empty($live_cfg['port']) ? (int) $live_cfg['port'] : 3306;
         $live_link = @mysqli_connect(
@@ -68,63 +67,130 @@ if (is_file($live_cfg_file)) {
     }
 }
 
-$safe_account = $use_live_cfg
-    ? mysqli_real_escape_string($live_link, $account)
-    : sql_real_escape_string($account);
 $safe_table_name = $use_live_cfg
     ? mysqli_real_escape_string($live_link, $table_name)
     : sql_real_escape_string($table_name);
 
-// 최신 game_no(새 게임)만 조회. 컬럼명은 DB의 game_no 기준.
-$sql = " select id, table_name, game_no, result, detected_at
-           from `bacaraai`
-          where account = '{$safe_account}'
-            and table_name = '{$safe_table_name}'
-            and result in ('P', 'B', 'T')
-            and game_no = (
-                select game_no
-                  from `bacaraai`
-                 where account = '{$safe_account}'
-                   and table_name = '{$safe_table_name}'
-                   and result in ('P', 'B', 'T')
-                 order by id desc
-                 limit 1
-            )
-          order by id asc
-          limit {$limit} ";
+function bacara_live_escape($value, $use_live_cfg, $live_link)
+{
+    return $use_live_cfg
+        ? mysqli_real_escape_string($live_link, $value)
+        : sql_real_escape_string($value);
+}
 
-$rows = array();
-$query_error = '';
+function bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, &$query_error)
+{
+    $rows = array();
+    $query_error = '';
 
-if ($use_live_cfg) {
-    $query = @mysqli_query($live_link, $sql);
-    if (!$query) {
-        $query_error = mysqli_error($live_link);
-    } else {
+    if ($use_live_cfg) {
+        $query = @mysqli_query($live_link, $sql);
+        if (!$query) {
+            $query_error = mysqli_error($live_link);
+            return $rows;
+        }
         while ($row = mysqli_fetch_assoc($query)) {
             $rows[] = array(
                 'id' => (int) $row['id'],
+                'account' => isset($row['account']) ? $row['account'] : '',
                 'table_name' => $row['table_name'],
                 'game_no' => isset($row['game_no']) ? (int) $row['game_no'] : null,
                 'result' => $row['result'],
                 'detected_at' => $row['detected_at'],
             );
         }
+        return $rows;
     }
-} else {
+
     $query = sql_query($sql, false);
     if (!$query) {
         $query_error = 'sql_query failed';
-    } else {
-        while ($row = sql_fetch_array($query)) {
-            $rows[] = array(
-                'id' => (int) $row['id'],
-                'table_name' => $row['table_name'],
-                'game_no' => isset($row['game_no']) ? (int) $row['game_no'] : null,
-                'result' => $row['result'],
-                'detected_at' => $row['detected_at'],
-            );
-        }
+        return $rows;
+    }
+    while ($row = sql_fetch_array($query)) {
+        $rows[] = array(
+            'id' => (int) $row['id'],
+            'account' => isset($row['account']) ? $row['account'] : '',
+            'table_name' => $row['table_name'],
+            'game_no' => isset($row['game_no']) ? (int) $row['game_no'] : null,
+            'result' => $row['result'],
+            'detected_at' => $row['detected_at'],
+        );
+    }
+    return $rows;
+}
+
+function bacara_live_query_for_account($account, $safe_table_name, $limit, $use_live_cfg, $live_link, &$query_error)
+{
+    $safe_account = bacara_live_escape($account, $use_live_cfg, $live_link);
+    $sql = " select id, account, table_name, game_no, result, detected_at
+               from `bacaraai`
+              where account = '{$safe_account}'
+                and table_name = '{$safe_table_name}'
+                and result in ('P', 'B', 'T')
+                and game_no = (
+                    select game_no
+                      from `bacaraai`
+                     where account = '{$safe_account}'
+                       and table_name = '{$safe_table_name}'
+                       and result in ('P', 'B', 'T')
+                     order by id desc
+                     limit 1
+                )
+              order by id asc
+              limit {$limit} ";
+    return bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, $query_error);
+}
+
+$account_candidates = array();
+if (!empty($live_cfg['account'])) {
+    $account_candidates[] = (string) $live_cfg['account'];
+}
+$account_candidates[] = (string) $member['mb_id'];
+$account_candidates[] = 'awesome';
+$account_candidates = array_values(array_unique(array_filter($account_candidates)));
+
+$rows = array();
+$query_error = '';
+$used_account = null;
+
+foreach ($account_candidates as $candidate) {
+    $rows = bacara_live_query_for_account(
+        $candidate,
+        $safe_table_name,
+        $limit,
+        $use_live_cfg,
+        $live_link,
+        $query_error
+    );
+    if ($query_error !== '') {
+        break;
+    }
+    if (count($rows) > 0) {
+        $used_account = $candidate;
+        break;
+    }
+}
+
+// 계정 매칭이 안 되면 해당 table_name 의 최신 game_no 전체로 fallback
+if ($query_error === '' && count($rows) === 0) {
+    $sql = " select id, account, table_name, game_no, result, detected_at
+               from `bacaraai`
+              where table_name = '{$safe_table_name}'
+                and result in ('P', 'B', 'T')
+                and game_no = (
+                    select game_no
+                      from `bacaraai`
+                     where table_name = '{$safe_table_name}'
+                       and result in ('P', 'B', 'T')
+                     order by id desc
+                     limit 1
+                )
+              order by id asc
+              limit {$limit} ";
+    $rows = bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, $query_error);
+    if (count($rows) > 0) {
+        $used_account = $rows[0]['account'];
     }
 }
 
@@ -144,7 +210,8 @@ $game_no = $latest && isset($latest['game_no']) ? $latest['game_no'] : null;
 echo json_encode(array(
     'ok' => true,
     'logged_in' => true,
-    'account' => $member['mb_id'],
+    'member_id' => $member['mb_id'],
+    'account' => $used_account !== null ? $used_account : $member['mb_id'],
     'table_name' => $table_name,
     'game_no' => $game_no,
     'source' => $use_live_cfg ? 'live_config' : 'g5',
