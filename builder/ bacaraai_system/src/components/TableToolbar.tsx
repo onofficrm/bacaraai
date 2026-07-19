@@ -30,8 +30,7 @@ export default function TableToolbar({ sortBy, onSortChange, filterBy, onFilterC
   ];
 
   const sortOptions: { id: SortOption; label: string }[] = [
-    { id: 'auto', label: '자동 우선순위' },
-    { id: 'table_number', label: '테이블 번호' },
+    { id: 'table_number', label: '테이블 번호 고정 (1→8)' },
     { id: 'rule_triggered', label: '규칙 발동 순' },
     { id: 'high_risk', label: '위험도 높은 순' },
     { id: 'time_remaining', label: '마감 시간 순' },

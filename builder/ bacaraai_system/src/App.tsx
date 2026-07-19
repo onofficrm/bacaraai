@@ -55,7 +55,7 @@ export default function App() {
   const [zoomedTableId, setZoomedTableId] = useState<string | null>(null);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
 
-  const [sortBy, setSortBy] = useState<SortOption>('auto');
+  const [sortBy, setSortBy] = useState<SortOption>('table_number');
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [isAutoReordered, setIsAutoReordered] = useState(false);
@@ -133,19 +133,7 @@ export default function App() {
     return counts;
   }, [favorites, tables]);
 
-  const getPriorityScore = (t: TableData) => {
-    let score = 0;
-    if (t.status === 'waiting_user') score += 1000;
-    if (t.status === 'rule_triggered') score += 900;
-    if (t.status === 'checking_result') score += 800;
-    if (t.ai.consensus && t.ai.consensus.includes('/3')) score += 700;
-    if (t.status === 'analyzing') score += 600;
-    if (t.timer && t.timer < 10) score += 500;
-    if (t.status === 'error' || t.ai.finalOpinion === 'DATA_ERROR') score += 400;
-    if (t.status === 'risk_blocked') score += 300;
-    if (['WAIT', 'SKIP', 'PAUSE'].includes(t.ai.finalOpinion)) score += 100;
-    return score;
-  };
+  const tableNumberOrder = (a: TableData, b: TableData) => a.id.localeCompare(b.id, undefined, { numeric: true });
 
   const filteredAndSortedTables = useMemo(() => {
     let visibleTables = [...tables];
@@ -164,21 +152,35 @@ export default function App() {
       }
     });
 
+    // 기본/자동: 결과·상태와 무관하게 1~8번 위치 고정
     visibleTables.sort((a, b) => {
       switch (sortBy) {
-        case 'auto': {
-          const scoreB = getPriorityScore(b);
-          const scoreA = getPriorityScore(a);
-          if (scoreB !== scoreA) return scoreB - scoreA;
-          return a.id.localeCompare(b.id);
+        case 'auto':
+        case 'table_number':
+          return tableNumberOrder(a, b);
+        case 'rule_triggered': {
+          const byStatus = (b.status === 'rule_triggered' ? 1 : 0) - (a.status === 'rule_triggered' ? 1 : 0);
+          return byStatus || tableNumberOrder(a, b);
         }
-        case 'table_number': return a.id.localeCompare(b.id);
-        case 'rule_triggered': return (b.status === 'rule_triggered' ? 1 : 0) - (a.status === 'rule_triggered' ? 1 : 0);
-        case 'high_risk': return (b.status === 'risk_blocked' ? 1 : 0) - (a.status === 'risk_blocked' ? 1 : 0);
-        case 'time_remaining': return (a.timer || 0) - (b.timer || 0);
-        case 'ai_consensus': return (b.ai.consensus?.includes('3/3') ? 1 : 0) - (a.ai.consensus?.includes('3/3') ? 1 : 0);
-        case 'favorite_first': return (favorites.has(b.id) ? 1 : 0) - (favorites.has(a.id) ? 1 : 0);
-        default: return 0;
+        case 'high_risk': {
+          const byStatus = (b.status === 'risk_blocked' ? 1 : 0) - (a.status === 'risk_blocked' ? 1 : 0);
+          return byStatus || tableNumberOrder(a, b);
+        }
+        case 'time_remaining': {
+          const byTimer = (a.timer || 0) - (b.timer || 0);
+          return byTimer || tableNumberOrder(a, b);
+        }
+        case 'ai_consensus': {
+          const byConsensus =
+            (b.ai.consensus?.includes('3/3') ? 1 : 0) - (a.ai.consensus?.includes('3/3') ? 1 : 0);
+          return byConsensus || tableNumberOrder(a, b);
+        }
+        case 'favorite_first': {
+          const byFav = (favorites.has(b.id) ? 1 : 0) - (favorites.has(a.id) ? 1 : 0);
+          return byFav || tableNumberOrder(a, b);
+        }
+        default:
+          return tableNumberOrder(a, b);
       }
     });
 
@@ -186,13 +188,7 @@ export default function App() {
   }, [filterBy, sortBy, favorites, tables]);
 
   useEffect(() => {
-    if (sortBy === 'auto') {
-      setIsAutoReordered(true);
-      const timer = setTimeout(() => setIsAutoReordered(false), 3000);
-      return () => clearTimeout(timer);
-    } else {
-      setIsAutoReordered(false);
-    }
+    setIsAutoReordered(false);
   }, [sortBy]);
 
   return (
@@ -256,12 +252,11 @@ export default function App() {
                 filterCounts={filterCounts} 
                 isAutoReordered={isAutoReordered} 
               />
-              <motion.div layout className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 lg:gap-6 flex-1 content-start">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 lg:gap-6 flex-1 content-start">
                 <AnimatePresence>
                   {filteredAndSortedTables.map(table => (
                     <motion.div
                       key={table.id}
-                      layout
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.95 }}
@@ -285,7 +280,7 @@ export default function App() {
                     </div>
                   )}
                 </AnimatePresence>
-              </motion.div>
+              </div>
             </div>
             <RightPanel 
               table={selectedTable}
