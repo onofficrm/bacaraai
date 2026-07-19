@@ -5,6 +5,7 @@ import type { GameResult, TableData } from '../types';
 type LiveResultRow = {
   id: number;
   table_name: string;
+  game_no?: number | null;
   result: GameResult;
   detected_at: string;
 };
@@ -13,6 +14,7 @@ type LiveResponse = {
   ok: boolean;
   message?: string;
   table_name?: string;
+  game_no?: number | null;
   latest_id?: number | null;
   latest_detected_at?: string | null;
   results?: LiveResultRow[];
@@ -22,6 +24,7 @@ type LiveState = {
   loading: boolean;
   connected: boolean;
   rows: LiveResultRow[];
+  gameNo: number | null;
   latestId: number | null;
   latestDetectedAt: string | null;
   error: string | null;
@@ -73,16 +76,22 @@ function liveOpinion(results: GameResult[]): 'PLAYER' | 'BANKER' | 'WAIT' {
   return latest === 'P' ? 'PLAYER' : 'BANKER';
 }
 
-export default function useLiveTable(base: TableData, tableName = 'MD2709'): TableData {
+export default function useLiveTable(
+  base: TableData,
+  tableName = 'MD2729',
+  displayName = 'Table1',
+): TableData {
   const [state, setState] = useState<LiveState>({
     loading: true,
     connected: false,
     rows: [],
+    gameNo: null,
     latestId: null,
     latestDetectedAt: null,
     error: null,
   });
   const requestActive = useRef(false);
+  const prevGameNo = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,13 +111,27 @@ export default function useLiveTable(base: TableData, tableName = 'MD2709'): Tab
           throw new Error(data.message || '실시간 결과 조회에 실패했습니다.');
         }
         if (cancelled) return;
+
+        const nextGameNo = data.game_no ?? null;
+        // game_no 변경 = 새 게임 시작 → 이전 결과는 버리고 새 시퀀스만 사용
+        if (
+          prevGameNo.current !== null &&
+          nextGameNo !== null &&
+          prevGameNo.current !== nextGameNo
+        ) {
+          // intentional reset boundary for UI consumers
+        }
+        prevGameNo.current = nextGameNo;
+
         const rows = (data.results || []).filter((row) =>
           ['P', 'B', 'T'].includes(row.result),
         );
+
         setState({
           loading: false,
           connected: true,
           rows,
+          gameNo: nextGameNo,
           latestId: data.latest_id ?? null,
           latestDetectedAt: data.latest_detected_at ?? null,
           error: null,
@@ -136,10 +159,13 @@ export default function useLiveTable(base: TableData, tableName = 'MD2709'): Tab
 
   return useMemo(() => {
     const results = state.rows.map((row) => row.result);
+    const shoeLabel =
+      state.gameNo !== null ? `GAME-${state.gameNo}` : base.stats.shoeNumber;
+
     if (!results.length) {
       return {
         ...base,
-        name: `SOLAIRE(${tableName})`,
+        name: displayName,
         gameCode: tableName,
         status: state.error ? 'error' : 'analyzing',
         live: {
@@ -148,6 +174,7 @@ export default function useLiveTable(base: TableData, tableName = 'MD2709'): Tab
           latestId: state.latestId,
           latestDetectedAt: state.latestDetectedAt,
           error: state.error,
+          gameNo: state.gameNo,
         },
         roadmap: [],
         stats: {
@@ -156,6 +183,7 @@ export default function useLiveTable(base: TableData, tableName = 'MD2709'): Tab
           banker: 0,
           tie: 0,
           currentStreak: '결과 대기',
+          shoeNumber: shoeLabel,
           currentRound: 0,
           recentResults: [],
         },
@@ -174,11 +202,13 @@ export default function useLiveTable(base: TableData, tableName = 'MD2709'): Tab
     const tie = results.filter((result) => result === 'T').length;
     const opinion = liveOpinion(results);
     const isActionable = opinion !== 'WAIT';
-    const confidence = isActionable ? Math.min(75, 50 + Math.max(0, Math.abs(player - banker))) : 45;
+    const confidence = isActionable
+      ? Math.min(75, 50 + Math.max(0, Math.abs(player - banker)))
+      : 45;
 
     return {
       ...base,
-      name: `SOLAIRE(${tableName})`,
+      name: displayName,
       gameCode: tableName,
       status: isActionable ? 'rule_triggered' : 'observing',
       timer: 0,
@@ -188,6 +218,7 @@ export default function useLiveTable(base: TableData, tableName = 'MD2709'): Tab
         latestId: state.latestId,
         latestDetectedAt: state.latestDetectedAt,
         error: state.error,
+        gameNo: state.gameNo,
       },
       roadmap: buildRoadmap(results),
       stats: {
@@ -196,6 +227,7 @@ export default function useLiveTable(base: TableData, tableName = 'MD2709'): Tab
         banker,
         tie,
         currentStreak: currentStreak(results),
+        shoeNumber: shoeLabel,
         shoeProgress: Math.min(100, Math.round((results.length / 80) * 100)),
         currentRound: results.length,
         recentResults: results.slice(-20),
@@ -205,12 +237,17 @@ export default function useLiveTable(base: TableData, tableName = 'MD2709'): Tab
         finalOpinion: opinion,
         finalConfidence: confidence,
         consensus: isActionable ? '2/3' : '0/3',
-        appliedRule: isActionable ? '동일 결과 2연속 감지' : '실시간 흐름 관찰',
+        appliedRule:
+          state.gameNo !== null
+            ? `게임 ${state.gameNo} 실시간 관찰`
+            : isActionable
+              ? '동일 결과 2연속 감지'
+              : '실시간 흐름 관찰',
         recommendedAmount: isActionable ? base.ai.recommendedAmount : 0,
         gpt: { ...base.ai.gpt, opinion },
         gemini: { ...base.ai.gemini, opinion },
         claude: { ...base.ai.claude, opinion: 'WAIT' },
       },
     };
-  }, [base, state, tableName]);
+  }, [base, state, tableName, displayName]);
 }

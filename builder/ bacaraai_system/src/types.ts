@@ -43,6 +43,7 @@ export interface TableData {
     latestId: number | null;
     latestDetectedAt: string | null;
     error: string | null;
+    gameNo?: number | null;
   };
   roadmap: GameResult[][]; // 2D array for columns
   stats: TableStats;

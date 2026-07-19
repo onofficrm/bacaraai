@@ -80,8 +80,8 @@ export const MOCK_RULES: RuleData[] = [
 export const MOCK_TABLES: TableData[] = [
   {
     id: 't1',
-    name: 'SOLAIRE(MD2709)',
-    gameCode: 'MD2709',
+    name: 'Table1',
+    gameCode: 'MD2729',
     status: 'rule_triggered',
     timer: 15,
     roadmap: generateMockRoadmap(),

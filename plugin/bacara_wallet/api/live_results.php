@@ -2,7 +2,10 @@
 /**
  * 로그인 회원의 실시간 바카라 결과 JSON
  *
- * GET table_name=MD2709&limit=120
+ * GET table_name=MD2729&limit=120
+ *
+ * game_no 가 바뀌면 새 게임으로 간주하고,
+ * 최신 game_no 의 결과만 반환합니다.
  *
  * 홈페이지 DB(G5)와 스코어 테이블 접속정보가 다를 수 있어
  * data/bacaraai-live.config.php 가 있으면 그 계정으로 조회합니다.
@@ -23,7 +26,7 @@ if (empty($is_member) || empty($member['mb_id'])) {
     exit;
 }
 
-$table_name = isset($_GET['table_name']) ? strtoupper(trim($_GET['table_name'])) : 'MD2709';
+$table_name = isset($_GET['table_name']) ? strtoupper(trim($_GET['table_name'])) : 'MD2729';
 if (!preg_match('/^[A-Z0-9_-]{1,40}$/', $table_name)) {
     http_response_code(400);
     echo json_encode(array(
@@ -72,62 +75,78 @@ $safe_table_name = $use_live_cfg
     ? mysqli_real_escape_string($live_link, $table_name)
     : sql_real_escape_string($table_name);
 
-$sql = " select id, table_name, result, detected_at
+// 최신 game_no(새 게임)만 조회. 컬럼명은 DB의 game_no 기준.
+$sql = " select id, table_name, game_no, result, detected_at
            from `bacaraai`
           where account = '{$safe_account}'
             and table_name = '{$safe_table_name}'
             and result in ('P', 'B', 'T')
-          order by id desc
+            and game_no = (
+                select game_no
+                  from `bacaraai`
+                 where account = '{$safe_account}'
+                   and table_name = '{$safe_table_name}'
+                   and result in ('P', 'B', 'T')
+                 order by id desc
+                 limit 1
+            )
+          order by id asc
           limit {$limit} ";
 
 $rows = array();
+$query_error = '';
+
 if ($use_live_cfg) {
     $query = @mysqli_query($live_link, $sql);
     if (!$query) {
-        http_response_code(500);
-        echo json_encode(array(
-            'ok' => false,
-            'message' => '스코어 DB 조회에 실패했습니다.',
-            'error' => mysqli_error($live_link),
-        ), JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-    while ($row = mysqli_fetch_assoc($query)) {
-        $rows[] = array(
-            'id' => (int) $row['id'],
-            'table_name' => $row['table_name'],
-            'result' => $row['result'],
-            'detected_at' => $row['detected_at'],
-        );
+        $query_error = mysqli_error($live_link);
+    } else {
+        while ($row = mysqli_fetch_assoc($query)) {
+            $rows[] = array(
+                'id' => (int) $row['id'],
+                'table_name' => $row['table_name'],
+                'game_no' => isset($row['game_no']) ? (int) $row['game_no'] : null,
+                'result' => $row['result'],
+                'detected_at' => $row['detected_at'],
+            );
+        }
     }
 } else {
     $query = sql_query($sql, false);
     if (!$query) {
-        http_response_code(500);
-        echo json_encode(array(
-            'ok' => false,
-            'message' => '실시간 결과 테이블을 조회할 수 없습니다.',
-        ), JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-    while ($row = sql_fetch_array($query)) {
-        $rows[] = array(
-            'id' => (int) $row['id'],
-            'table_name' => $row['table_name'],
-            'result' => $row['result'],
-            'detected_at' => $row['detected_at'],
-        );
+        $query_error = 'sql_query failed';
+    } else {
+        while ($row = sql_fetch_array($query)) {
+            $rows[] = array(
+                'id' => (int) $row['id'],
+                'table_name' => $row['table_name'],
+                'game_no' => isset($row['game_no']) ? (int) $row['game_no'] : null,
+                'result' => $row['result'],
+                'detected_at' => $row['detected_at'],
+            );
+        }
     }
 }
 
-$rows = array_reverse($rows);
+if ($query_error !== '') {
+    http_response_code(500);
+    echo json_encode(array(
+        'ok' => false,
+        'message' => '실시간 결과 테이블을 조회할 수 없습니다.',
+        'error' => $query_error,
+    ), JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $latest = count($rows) ? $rows[count($rows) - 1] : null;
+$game_no = $latest && isset($latest['game_no']) ? $latest['game_no'] : null;
 
 echo json_encode(array(
     'ok' => true,
     'logged_in' => true,
     'account' => $member['mb_id'],
     'table_name' => $table_name,
+    'game_no' => $game_no,
     'source' => $use_live_cfg ? 'live_config' : 'g5',
     'count' => count($rows),
     'latest_id' => $latest ? $latest['id'] : null,

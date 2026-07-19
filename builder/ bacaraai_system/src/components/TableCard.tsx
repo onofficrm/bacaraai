@@ -82,6 +82,7 @@ export default function TableCard({
                   {table.live.connected ? 'LIVE' : table.live.loading ? '연결 중' : '연결 오류'}
                 </span>
                 <span className="text-[10px] font-mono text-zinc-500">
+                  {table.live.gameNo != null ? `G${table.live.gameNo} · ` : ''}
                   {formatDetectedAt(table.live.latestDetectedAt)}
                 </span>
               </>
