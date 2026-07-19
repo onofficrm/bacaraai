@@ -41,7 +41,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<ViewType>('multitable');
   const { beginnerMode, toggleBeginnerMode, setBeginnerMode } = useBeginnerMode();
   const session = useSession();
-  const liveTable = useLiveTable(MOCK_TABLES[0], 'MD2729', 'Table1');
+  const liveTable = useLiveTable(MOCK_TABLES[0], 'MD2729', 'Table1(MD2729)');
   const tables = useMemo(() => [liveTable, ...MOCK_TABLES.slice(1)], [liveTable]);
   
   const [showOnboarding, setShowOnboarding] = useState(() => {
