@@ -71,7 +71,6 @@ export async function walletCancelBet(input: {
     action: 'cancel',
     amount: input.amount,
     table_name: input.tableName,
-    note: `베팅 취소 · ${input.tableName}`,
   });
 }
 
@@ -79,4 +78,47 @@ export function emitWalletBalance(balance: number) {
   window.dispatchEvent(
     new CustomEvent('bacara-wallet-balance', { detail: { balance } }),
   );
+}
+
+export type WalletHistoryItem = {
+  id: string;
+  time: string;
+  tableName: string;
+  shoeNumber: string;
+  round: number;
+  previousResult: string;
+  gptOpinion: string;
+  geminiOpinion: string;
+  claudeOpinion: string;
+  finalOpinion: string;
+  userSelection: string;
+  amount: number;
+  actualResult: string;
+  pnl: number;
+  martingaleStage: number;
+  appliedRule: string;
+  dataStatus: string;
+  createdAt?: string;
+};
+
+/** 서버 가상머니 베팅 로그 → 게임 기록 */
+export async function fetchWalletBetHistory(limit = 100): Promise<WalletHistoryItem[]> {
+  try {
+    const response = await fetch(
+      `${PLATFORM_LINKS.walletBetHistory}?limit=${limit}`,
+      {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      },
+    );
+    const data = (await response.json()) as {
+      ok?: boolean;
+      items?: WalletHistoryItem[];
+    };
+    if (!response.ok || !data.ok || !Array.isArray(data.items)) return [];
+    return data.items;
+  } catch {
+    return [];
+  }
 }

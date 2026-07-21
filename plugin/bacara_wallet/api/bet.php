@@ -136,7 +136,8 @@ if ($action === 'cancel') {
         exit;
     }
 
-    $content = $note !== '' ? $note : '베팅 취소 · 시드 반환';
+    $label = $table_name !== '' ? $table_name : '테이블';
+    $content = $note !== '' ? $note : ('CANCEL|' . $label . '|' . $amount);
     $result = bacara_wallet_adjust($mb_id, $amount, 'bet_cancel', $content, $mb_id);
 
     if (empty($result['ok'])) {
@@ -179,25 +180,22 @@ if ($action === 'settle') {
 
     $credit = bacara_bet_settle_credit($side, $amount, $outcome);
     $pnl = bacara_bet_net_pnl($side, $amount, $outcome);
-    $balance = bacara_wallet_get_balance($mb_id);
+    $label = $table_name !== '' ? $table_name : '테이블';
+    $kind = $credit > 0 ? 'bet_win' : 'bet_lose';
+    $content = $note !== ''
+        ? $note
+        : ('SETTLE|' . $label . '|' . $side . '|' . $outcome . '|' . $amount . '|' . $pnl);
 
-    if ($credit > 0) {
-        $side_label = $side === 'BANKER' ? 'Banker' : ($side === 'TIE' ? 'Tie' : 'Player');
-        $out_label = $outcome === 'B' ? 'Banker' : ($outcome === 'T' ? 'Tie' : 'Player');
-        $content = $note !== ''
-            ? $note
-            : "베팅 정산 · {$side_label} / 결과 {$out_label} / 입금 " . number_format($credit) . '원';
-        $result = bacara_wallet_adjust($mb_id, $credit, 'bet_win', $content, $mb_id);
-        if (empty($result['ok'])) {
-            http_response_code(500);
-            echo json_encode(array(
-                'ok' => false,
-                'message' => $result['message'],
-                'balance' => isset($result['balance']) ? (int) $result['balance'] : $balance,
-            ), JSON_UNESCAPED_UNICODE);
-            exit;
-        }
-        $balance = (int) $result['balance'];
+    // 패배(credit=0)도 반드시 로그에 남겨 게임 기록에 표시
+    $result = bacara_wallet_adjust($mb_id, $credit, $kind, $content, $mb_id);
+    if (empty($result['ok'])) {
+        http_response_code(500);
+        echo json_encode(array(
+            'ok' => false,
+            'message' => $result['message'],
+            'balance' => isset($result['balance']) ? (int) $result['balance'] : bacara_wallet_get_balance($mb_id),
+        ), JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
     echo json_encode(array(
@@ -208,8 +206,8 @@ if ($action === 'settle') {
         'stake' => $amount,
         'credit' => $credit,
         'pnl' => $pnl,
-        'balance' => $balance,
-        'balance_text' => bacara_wallet_format($balance),
+        'balance' => (int) $result['balance'],
+        'balance_text' => bacara_wallet_format($result['balance']),
         'message' => $credit > 0
             ? ('정산 입금 ' . number_format($credit) . '원')
             : '패배 — 추가 입금 없음',

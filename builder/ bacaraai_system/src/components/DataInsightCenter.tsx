@@ -1,26 +1,39 @@
 import { getResultColor, getResultLabel } from '../utils/colors';
-import React, { useEffect, useState } from 'react';
-import { RefreshCw, Calendar, Download, Activity, Database, BarChart3, PieChart, Info, History } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { RefreshCw, Database, Info } from 'lucide-react';
 import HistoryTab from './HistoryTab';
-import { clearBetHistory, loadBetHistory } from '../utils/betHistory';
+import { clearBetHistory, loadBetHistory, mergeBetHistory } from '../utils/betHistory';
+import { fetchWalletBetHistory } from '../api/walletBet';
 import type { GameHistoryEntry } from '../types';
 
 export default function DataInsightCenter() {
   const [activeTab, setActiveTab] = useState<'status' | 'analysis' | 'search' | 'similar' | 'rules' | 'quality' | 'history'>('history');
-  const [history, setHistory] = useState<GameHistoryEntry[]>(() =>
-    typeof localStorage !== 'undefined' ? loadBetHistory() : [],
-  );
+  const [history, setHistory] = useState<GameHistoryEntry[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  const refreshHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const local = loadBetHistory();
+      const remote = (await fetchWalletBetHistory(150)) as GameHistoryEntry[];
+      setHistory(mergeBetHistory(local, remote));
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const refresh = () => setHistory(loadBetHistory());
-    refresh();
-    window.addEventListener('bacara-bet-history', refresh);
-    window.addEventListener('storage', refresh);
-    return () => {
-      window.removeEventListener('bacara-bet-history', refresh);
-      window.removeEventListener('storage', refresh);
+    void refreshHistory();
+    const onLocal = () => {
+      void refreshHistory();
     };
-  }, []);
+    window.addEventListener('bacara-bet-history', onLocal);
+    window.addEventListener('storage', onLocal);
+    return () => {
+      window.removeEventListener('bacara-bet-history', onLocal);
+      window.removeEventListener('storage', onLocal);
+    };
+  }, [refreshHistory]);
 
   const tabs = [
     { id: 'history', label: '게임 기록' },
@@ -42,37 +55,37 @@ export default function DataInsightCenter() {
               <Database size={24} className="text-blue-500" />
               데이터 인사이트 센터
               <span className="text-xs font-normal text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full ml-2 border border-emerald-500/20">
-                내 베팅 기록 {history.length}건
+                {loadingHistory ? '불러오는 중…' : `내 베팅 기록 ${history.length}건`}
               </span>
             </h2>
             <p className="text-sm text-zinc-400">
-              직접 베팅·오토베팅 정산/취소 결과가 여기에 쌓입니다.
+              가상머니 베팅·정산 내역과 이 기기 기록이 함께 표시됩니다.
             </p>
             <div className="flex items-start gap-2 mt-2 bg-amber-500/10 border border-amber-500/20 text-amber-500/90 text-xs px-3 py-2 rounded-lg max-w-2xl">
               <Info size={14} className="shrink-0 mt-0.5" />
-              <span>샘플 데모 기록이 아니라, 이 브라우저에서 진행한 실제 베팅 기록입니다.</span>
+              <span>로그인 계정의 서버 베팅 로그를 불러옵니다. 새로고침으로 최신화할 수 있습니다.</span>
             </div>
           </div>
           
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setHistory(loadBetHistory())}
+              onClick={() => void refreshHistory()}
               className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-sm font-medium text-zinc-300 transition-colors flex items-center gap-2"
             >
-              <RefreshCw size={14} /> 새로고침
+              <RefreshCw size={14} className={loadingHistory ? 'animate-spin' : ''} /> 새로고침
             </button>
             <button
               type="button"
               onClick={() => {
-                if (window.confirm('저장된 베팅 기록을 모두 지울까요?')) {
+                if (window.confirm('이 기기에 저장된 로컬 기록만 지울까요? (서버 기록은 유지)')) {
                   clearBetHistory();
-                  setHistory([]);
+                  void refreshHistory();
                 }
               }}
               className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-sm font-medium text-zinc-300 transition-colors flex items-center gap-2"
             >
-              기록 비우기
+              로컬 기록 비우기
             </button>
           </div>
         </div>

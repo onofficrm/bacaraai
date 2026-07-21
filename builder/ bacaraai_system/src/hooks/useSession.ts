@@ -39,6 +39,9 @@ export type LastBetResult = {
   pnlDelta: number;
   message: string;
   at: number;
+  /** 게임 기록용 */
+  appliedRule?: string;
+  martinStage?: number;
 };
 
 export type PlaceBetInput = {
@@ -329,6 +332,19 @@ export default function useSession() {
     };
   }, []);
 
+  // setState 밖에서 게임 기록 저장 (updater 내부 side-effect 로 유실되던 문제 방지)
+  const recordedBetIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const r = state.lastBetResult;
+    if (!r?.id) return;
+    if (recordedBetIdsRef.current.has(r.id)) return;
+    recordedBetIdsRef.current.add(r.id);
+    recordBetResult(r, {
+      martinStage: r.martinStage ?? state.martinStage,
+      appliedRule: r.appliedRule || '직접/오토 베팅',
+    });
+  }, [state.lastBetResult, state.martinStage]);
+
   const elapsedMs = useMemo(() => {
     if (state.status === 'running' && state.startedAt) {
       return state.elapsedMs + (now - state.startedAt);
@@ -439,12 +455,9 @@ export default function useSession() {
       pnlDelta: settled.pnlDelta,
       message: settled.message,
       at: Date.now(),
-    };
-
-    recordBetResult(result, {
-      martinStage: curr.martinStage,
       appliedRule: curr.status === 'running' || curr.status === 'paused' ? '오토베팅' : '직접 베팅',
-    });
+      martinStage: curr.martinStage,
+    };
 
     // 가상머니 정산 입금 (차감된 원금 기준)
     void walletSettleBet({
@@ -590,11 +603,9 @@ export default function useSession() {
             pnlDelta: 0,
             message: '다음 게임 결과가 없어 베팅을 취소했습니다 (시드 반환)',
             at: Date.now(),
-          };
-          recordBetResult(lastBetResult, {
-            martinStage: curr.martinStage,
             appliedRule: '자동 취소',
-          });
+            martinStage: curr.martinStage,
+          };
           return {
             ...curr,
             pendingBet: null,
@@ -639,11 +650,9 @@ export default function useSession() {
         pnlDelta: 0,
         message: `베팅 취소 · ${formatMoney(pending.amount)} 반환`,
         at: Date.now(),
-      };
-      recordBetResult(lastBetResult, {
-        martinStage: curr.martinStage,
         appliedRule: '사용자 취소',
-      });
+        martinStage: curr.martinStage,
+      };
       return {
         ...curr,
         pendingBet: null,
@@ -693,11 +702,9 @@ export default function useSession() {
         pnlDelta: 0,
         message: '이번 회차를 건너뛰었습니다',
         at: Date.now(),
-      };
-      recordBetResult(lastBetResult, {
-        martinStage: prev.martinStage,
         appliedRule: '건너뛰기',
-      });
+        martinStage: prev.martinStage,
+      };
       return {
         ...prev,
         skippedCount: prev.skippedCount + 1,

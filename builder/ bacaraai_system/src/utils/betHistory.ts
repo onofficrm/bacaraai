@@ -50,8 +50,7 @@ export function lastBetToHistoryEntry(
     previousResult?: string;
   },
 ): GameHistoryEntry {
-  const cancelled =
-    result.message.includes('취소') || result.message.includes('반환');
+  const cancelled = /취소/.test(result.message) && !/타이/.test(result.message);
   return {
     id: result.id,
     time: formatTime(result.at),
@@ -87,6 +86,24 @@ export function recordBetResult(
   result: LastBetResult,
   opts?: Parameters<typeof lastBetToHistoryEntry>[1],
 ): void {
-  // 금액 0 건너뛰기도 기록 (관망)
   appendBetHistory(lastBetToHistoryEntry(result, opts));
+}
+
+export function mergeBetHistory(
+  local: GameHistoryEntry[],
+  remote: GameHistoryEntry[],
+): GameHistoryEntry[] {
+  const map = new Map<string, GameHistoryEntry>();
+  for (const e of [...remote, ...local]) {
+    if (!e?.id) continue;
+    if (!map.has(e.id)) map.set(e.id, e);
+  }
+  return Array.from(map.values()).sort((a, b) => {
+    const ta = a.time || '';
+    const tb = b.time || '';
+    // createdAt preferred if present
+    const ca = (a as GameHistoryEntry & { createdAt?: string }).createdAt || ta;
+    const cb = (b as GameHistoryEntry & { createdAt?: string }).createdAt || tb;
+    return cb.localeCompare(ca);
+  });
 }
