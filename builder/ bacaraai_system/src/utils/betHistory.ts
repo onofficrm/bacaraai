@@ -36,6 +36,40 @@ function formatTime(at: number): string {
   return `${hh}:${mm}:${ss}`;
 }
 
+function dayKey(at: number = Date.now()): string {
+  const d = new Date(at);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function getTodayBetStats(entries?: GameHistoryEntry[]): {
+  wins: number;
+  losses: number;
+  pnl: number;
+  count: number;
+} {
+  const list = entries ?? loadBetHistory();
+  const today = dayKey();
+  let wins = 0;
+  let losses = 0;
+  let pnl = 0;
+  let count = 0;
+  for (const e of list) {
+    const d = e.day || (e.at ? dayKey(e.at) : today);
+    // 날짜 없는 구기록은 오늘로 치지 않음 (왜곡 방지) — at/day 있을 때만
+    if (!e.day && !e.at) continue;
+    if (d !== today) continue;
+    if (e.dataStatus === '취소' || e.amount <= 0) continue;
+    count += 1;
+    pnl += e.pnl || 0;
+    if (e.pnl > 0) wins += 1;
+    else if (e.pnl < 0) losses += 1;
+  }
+  return { wins, losses, pnl, count };
+}
+
 function sideToOpinion(side: BetSide): AiOpinion {
   return side;
 }
@@ -51,9 +85,10 @@ export function lastBetToHistoryEntry(
   },
 ): GameHistoryEntry {
   const cancelled = /취소/.test(result.message) && !/타이/.test(result.message);
+  const at = result.at || Date.now();
   return {
     id: result.id,
-    time: formatTime(result.at),
+    time: formatTime(at),
     tableName: result.tableName || result.tableId || '-',
     shoeNumber: opts?.shoeNumber || '-',
     round: opts?.round ?? 0,
@@ -71,6 +106,8 @@ export function lastBetToHistoryEntry(
     martingaleStage: opts?.martinStage ?? 1,
     appliedRule: opts?.appliedRule || '직접/오토 베팅',
     dataStatus: cancelled ? '취소' : '정상',
+    at,
+    day: dayKey(at),
   };
 }
 

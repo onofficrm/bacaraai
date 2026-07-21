@@ -407,6 +407,18 @@ export default function App() {
         sessionStatus={session.status}
         sessionMode={session.mode}
         sessionElapsedMs={session.elapsedMs}
+        liveStatus={{
+          connected: Boolean(liveTable.live?.connected),
+          loading: Boolean(liveTable.live?.loading),
+          error: liveTable.live?.error ?? null,
+          latestDetectedAt: liveTable.live?.latestDetectedAt ?? null,
+          tableLabel: 'TABLE1',
+        }}
+        aiRecommendCount={
+          tables.filter(
+            (t) => t.ai.finalOpinion === 'PLAYER' || t.ai.finalOpinion === 'BANKER',
+          ).length
+        }
         onSessionModeChange={(mode) => {
           if (session.status === 'idle') {
             setIsModalOpen(true);

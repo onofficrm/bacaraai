@@ -98,6 +98,10 @@ export interface GameHistoryEntry {
   martingaleStage: number;
   appliedRule: string;
   dataStatus: string;
+  /** epoch ms — 오늘 성적 집계용 */
+  at?: number;
+  /** YYYY-MM-DD */
+  day?: string;
 }
 
 export interface Notification {

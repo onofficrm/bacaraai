@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Activity, LogOut, Maximize2, Minimize2, Settings, ShieldAlert, Wallet } from 'lucide-react';
 import NotificationCenter from './NotificationCenter';
 import { PLATFORM_LINKS } from '../constants';
@@ -7,10 +7,20 @@ import HelpTooltip from './HelpTooltip';
 import { playSfx } from '../audio/sfxEngine';
 import {
   formatElapsed,
+  formatMoney,
   modeLabel,
   type SessionMode,
   type SessionStatus,
 } from '../hooks/useSession';
+import { getTodayBetStats } from '../utils/betHistory';
+
+export type HeaderLiveStatus = {
+  connected: boolean;
+  loading: boolean;
+  error: string | null;
+  latestDetectedAt: string | null;
+  tableLabel: string;
+};
 
 interface HeaderProps {
   onEmergencyStop?: () => void;
@@ -21,6 +31,8 @@ interface HeaderProps {
   sessionMode?: SessionMode | null;
   sessionElapsedMs?: number;
   onSessionModeChange?: (mode: SessionMode) => void;
+  liveStatus?: HeaderLiveStatus | null;
+  aiRecommendCount?: number;
 }
 
 function isFullscreenActive() {
@@ -52,6 +64,18 @@ async function exitFullscreen() {
   }
 }
 
+function relativeUpdateLabel(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '—';
+  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (sec < 8) return '방금 전';
+  if (sec < 60) return `${sec}초 전`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분 전`;
+  return `${Math.floor(min / 60)}시간 전`;
+}
+
 export default function Header({
   onEmergencyStop,
   activeViewLabel,
@@ -61,11 +85,16 @@ export default function Header({
   sessionMode = null,
   sessionElapsedMs = 0,
   onSessionModeChange,
+  liveStatus = null,
+  aiRecommendCount = 0,
 }: HeaderProps) {
   const wallet = useWallet();
   const moneyText = new Intl.NumberFormat('ko-KR').format(wallet.balance) + '원';
   const [fullscreen, setFullscreen] = useState(false);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const isActive = sessionStatus === 'running' || sessionStatus === 'paused';
+
+  const today = useMemo(() => getTodayBetStats(), [nowTick, isActive]);
 
   useEffect(() => {
     const sync = () => setFullscreen(isFullscreenActive());
@@ -75,6 +104,16 @@ export default function Header({
     return () => {
       document.removeEventListener('fullscreenchange', sync);
       document.removeEventListener('webkitfullscreenchange', sync as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 5000);
+    const onHist = () => setNowTick(Date.now());
+    window.addEventListener('bacara-bet-history', onHist);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('bacara-bet-history', onHist);
     };
   }, []);
 
@@ -91,6 +130,27 @@ export default function Header({
       playSfx('error');
     }
   };
+
+  const liveLabel = !liveStatus
+    ? '라이브 대기'
+    : liveStatus.error
+      ? '수신 오류'
+      : liveStatus.loading && !liveStatus.connected
+        ? '연결 중…'
+        : liveStatus.connected
+          ? `${liveStatus.tableLabel} 수신 중`
+          : '라이브 끊김';
+
+  const liveDot =
+    liveStatus?.connected && !liveStatus.error
+      ? 'bg-emerald-500 animate-pulse'
+      : liveStatus?.loading
+        ? 'bg-amber-400 animate-pulse'
+        : 'bg-zinc-600';
+
+  const updateLabel = isActive
+    ? '방금 전'
+    : relativeUpdateLabel(liveStatus?.latestDetectedAt);
 
   return (
     <header className="relative z-[200] h-[68px] bg-zinc-950 border-b border-zinc-800 flex items-center justify-between px-6 text-zinc-300 shrink-0">
@@ -138,46 +198,93 @@ export default function Header({
           데모 데이터 사용 중
         </div>
 
-        <div className="flex items-center gap-2">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              sessionStatus === 'running'
-                ? 'bg-blue-500 animate-pulse'
-                : sessionStatus === 'paused'
-                  ? 'bg-amber-400'
-                  : 'bg-zinc-600'
-            }`}
-          />
-          <span
-            className={`font-bold ${
-              sessionStatus === 'running'
-                ? 'text-blue-400'
-                : sessionStatus === 'paused'
-                  ? 'text-amber-400'
-                  : 'text-zinc-500'
-            }`}
-          >
-            {sessionStatus === 'running'
-              ? `${modeLabel(sessionMode)} 진행 중`
-              : sessionStatus === 'paused'
-                ? '오토베팅 일시정지'
-                : '오토베팅 꺼짐'}
-          </span>
-        </div>
-        <div className="h-4 w-[1px] bg-zinc-800"></div>
-        <div className="flex items-center gap-2">
-          <span className="text-zinc-500">진행 시간</span>
-          <span className="font-mono font-medium text-zinc-200">
-            {isActive ? formatElapsed(sessionElapsedMs) : '0분 00초'}
-          </span>
-        </div>
-        <div className="h-4 w-[1px] bg-zinc-800"></div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-zinc-500">마지막 업데이트:</span>
-          <span className={isActive ? 'text-emerald-400' : 'text-zinc-500'}>
-            {isActive ? '방금 전' : '—'}
-          </span>
-        </div>
+        {isActive ? (
+          <>
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  sessionStatus === 'running' ? 'bg-blue-500 animate-pulse' : 'bg-amber-400'
+                }`}
+              />
+              <span
+                className={`font-bold ${
+                  sessionStatus === 'running' ? 'text-blue-400' : 'text-amber-400'
+                }`}
+              >
+                {sessionStatus === 'running'
+                  ? `${modeLabel(sessionMode)} 진행 중`
+                  : '오토베팅 일시정지'}
+              </span>
+            </div>
+            <div className="h-4 w-[1px] bg-zinc-800" />
+            <div className="flex items-center gap-2">
+              <span className="text-zinc-500">진행 시간</span>
+              <span className="font-mono font-medium text-zinc-200">
+                {formatElapsed(sessionElapsedMs)}
+              </span>
+            </div>
+            <div className="h-4 w-[1px] bg-zinc-800" />
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-zinc-500">마지막 업데이트:</span>
+              <span className="text-emerald-400">{updateLabel}</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2" title={liveStatus?.error || undefined}>
+              <span className={`w-2 h-2 rounded-full ${liveDot}`} />
+              <span
+                className={`font-bold text-xs sm:text-sm ${
+                  liveStatus?.connected && !liveStatus.error
+                    ? 'text-emerald-400'
+                    : liveStatus?.error
+                      ? 'text-rose-400'
+                      : 'text-zinc-400'
+                }`}
+              >
+                {liveLabel}
+              </span>
+            </div>
+            <div className="h-4 w-[1px] bg-zinc-800" />
+            <div className="flex items-center gap-2 text-xs whitespace-nowrap">
+              <span className="text-zinc-500">오늘</span>
+              {today.count === 0 ? (
+                <span className="text-zinc-400">아직 베팅 없음</span>
+              ) : (
+                <span className="font-medium">
+                  <span className="text-emerald-400">승 {today.wins}</span>
+                  <span className="text-zinc-600 mx-1">·</span>
+                  <span className="text-rose-400">패 {today.losses}</span>
+                  <span className="text-zinc-600 mx-1">·</span>
+                  <span
+                    className={`font-mono font-bold ${
+                      today.pnl > 0
+                        ? 'text-emerald-400'
+                        : today.pnl < 0
+                          ? 'text-rose-400'
+                          : 'text-zinc-300'
+                    }`}
+                  >
+                    {formatMoney(today.pnl, true)}
+                  </span>
+                </span>
+              )}
+            </div>
+            <div className="h-4 w-[1px] bg-zinc-800" />
+            <div className="flex items-center gap-2 text-xs whitespace-nowrap">
+              <span className="text-zinc-500">결과 갱신:</span>
+              <span className={liveStatus?.connected ? 'text-emerald-400' : 'text-zinc-500'}>
+                {updateLabel}
+              </span>
+              {aiRecommendCount > 0 && (
+                <>
+                  <span className="text-zinc-700">·</span>
+                  <span className="text-sky-400 font-bold">AI 추천 {aiRecommendCount}</span>
+                </>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Right */}
