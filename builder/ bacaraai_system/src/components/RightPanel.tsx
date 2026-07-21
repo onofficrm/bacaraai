@@ -123,16 +123,8 @@ export default function RightPanel({
     setPanelMode('manual');
   }, [table?.id]);
 
-  React.useEffect(() => {
-    if (!table) return;
-    const preferred =
-      table.ai.recommendedAmount > 0
-        ? table.ai.recommendedAmount
-        : suggestedBet > 0
-          ? suggestedBet
-          : 10000;
-    setBetAmount(preferred);
-  }, [table?.ai?.recommendedAmount, suggestedBet, table]);
+  // 금액은 테이블 전환 시에만 맞추고, 칩 입력 중에는 덮어쓰지 않음
+  // (라이브 폴링으로 table/suggestedBet 이 바뀌면 초기화되던 문제 방지)
 
   React.useEffect(() => {
     if (!lastBetResult) return;
