@@ -1,11 +1,13 @@
 import { getResultColor, getResultLabel } from '../utils/colors';
 import { Activity, ChevronDown, ChevronUp, FileText, Info, Pause, Play, Settings2, Square, X } from 'lucide-react';
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AiModelAnalysis, AiOpinion, GameResult, SessionConfig, TableData } from '../types';
 import MartingaleVisualizer from './MartingaleVisualizer';
 import Roadmap from './Roadmap';
 import EmptyRightPanel from './EmptyRightPanel';
 import { playSfx } from '../audio/sfxEngine';
+import useIsDesktopXl from '../hooks/useIsDesktopXl';
 import {
   DEFAULT_SESSION_CONFIG,
   formatMoney,
@@ -98,6 +100,7 @@ export default function RightPanel({
   const [betError, setBetError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [roadmapOpen, setRoadmapOpen] = useState(false);
+  const isDesktop = useIsDesktopXl();
 
   const recommendedSide: BetSide | null =
     table?.ai.finalOpinion === 'PLAYER'
@@ -124,11 +127,8 @@ export default function RightPanel({
     setShowRisk(false);
     setBetError(null);
     setPanelMode('manual');
-    // 모바일·태블릿: 로드맵 접고 베팅부터 / 데스크톱(xl+): 펼침
-    setRoadmapOpen(
-      typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches,
-    );
-  }, [table?.id]);
+    setRoadmapOpen(isDesktop);
+  }, [table?.id, isDesktop]);
 
   // 금액은 테이블 전환 시에만 맞추고, 칩 입력 중에는 덮어쓰지 않음
   // (라이브 폴링으로 table/suggestedBet 이 바뀌면 초기화되던 문제 방지)
@@ -271,45 +271,59 @@ export default function RightPanel({
   };
 
   if (!table) {
-    return (
+    // 모바일: 닫혀 있으면 DOM에 올리지 않음 (흰 여백/레이아웃 밀림 방지)
+    if (!isDesktop && !isOpen) return null;
+
+    const emptyBody = (
       <>
-        {isOpen && (
-          <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm xl:hidden" onClick={onClose} />
-        )}
-        <div
-          className={`z-50 bg-zinc-950 border-zinc-800 flex-col shrink-0 ${
-            isOpen ? 'flex' : 'hidden xl:flex'
-          } fixed inset-x-0 bottom-0 max-h-[min(70dvh,640px)] rounded-t-2xl border-t border-x shadow-2xl xl:rounded-none xl:shadow-none xl:inset-y-0 xl:right-0 xl:left-auto xl:bottom-auto xl:max-h-none xl:h-full xl:w-80 2xl:w-[420px] xl:border-t-0 xl:border-x-0 xl:border-l`}
-        >
-          <div className="xl:hidden flex justify-center pt-2 pb-1 shrink-0">
+        {!isDesktop && (
+          <div className="flex justify-center pt-2 pb-1 shrink-0">
             <div className="w-10 h-1 rounded-full bg-zinc-700" />
           </div>
-          <div className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
-            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">시작하기</span>
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="xl:hidden p-2 -mr-1 text-zinc-500 hover:text-white rounded-full touch-manipulation"
-                aria-label="닫기"
-              >
-                <X size={20} />
-              </button>
-            )}
-          </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <EmptyRightPanel
-              tables={tables}
-              onSelectTable={onSelectTable ?? (() => undefined)}
-              beginnerMode={beginnerMode}
-              onOpenAutoSettings={() => {
-                playSfx('ui');
-                onOpenSessionSettings?.();
-              }}
-            />
-          </div>
+        )}
+        <div className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
+          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">시작하기</span>
+          {!isDesktop && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 -mr-1 text-zinc-500 hover:text-white rounded-full touch-manipulation"
+              aria-label="닫기"
+            >
+              <X size={20} />
+            </button>
+          )}
+        </div>
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <EmptyRightPanel
+            tables={tables}
+            onSelectTable={onSelectTable ?? (() => undefined)}
+            beginnerMode={beginnerMode}
+            onOpenAutoSettings={() => {
+              playSfx('ui');
+              onOpenSessionSettings?.();
+            }}
+          />
         </div>
       </>
+    );
+
+    if (isDesktop) {
+      return (
+        <div className="hidden xl:flex z-50 w-80 2xl:w-[420px] h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex-col shrink-0">
+          {emptyBody}
+        </div>
+      );
+    }
+
+    return createPortal(
+      <>
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm" onClick={onClose} />
+        <div className="fixed inset-x-0 bottom-0 z-[70] w-full max-h-[min(70dvh,640px)] rounded-t-2xl border-t border-x border-zinc-800 bg-zinc-950 shadow-2xl flex flex-col">
+          {emptyBody}
+        </div>
+      </>,
+      document.body,
     );
   }
 
@@ -321,24 +335,19 @@ export default function RightPanel({
     ? nextBetAmount(cfg.initialBet, Math.min(martinStage, cfg.maxMartin), cfg.maxBet)
     : suggestedBet;
 
-  return (
-    <>
-      {isOpen && (
-        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm xl:hidden" onClick={onClose} />
-      )}
+  // 모바일·태블릿: 닫혀 있으면 레이아웃에 참여하지 않음
+  if (!isDesktop && !isOpen) return null;
 
-      <div
-        className={`z-50 bg-zinc-950 border-zinc-800 flex-col min-h-0 ${
-          isOpen ? 'flex' : 'hidden xl:flex'
-        } fixed inset-x-0 bottom-0 max-h-[min(92dvh,900px)] rounded-t-2xl border-t border-x shadow-2xl xl:rounded-none xl:shadow-none xl:inset-y-0 xl:right-0 xl:left-auto xl:bottom-auto xl:max-h-none xl:h-full xl:w-80 2xl:w-[420px] xl:border-t-0 xl:border-x-0 xl:border-l xl:static`}
-      >
-        {/* Mobile/tablet drag handle */}
-        <div className="xl:hidden flex justify-center pt-2 pb-0.5 shrink-0">
-          <div className="w-10 h-1 rounded-full bg-zinc-700" />
-        </div>
+  const panelInner = (
+      <>
+        {!isDesktop && (
+          <div className="flex justify-center pt-2 pb-0.5 shrink-0">
+            <div className="w-10 h-1 rounded-full bg-zinc-700" />
+          </div>
+        )}
 
         {/* Header */}
-        <div className="px-4 py-2.5 sm:py-3 border-b border-zinc-800/80 shrink-0 bg-zinc-950/95 backdrop-blur-sm z-10">
+        <div className="px-4 py-2.5 sm:py-3 border-b border-zinc-800/80 shrink-0 bg-zinc-950 z-10">
           <div className="flex justify-between items-start gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -354,11 +363,11 @@ export default function RightPanel({
               </div>
             </div>
             <div className="flex items-start gap-2 shrink-0">
-              {onClose && (
+              {!isDesktop && onClose && (
                 <button
                   type="button"
                   onClick={onClose}
-                  className="xl:hidden p-2 -mr-1 bg-zinc-900 text-zinc-400 hover:text-white rounded-full touch-manipulation"
+                  className="p-2 -mr-1 bg-zinc-900 text-zinc-400 hover:text-white rounded-full touch-manipulation"
                   aria-label="닫기"
                 >
                   <X size={20} />
@@ -1147,8 +1156,8 @@ export default function RightPanel({
         </div>
 
         {/* Mobile/tablet sticky bet bar */}
-        {panelMode === 'manual' && !isRisk && (
-          <div className="xl:hidden shrink-0 border-t border-zinc-800 bg-zinc-950/98 backdrop-blur-md px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {panelMode === 'manual' && !isRisk && !isDesktop && (
+          <div className="shrink-0 border-t border-zinc-800 bg-zinc-950 px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             {isManualSettling && manualPending ? (
               <button
                 type="button"
@@ -1193,8 +1202,25 @@ export default function RightPanel({
             )}
           </div>
         )}
+      </>
+  );
+
+  if (isDesktop) {
+    return (
+      <div className="hidden xl:flex z-50 w-80 2xl:w-[420px] h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex-col shrink-0">
+        {panelInner}
       </div>
-    </>
+    );
+  }
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-x-0 bottom-0 z-[70] w-full max-h-[min(92dvh,900px)] rounded-t-2xl border-t border-x border-zinc-800 bg-zinc-950 shadow-2xl flex flex-col">
+        {panelInner}
+      </div>
+    </>,
+    document.body,
   );
 }
 

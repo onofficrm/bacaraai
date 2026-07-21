@@ -411,7 +411,7 @@ export default function App() {
   }, [sortBy]);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-200 font-sans flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
+    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-zinc-950 text-zinc-200 font-sans flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
       <Header 
         onEmergencyStop={() => {
           playSfx('risk');
