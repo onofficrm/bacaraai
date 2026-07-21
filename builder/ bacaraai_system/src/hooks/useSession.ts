@@ -628,31 +628,23 @@ export default function useSession() {
 
     clearSettleTimer();
 
-    const res = await walletCancelBet({
-      amount: pending.amount,
+    // UI는 즉시 해제 (취소 체감) — 환불은 이어서 요청
+    const lastBetResult: LastBetResult = {
+      id: pending.id,
+      tableId: pending.tableId,
       tableName: pending.tableName,
-    });
-    if (res.ok && typeof res.balance === 'number') {
-      emitWalletBalance(res.balance);
-    }
-    // 로그인 안 된 데모/시드 모드에서도 UI 잔액은 pnl 복구로 맞춤
-
+      side: pending.side,
+      amount: pending.amount,
+      outcome: 'T',
+      won: null,
+      pnlDelta: 0,
+      message: `베팅 취소 · ${formatMoney(pending.amount)} 반환`,
+      at: Date.now(),
+      appliedRule: '사용자 취소',
+      martinStage: stateRef.current.martinStage,
+    };
     setState((curr) => {
       if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
-      const lastBetResult: LastBetResult = {
-        id: pending.id,
-        tableId: pending.tableId,
-        tableName: pending.tableName,
-        side: pending.side,
-        amount: pending.amount,
-        outcome: 'T',
-        won: null,
-        pnlDelta: 0,
-        message: `베팅 취소 · ${formatMoney(pending.amount)} 반환`,
-        at: Date.now(),
-        appliedRule: '사용자 취소',
-        martinStage: curr.martinStage,
-      };
       return {
         ...curr,
         pendingBet: null,
@@ -660,7 +652,27 @@ export default function useSession() {
       };
     });
 
-    return { ok: true };
+    try {
+      const res = await walletCancelBet({
+        amount: pending.amount,
+        tableName: pending.tableName,
+      });
+      if (res.ok && typeof res.balance === 'number') {
+        emitWalletBalance(res.balance);
+      }
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: res.message || '가상머니 반환에 실패했습니다. 잔액을 확인해 주세요.',
+        };
+      }
+      return { ok: true };
+    } catch {
+      return {
+        ok: false,
+        error: '베팅 취소 요청 중 오류가 발생했습니다.',
+      };
+    }
   }, []);
 
   const settlePendingWithOutcome = useCallback((

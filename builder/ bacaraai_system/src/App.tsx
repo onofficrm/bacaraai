@@ -71,6 +71,12 @@ export default function App() {
     null,
   );
   const handledBetResultIdRef = useRef<string | null>(null);
+  /** 취소한 베팅과 같은 회차에서 오토베팅이 즉시 재진입하지 않도록 차단 */
+  const cancelledAutoUntilRef = useRef<{
+    tableId: string;
+    baselineLatestId: number;
+    baselineResultCount: number;
+  } | null>(null);
 
   useEffect(() => {
     installAudioUnlock();
@@ -119,6 +125,7 @@ export default function App() {
         autoBetSignalRef.current = null;
         patternRunRef.current = null;
         handledBetResultIdRef.current = null;
+        cancelledAutoUntilRef.current = null;
       }
       return;
     }
@@ -149,6 +156,19 @@ export default function App() {
     const roundKeyOf = (t: TableData) =>
       t.live?.connected ? String(t.live.latestId ?? 0) : String(t.stats.currentRound);
 
+    const isCancelledRound = (t: TableData) => {
+      const block = cancelledAutoUntilRef.current;
+      if (!block || block.tableId !== t.id) return false;
+      const idAdvanced =
+        typeof t.live?.latestId === 'number' && t.live.latestId > block.baselineLatestId;
+      const countAdvanced = t.stats.recentResults.length > block.baselineResultCount;
+      if (idAdvanced || countAdvanced) {
+        cancelledAutoUntilRef.current = null;
+        return false;
+      }
+      return true;
+    };
+
     if (strategy === 'pattern') {
       const pattern = normalizePatternSegments(session.config);
       const betSide = session.config.patternBetSide || 'PLAYER';
@@ -157,7 +177,7 @@ export default function App() {
       if (patternRunRef.current) {
         const run = patternRunRef.current;
         const t = watchTables.find((x) => x.id === run.tableId);
-        if (t && t.status !== 'risk_blocked') {
+        if (t && t.status !== 'risk_blocked' && !isCancelledRound(t)) {
           const signal = `${t.id}:${roundKeyOf(t)}:run:${run.side}:${session.martinStage}`;
           if (autoBetSignalRef.current !== signal) {
             candidate = {
@@ -167,7 +187,7 @@ export default function App() {
               fromPatternEntry: false,
             };
           }
-        } else {
+        } else if (!t || t.status === 'risk_blocked') {
           patternRunRef.current = null;
         }
       }
@@ -176,6 +196,7 @@ export default function App() {
       if (!candidate && !patternRunRef.current && pattern.length >= 1) {
         for (const t of watchTables) {
           if (t.status === 'risk_blocked') continue;
+          if (isCancelledRound(t)) continue;
           if (!matchesPattern(t.stats.recentResults || [], pattern)) continue;
           const signal = `${t.id}:${roundKeyOf(t)}:pattern:${patternSignalKey(pattern)}:${betSide}`;
           if (autoBetSignalRef.current === signal) continue;
@@ -191,6 +212,7 @@ export default function App() {
     } else {
       for (const t of watchTables) {
         if (t.status === 'risk_blocked') continue;
+        if (isCancelledRound(t)) continue;
         const opinion = t.ai.finalOpinion;
         if (opinion !== 'PLAYER' && opinion !== 'BANKER') continue;
         const signal = `${t.id}:${roundKeyOf(t)}:ai:${opinion}`;
@@ -499,13 +521,18 @@ export default function App() {
               onPlaceBet={session.placeBet}
               onSkip={session.skipRound}
               onCancelBet={async () => {
+                const pending = session.pendingBet;
                 patternRunRef.current = null;
-                const result = await session.cancelPendingBet();
-                if (result.ok) {
-                  autoBetSignalRef.current = null;
-                  playSfx('ui');
+                if (pending) {
+                  cancelledAutoUntilRef.current = {
+                    tableId: pending.tableId,
+                    baselineLatestId: pending.baselineLatestId ?? 0,
+                    baselineResultCount: pending.baselineResultCount ?? 0,
+                  };
+                  // 같은 시그널로 즉시 재베팅되지 않도록 유지 키 설정
+                  autoBetSignalRef.current = `cancelled:${pending.tableId}:${pending.id}`;
                 }
-                return result;
+                return session.cancelPendingBet();
               }}
               onOpenSessionSettings={() => setIsModalOpen(true)}
               onUpdateSessionConfig={session.updateConfig}

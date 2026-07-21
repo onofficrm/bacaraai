@@ -95,6 +95,7 @@ export default function RightPanel({
   const [showAiDetails, setShowAiDetails] = useState(false);
   const [showRisk, setShowRisk] = useState(false);
   const [betError, setBetError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   const recommendedSide: BetSide | null =
     table?.ai.finalOpinion === 'PLAYER'
@@ -132,6 +133,21 @@ export default function RightPanel({
     else if (lastBetResult.won === false) playSfx('loss');
     else playSfx('tick');
   }, [lastBetResult?.id]);
+
+  const handleCancelBet = async () => {
+    if (cancelling) return;
+    playSfx('ui');
+    setCancelling(true);
+    setBetError(null);
+    try {
+      const result = await onCancelBet?.();
+      if (result && !result.ok) {
+        setBetError(result.error || '베팅 취소에 실패했습니다.');
+      }
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const isPassive = table
     ? ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion)
@@ -444,13 +460,11 @@ export default function RightPanel({
                   </p>
                   <button
                     type="button"
-                    onClick={() => {
-                      playSfx('ui');
-                      void onCancelBet?.();
-                    }}
-                    className="w-full py-2.5 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors"
+                    disabled={cancelling}
+                    onClick={() => void handleCancelBet()}
+                    className="w-full py-2.5 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors disabled:opacity-50"
                   >
-                    베팅 취소 (금액 반환)
+                    {cancelling ? '취소 중…' : '베팅 취소 (금액 반환)'}
                   </button>
                 </div>
               )}
@@ -652,13 +666,11 @@ export default function RightPanel({
                       {isSettling ? (
                         <button
                           type="button"
-                          onClick={() => {
-                            playSfx('ui');
-                            void onCancelBet?.();
-                          }}
-                          className="col-span-2 py-3 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors"
+                          disabled={cancelling}
+                          onClick={() => void handleCancelBet()}
+                          className="col-span-2 py-3 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors disabled:opacity-50"
                         >
-                          베팅 취소 (금액 반환)
+                          {cancelling ? '취소 중…' : '베팅 취소 (금액 반환)'}
                         </button>
                       ) : (
                         <>
@@ -921,13 +933,11 @@ export default function RightPanel({
                         </p>
                         <button
                           type="button"
-                          onClick={() => {
-                            playSfx('ui');
-                            void onCancelBet?.();
-                          }}
-                          className="w-full py-2 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-xs font-bold hover:bg-rose-500/25"
+                          disabled={cancelling}
+                          onClick={() => void handleCancelBet()}
+                          className="w-full py-2 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-xs font-bold hover:bg-rose-500/25 disabled:opacity-50"
                         >
-                          베팅 취소 (금액 반환)
+                          {cancelling ? '취소 중…' : '베팅 취소 (금액 반환)'}
                         </button>
                       </div>
                     )}
