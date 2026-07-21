@@ -161,10 +161,10 @@ export default function RightPanel({
     { label: '2배', value: 'DOUBLE' as const, color: 'bg-zinc-800 text-white border-zinc-950' },
   ];
 
-  const sideOptions: { id: BetSide; label: string; active: string }[] = [
-    { id: 'PLAYER', label: 'Player', active: 'bg-blue-600 border-blue-400 text-white' },
-    { id: 'BANKER', label: 'Banker', active: 'bg-red-500 border-red-400 text-white' },
-    { id: 'TIE', label: 'Tie', active: 'bg-emerald-500 border-emerald-400 text-white' },
+  const sideOptions: { id: BetSide; label: string; active: string; flex: string }[] = [
+    { id: 'PLAYER', label: 'Player', active: 'bg-blue-600 border-blue-400 text-white', flex: 'flex-[4]' },
+    { id: 'TIE', label: 'Tie', active: 'bg-emerald-500 border-emerald-400 text-white', flex: 'flex-[2]' },
+    { id: 'BANKER', label: 'Banker', active: 'bg-red-500 border-red-400 text-white', flex: 'flex-[4]' },
   ];
 
   const clampAmount = (amount: number) =>
@@ -503,7 +503,7 @@ export default function RightPanel({
                   <div className="p-3 flex flex-col gap-3">
                     <div>
                       <label className="text-[11px] font-bold text-zinc-400 mb-1.5 block">① 베팅할 곳</label>
-                      <div className="grid grid-cols-3 gap-1.5">
+                      <div className="flex gap-2">
                         {sideOptions.map((opt) => {
                           const active = selectedSide === opt.id;
                           return (
@@ -516,7 +516,7 @@ export default function RightPanel({
                                 setSelectedSide(opt.id);
                                 setBetError(null);
                               }}
-                              className={`py-3 rounded-lg border text-sm font-bold transition-colors disabled:opacity-40 ${
+                              className={`${opt.flex} min-h-[52px] py-4 rounded-xl border text-base font-bold transition-colors disabled:opacity-40 ${
                                 active
                                   ? opt.active
                                   : 'bg-zinc-950 border-zinc-700 text-zinc-400 hover:border-zinc-500'
