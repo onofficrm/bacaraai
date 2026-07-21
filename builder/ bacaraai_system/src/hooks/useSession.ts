@@ -550,10 +550,9 @@ export default function useSession() {
 
     clearSettleTimer();
 
-    // PnL: 베팅 순간 차감 반영 (오토베팅 게이지 / 수동 기록 공용)
+    // 손익(pnl)은 정산 시에만 반영 — 베팅 접수 시점에는 손실로 잡지 않음
     setState((curr) => ({
       ...curr,
-      pnl: curr.pnl - amount,
       pendingBet: pending,
       lastBetResult: null,
     }));
@@ -563,11 +562,7 @@ export default function useSession() {
       settleTimer.current = window.setTimeout(() => {
         setState((curr) => {
           if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
-          const mid = {
-            ...curr,
-            pnl: curr.pnl + pending.amount,
-          };
-          return applySettlement(mid, curr.pendingBet, rollOutcome());
+          return applySettlement(curr, curr.pendingBet, rollOutcome());
         });
         settleTimer.current = null;
       }, SETTLE_MS);
@@ -602,7 +597,6 @@ export default function useSession() {
           });
           return {
             ...curr,
-            pnl: curr.pnl + pending.amount,
             pendingBet: null,
             lastBetResult,
           };
@@ -652,7 +646,6 @@ export default function useSession() {
       });
       return {
         ...curr,
-        pnl: curr.pnl + pending.amount,
         pendingBet: null,
         lastBetResult,
       };
@@ -682,11 +675,7 @@ export default function useSession() {
       if (!idAdvanced && !countAdvanced) return curr;
 
       clearSettleTimer();
-      const mid = {
-        ...curr,
-        pnl: curr.pnl + pending.amount,
-      };
-      return applySettlement(mid, pending, outcome);
+      return applySettlement(curr, pending, outcome);
     });
   }, [applySettlement]);
 
