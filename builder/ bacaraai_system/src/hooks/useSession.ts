@@ -159,13 +159,13 @@ export function formatElapsed(ms: number): string {
 export function modeLabel(mode: SessionMode | null): string {
   switch (mode) {
     case 'observe':
-      return '관찰 모드';
+      return '오토 · 관망';
     case 'shadow':
-      return '섀도 모드';
+      return '오토 · 섀도';
     case 'live':
-      return 'AI 추천 모드';
+      return '오토베팅';
     default:
-      return '대기 중';
+      return '오토베팅 꺼짐';
   }
 }
 
@@ -425,20 +425,13 @@ export default function useSession() {
 
   const placeBet = useCallback(async (input: PlaceBetInput): Promise<PlaceBetResult> => {
     const prev = stateRef.current;
+    const autoBetting = prev.status === 'running';
 
-    if (prev.status !== 'running') {
+    // 수동 베팅은 오토베팅(세션) 없이도 가능. 일시정지 중인 오토베팅만 막음.
+    if (prev.status === 'paused') {
       return {
         ok: false,
-        error:
-          prev.status === 'paused'
-            ? '일시정지 중입니다. 재개 후 베팅하세요.'
-            : '먼저 세션을 시작해 주세요.',
-      };
-    }
-    if (prev.mode === 'observe') {
-      return {
-        ok: false,
-        error: '관찰 모드에서는 베팅할 수 없습니다. AI 추천/섀도 모드로 전환하세요.',
+        error: '오토베팅이 일시정지 중입니다. 재개하거나 오토베팅을 종료한 뒤 수동 베팅하세요.',
       };
     }
     if (prev.pendingBet) {
@@ -464,10 +457,11 @@ export default function useSession() {
       return { ok: false, error: `가상머니가 부족합니다. (가능 ${formatMoney(available)})` };
     }
 
-    if (prev.martinStage > prev.config.maxMartin) {
+    // 마틴 한도는 오토베팅 진행 중에만 적용
+    if (autoBetting && prev.martinStage > prev.config.maxMartin) {
       return {
         ok: false,
-        error: '최대 마틴 단계에 도달했습니다. 관망하거나 세션을 재설정하세요.',
+        error: '최대 마틴 단계에 도달했습니다. 오토베팅을 재설정하세요.',
       };
     }
 
@@ -502,7 +496,7 @@ export default function useSession() {
 
     clearSettleTimer();
 
-    // 세션 PnL: 베팅 순간 차감 반영
+    // PnL: 베팅 순간 차감 반영 (오토베팅 게이지 / 수동 기록 공용)
     setState((curr) => ({
       ...curr,
       pnl: curr.pnl - amount,
@@ -514,8 +508,6 @@ export default function useSession() {
       settleTimer.current = window.setTimeout(() => {
         setState((curr) => {
           if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
-          // 차감분 되돌린 뒤 settlePnl 순손익을 적용하기 위해
-          // applySettlement의 pnlDelta는 순손익이므로, 먼저 차감한 amount를 보정
           const mid = {
             ...curr,
             pnl: curr.pnl + pending.amount,
@@ -538,7 +530,7 @@ export default function useSession() {
           if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
           return {
             ...curr,
-            pnl: curr.pnl + pending.amount, // 차감 복구
+            pnl: curr.pnl + pending.amount,
             pendingBet: null,
             lastBetResult: {
               id: pending.id,

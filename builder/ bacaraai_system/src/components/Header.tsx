@@ -124,10 +124,10 @@ export default function Header({
                 : 'text-emerald-400'
           }`}
         >
-          {!sessionMode && <option value="">대기 중</option>}
-          <option value="observe">관찰 모드</option>
-          <option value="live">AI 추천 모드</option>
-          <option value="shadow">섀도 모드</option>
+          {!sessionMode && <option value="">오토베팅 꺼짐</option>}
+          <option value="observe">오토 · 관망</option>
+          <option value="live">오토베팅 (AI 자동)</option>
+          <option value="shadow">오토 · 섀도</option>
         </select>
       </div>
 
@@ -160,8 +160,8 @@ export default function Header({
             {sessionStatus === 'running'
               ? `${modeLabel(sessionMode)} 진행 중`
               : sessionStatus === 'paused'
-                ? '세션 일시정지'
-                : '세션 대기'}
+                ? '오토베팅 일시정지'
+                : '오토베팅 꺼짐'}
           </span>
         </div>
         <div className="h-4 w-[1px] bg-zinc-800"></div>

@@ -63,7 +63,7 @@ export default function SessionModal({
           <div className="flex justify-between items-center mb-6">
             <h2 id="session-settings-title" className="text-xl font-bold text-white flex items-center gap-2">
               <SettingsIcon />
-              세션 설정
+              오토베팅 설정
             </h2>
             <button
               type="button"
@@ -125,7 +125,7 @@ export default function SessionModal({
                 onChange={(v) => setNum('maxTables', v)}
               />
               <NumberInput
-                label="최대 세션 시간 (분)"
+                label="최대 오토베팅 시간 (분)"
                 value={config.maxTime}
                 min={10}
                 max={480}
@@ -216,14 +216,14 @@ export default function SessionModal({
               onClick={() => start('observe')}
               className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium transition-colors"
             >
-              관찰 모드로 시작
+              관망만 (자동 베팅 없음)
             </button>
             <button
               type="button"
               onClick={() => start('shadow')}
               className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition-colors shadow-lg shadow-indigo-600/20"
             >
-              섀도 모드로 시작 (가상 시뮬레이션)
+              섀도 모드 (자동 베팅 없음 · 기록용)
             </button>
             <button
               type="button"
@@ -231,7 +231,7 @@ export default function SessionModal({
               disabled={!summary.canDefend}
               className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
             >
-              세션 시작
+              오토베팅 시작 (AI 추천 자동 베팅)
             </button>
           </div>
         </div>

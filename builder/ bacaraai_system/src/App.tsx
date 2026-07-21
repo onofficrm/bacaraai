@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import TopNav, { ViewType } from './components/TopNav';
 import SessionBar from './components/SessionBar';
@@ -64,6 +64,7 @@ export default function App() {
   const [filterBy, setFilterBy] = useState<FilterOption>('all');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [isAutoReordered, setIsAutoReordered] = useState(false);
+  const autoBetSignalRef = useRef<string | null>(null);
 
   useEffect(() => {
     installAudioUnlock();
@@ -97,6 +98,65 @@ export default function App() {
     tables,
     session.pendingBet,
     session.settlePendingWithOutcome,
+  ]);
+
+  // 오토베팅(live): AI가 P/B 추천하면 자동 베팅
+  useEffect(() => {
+    if (session.status !== 'running' || session.mode !== 'live') {
+      if (session.status === 'idle') autoBetSignalRef.current = null;
+      return;
+    }
+    if (session.pendingBet) return;
+
+    const target =
+      (selectedTableId ? tables.find((t) => t.id === selectedTableId) : null) || liveTable;
+    if (!target || target.status === 'risk_blocked') return;
+
+    const opinion = target.ai.finalOpinion;
+    if (opinion !== 'PLAYER' && opinion !== 'BANKER') return;
+
+    const signal = target.live?.connected
+      ? `${target.id}:${target.live.latestId ?? 0}:${opinion}`
+      : `${target.id}:${target.stats.currentRound}:${opinion}`;
+    if (autoBetSignalRef.current === signal) return;
+
+    const amount =
+      session.suggestedBet > 0
+        ? session.suggestedBet
+        : target.ai.recommendedAmount > 0
+          ? target.ai.recommendedAmount
+          : session.config.initialBet;
+    if (amount <= 0) return;
+    if (wallet.loggedIn && amount > wallet.balance) return;
+
+    autoBetSignalRef.current = signal;
+    void session.placeBet({
+      tableId: target.id,
+      tableName: target.name,
+      side: opinion,
+      amount,
+      baselineLatestId: target.live?.connected ? target.live.latestId ?? 0 : null,
+      availableBalance: availableBankroll,
+    }).then((result) => {
+      if (!result.ok) {
+        autoBetSignalRef.current = null;
+      } else {
+        playSfx('betConfirm');
+      }
+    });
+  }, [
+    session.status,
+    session.mode,
+    session.pendingBet,
+    session.suggestedBet,
+    session.config.initialBet,
+    session.placeBet,
+    selectedTableId,
+    tables,
+    liveTable,
+    wallet.loggedIn,
+    wallet.balance,
+    availableBankroll,
   ]);
 
   const handleTableSelect = (id: string) => {

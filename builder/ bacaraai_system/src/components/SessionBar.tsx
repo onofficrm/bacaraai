@@ -45,7 +45,7 @@ export default function SessionBar({
 
   const zoneText =
     gauge.zone === 'hit_win'
-      ? '윈컷 도달 — 세션 종료를 권장합니다'
+      ? '윈컷 도달 — 오토베팅 종료를 권장합니다'
       : gauge.zone === 'hit_loss'
         ? '로스컷 도달 — 즉시 중단하세요'
         : gauge.zone === 'near_win'
@@ -65,7 +65,7 @@ export default function SessionBar({
               className="flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-zinc-950 px-3.5 py-2 rounded-lg font-bold text-sm transition-colors"
             >
               <Play size={14} fill="currentColor" />
-              세션 시작
+              오토베팅 시작
             </button>
           ) : isPaused ? (
             <button
@@ -127,7 +127,7 @@ export default function SessionBar({
               playSfx('ui');
               onOpenSettings();
             }}
-            aria-label="세션 설정"
+            aria-label="오토베팅 설정"
           >
             <Settings2 size={15} />
           </button>
@@ -192,7 +192,7 @@ export default function SessionBar({
                         : 'text-teal-400/90'
                   }`}
                 >
-                  {isActive ? zoneText : '세션을 시작하면 손익이 반영됩니다'}
+                  {isActive ? zoneText : '오토베팅을 켜면 손익 게이지가 활성화됩니다'}
                 </p>
               )}
             </div>

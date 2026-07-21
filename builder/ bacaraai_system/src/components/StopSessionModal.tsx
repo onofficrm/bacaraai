@@ -70,7 +70,7 @@ export default function StopSessionModal({ type, onClose }: StopSessionModalProp
               'bg-amber-500 hover:bg-amber-600 text-zinc-950'
             }`}
           >
-            {type === 'error' ? '재연결 시도' : '세션 종료'}
+            {type === 'error' ? '재연결 시도' : '오토베팅 종료'}
           </button>
         </div>
       </div>

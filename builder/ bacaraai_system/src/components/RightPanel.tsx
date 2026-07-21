@@ -81,9 +81,11 @@ export default function RightPanel({
 
   React.useEffect(() => {
     const preferred =
-      sessionStatus === 'running' && suggestedBet > 0
-        ? suggestedBet
-        : table?.ai?.recommendedAmount || 0;
+      (table?.ai?.recommendedAmount ?? 0) > 0
+        ? table!.ai.recommendedAmount
+        : suggestedBet > 0
+          ? suggestedBet
+          : 10000;
     setBetAmount(preferred);
     setSelectedSide(
       table?.ai.finalOpinion === 'BANKER'
@@ -102,11 +104,13 @@ export default function RightPanel({
   React.useEffect(() => {
     if (!table) return;
     const preferred =
-      sessionStatus === 'running' && suggestedBet > 0
-        ? suggestedBet
-        : table.ai.recommendedAmount || 0;
+      table.ai.recommendedAmount > 0
+        ? table.ai.recommendedAmount
+        : suggestedBet > 0
+          ? suggestedBet
+          : 10000;
     setBetAmount(preferred);
-  }, [table?.ai?.recommendedAmount, suggestedBet, sessionStatus, table]);
+  }, [table?.ai?.recommendedAmount, suggestedBet, table]);
 
   React.useEffect(() => {
     if (!lastBetResult) return;
@@ -120,8 +124,7 @@ export default function RightPanel({
     : true;
 
   const isSettling = Boolean(pendingBet && table && pendingBet.tableId === table.id);
-  const sessionReady = sessionStatus === 'running';
-  const observeBlocked = sessionMode === 'observe';
+  const autoBettingOn = sessionStatus === 'running';
   const hasLiveFeed = Boolean(table?.live?.connected);
 
   const primaryChips = [
@@ -182,16 +185,6 @@ export default function RightPanel({
 
   const handleConfirmBet = async () => {
     if (!table || !onPlaceBet) return;
-    if (!sessionReady) {
-      setBetError('먼저 세션을 시작해 주세요.');
-      playSfx('error');
-      return;
-    }
-    if (observeBlocked) {
-      setBetError('관찰 모드에서는 베팅할 수 없습니다.');
-      playSfx('error');
-      return;
-    }
     if (betAmount <= 0) {
       setBetError('베팅 금액을 입력해 주세요.');
       playSfx('error');
@@ -204,7 +197,7 @@ export default function RightPanel({
       side: selectedSide,
       amount: betAmount,
       baselineLatestId: hasLiveFeed ? table.live?.latestId ?? 0 : null,
-      availableBalance,
+      availableBalance: availableBankroll,
     });
 
     if (!result.ok) {
@@ -375,26 +368,30 @@ export default function RightPanel({
           </div>
 
           <div className="p-3 flex flex-col gap-2">
-            {!sessionReady && (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
-                <p className="text-xs font-bold text-amber-300 mb-1">세션이 필요합니다</p>
-                <p className="text-[11px] text-zinc-400 mb-2">베팅 전에 세션을 시작해 주세요.</p>
+            {autoBettingOn && (
+              <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-[11px] text-indigo-200">
+                오토베팅 실행 중
+                {sessionMode === 'live'
+                  ? ' — AI 추천 시 자동으로 베팅합니다. 수동 베팅도 가능합니다.'
+                  : sessionMode === 'shadow'
+                    ? ' — 섀도 모드(자동 베팅 없음). 수동 베팅은 가능합니다.'
+                    : ' — 관망 모드(자동 베팅 없음). 수동 베팅은 가능합니다.'}
+              </div>
+            )}
+
+            {!autoBettingOn && (
+              <div className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-[11px] text-zinc-400 flex items-center justify-between gap-2">
+                <span>수동 베팅 가능 · 오토베팅은 별도 설정</span>
                 <button
                   type="button"
                   onClick={() => {
                     playSfx('ui');
                     onOpenSessionSettings?.();
                   }}
-                  className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg text-xs font-bold"
+                  className="shrink-0 text-amber-400 hover:text-amber-300 font-bold"
                 >
-                  세션 설정 열기
+                  오토베팅 설정
                 </button>
-              </div>
-            )}
-
-            {sessionReady && observeBlocked && (
-              <div className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-[11px] text-zinc-400">
-                관찰 모드에서는 기록만 가능합니다. 헤더에서 AI 추천/섀도 모드로 바꾸면 베팅할 수 있습니다.
               </div>
             )}
 
@@ -470,7 +467,7 @@ export default function RightPanel({
                     <button
                       type="button"
                       onClick={applyRecommendedBet}
-                      disabled={isSettling || !sessionReady || observeBlocked}
+                      disabled={isSettling}
                       className="text-[10px] font-bold text-amber-400 hover:text-amber-300 disabled:opacity-40"
                     >
                       추천대로 ({sideShortLabel(recommendedSide)}
@@ -491,7 +488,7 @@ export default function RightPanel({
                       <button
                         key={opt.id}
                         type="button"
-                        disabled={isSettling || !sessionReady || observeBlocked}
+                        disabled={isSettling}
                         onClick={() => {
                           playSfx('ui');
                           setSelectedSide(opt.id);
@@ -585,7 +582,7 @@ export default function RightPanel({
                       key={chip.label}
                       type="button"
                       onClick={() => addChip(chip)}
-                      disabled={isSettling || !sessionReady || observeBlocked}
+                      disabled={isSettling}
                       className={`w-10 h-10 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 ${chip.color}`}
                       style={{
                         boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.2), 0 4px 6px -1px rgba(0,0,0,0.5)'
@@ -605,7 +602,7 @@ export default function RightPanel({
                         key={chip.label}
                         type="button"
                         onClick={() => addChip(chip)}
-                        disabled={isSettling || !sessionReady || observeBlocked}
+                        disabled={isSettling}
                         className={`w-10 h-10 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 ${chip.color}`}
                         style={{
                           boxShadow: 'inset 0 0 0 2px rgba(255,255,255,0.2), 0 4px 6px -1px rgba(0,0,0,0.5)'
@@ -666,7 +663,7 @@ export default function RightPanel({
                     type="button"
                     onClick={handleConfirmBet}
                     className="py-2.5 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg text-sm font-bold transition-colors shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
-                    disabled={betAmount <= 0 || isSettling || !sessionReady || observeBlocked}
+                    disabled={betAmount <= 0 || isSettling}
                   >
                     {isSettling ? '확인 중…' : '베팅 확정'}
                   </button>

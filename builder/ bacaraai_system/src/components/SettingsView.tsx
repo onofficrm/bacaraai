@@ -15,7 +15,7 @@ const PREVIEW_SOUNDS: { id: SfxName; label: string }[] = [
   { id: 'chip', label: '칩' },
   { id: 'chipHeavy', label: '고액 칩' },
   { id: 'betConfirm', label: '베팅 확정' },
-  { id: 'sessionStart', label: '세션 시작' },
+  { id: 'sessionStart', label: '오토베팅 시작' },
   { id: 'ruleTrigger', label: '규칙 발동' },
   { id: 'aiReady', label: 'AI 의견' },
   { id: 'notification', label: '알림' },
@@ -23,7 +23,7 @@ const PREVIEW_SOUNDS: { id: SfxName; label: string }[] = [
   { id: 'win', label: '윈컷' },
   { id: 'loss', label: '로스컷' },
   { id: 'shuffle', label: '셔플' },
-  { id: 'sessionStop', label: '종료' },
+  { id: 'sessionStop', label: '오토베팅 종료' },
 ];
 
 export default function SettingsView({
@@ -56,14 +56,14 @@ export default function SettingsView({
               사운드 효과
             </h3>
             <p className="text-sm text-zinc-400 mb-5 leading-relaxed">
-              칩·베팅·세션·위험·윈컷/로스컷 등 게임형 효과음입니다. 브라우저에서 첫 클릭 후부터 재생됩니다.
+              칩·베팅·오토베팅·위험·윈컷/로스컷 등 게임형 효과음입니다. 브라우저에서 첫 클릭 후부터 재생됩니다.
             </p>
 
             <div className="space-y-4 mb-5">
               <div className="flex justify-between items-center py-2 border-b border-zinc-800/50">
                 <div>
                   <div className="text-sm font-medium text-zinc-200">효과음</div>
-                  <div className="text-xs text-zinc-500 mt-1">버튼·베팅·알림·세션 이벤트 소리</div>
+                  <div className="text-xs text-zinc-500 mt-1">버튼·베팅·알림·오토베팅 이벤트 소리</div>
                 </div>
                 <button
                   type="button"
@@ -178,7 +178,7 @@ export default function SettingsView({
                 데모 초기화
               </button>
               <button 
-                onClick={() => alert('실제 세션 설정 화면은 준비 중입니다.')}
+                onClick={() => alert('오토베팅은 상단 바에서 설정·종료할 수 있습니다.')}
                 className="bg-red-950/40 border border-red-900/50 hover:bg-red-900/50 text-red-400 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
               >
                 <PowerOff size={16} />
@@ -189,7 +189,7 @@ export default function SettingsView({
                 className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
               >
                 <Play size={16} />
-                세션 설정 열기
+                오토베팅 설정 열기
               </button>
             </div>
           </div>
