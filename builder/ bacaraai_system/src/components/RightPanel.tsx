@@ -7,6 +7,7 @@ import Roadmap from './Roadmap';
 import EmptyRightPanel from './EmptyRightPanel';
 import { playSfx } from '../audio/sfxEngine';
 import {
+  DEFAULT_SESSION_CONFIG,
   formatMoney,
   modeLabel,
   nextBetAmount,
@@ -19,6 +20,7 @@ import {
   type SessionStatus,
 } from '../hooks/useSession';
 import { formatPattern, patternSideLabel } from '../utils/patternMatch';
+import PatternSequenceBuilder from './PatternSequenceBuilder';
 
 type PanelMode = 'manual' | 'auto';
 
@@ -52,6 +54,7 @@ interface RightPanelProps {
   onSkip?: (tableId: string) => void;
   onCancelBet?: () => void | Promise<PlaceBetResult>;
   onOpenSessionSettings?: () => void;
+  onUpdateSessionConfig?: (config: SessionConfig) => void;
   onClearBetResult?: () => void;
   onPauseAuto?: () => void;
   onResumeAuto?: () => void;
@@ -79,6 +82,7 @@ export default function RightPanel({
   onSkip,
   onCancelBet,
   onOpenSessionSettings,
+  onUpdateSessionConfig,
   onClearBetResult,
   onPauseAuto,
   onResumeAuto,
@@ -270,6 +274,10 @@ export default function RightPanel({
               tables={tables}
               onSelectTable={onSelectTable ?? (() => undefined)}
               beginnerMode={beginnerMode}
+              onOpenAutoSettings={() => {
+                playSfx('ui');
+                onOpenSessionSettings?.();
+              }}
             />
           </div>
         </div>
@@ -711,9 +719,98 @@ export default function RightPanel({
                   <>
                     <p className="text-[12px] text-zinc-400 leading-relaxed">
                       <strong className="text-zinc-200">8개 테이블</strong>을 감시합니다.
-                      AI 추천 또는 <strong className="text-zinc-200">내가 만든 패턴</strong>이
-                      나온 테이블에만 자동 베팅합니다.
+                      아래에서 전략을 고른 뒤 시작하세요.
                     </p>
+
+                    {(() => {
+                      const draft = { ...DEFAULT_SESSION_CONFIG, ...(cfg || {}) };
+                      const patch = (partial: Partial<SessionConfig>) => {
+                        onUpdateSessionConfig?.({ ...draft, ...partial });
+                      };
+                      return (
+                        <div className="flex flex-col gap-3">
+                          <div>
+                            <p className="text-[11px] font-bold text-zinc-400 mb-1.5">언제 베팅할까요?</p>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  playSfx('ui');
+                                  patch({ strategy: 'ai' });
+                                }}
+                                className={`py-2.5 rounded-lg border text-xs font-bold ${
+                                  draft.strategy === 'ai'
+                                    ? 'bg-indigo-600 border-indigo-400 text-white'
+                                    : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                                }`}
+                              >
+                                AI 추천대로
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  playSfx('ui');
+                                  patch({ strategy: 'pattern' });
+                                }}
+                                className={`py-2.5 rounded-lg border text-xs font-bold ${
+                                  draft.strategy === 'pattern'
+                                    ? 'bg-amber-500 border-amber-300 text-zinc-950'
+                                    : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                                }`}
+                              >
+                                내가 만든 패턴
+                              </button>
+                            </div>
+                          </div>
+
+                          {draft.strategy === 'pattern' && (
+                            <>
+                              <PatternSequenceBuilder
+                                sequence={draft.patternSequence || []}
+                                onChange={(patternSequence) => patch({ patternSequence })}
+                              />
+                              <div>
+                                <p className="text-[11px] font-bold text-zinc-400 mb-1.5">
+                                  패턴 다음 베팅할 곳
+                                </p>
+                                <div className="flex gap-1.5">
+                                  {(
+                                    [
+                                      { id: 'PLAYER' as const, label: 'Player', on: 'bg-blue-600 border-blue-400 text-white' },
+                                      { id: 'TIE' as const, label: 'Tie', on: 'bg-emerald-500 border-emerald-400 text-white' },
+                                      { id: 'BANKER' as const, label: 'Banker', on: 'bg-red-500 border-red-400 text-white' },
+                                    ] as const
+                                  ).map((opt) => (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() => {
+                                        playSfx('ui');
+                                        patch({ patternBetSide: opt.id });
+                                      }}
+                                      className={`flex-1 py-2 rounded-lg border text-xs font-bold ${
+                                        draft.patternBetSide === opt.id
+                                          ? opt.on
+                                          : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                                      }`}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          {draft.strategy === 'ai' && (
+                            <p className="text-[11px] text-zinc-500 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+                              AI가 Player/Banker를 추천한 테이블에 자동 베팅합니다.
+                              패턴으로 바꾸려면 위 <strong className="text-zinc-300">내가 만든 패턴</strong>을 누르세요.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <div className="rounded-lg bg-zinc-950 border border-zinc-800 divide-y divide-zinc-800 text-[12px]">
                       <AutoRow
@@ -743,18 +840,6 @@ export default function RightPanel({
                         value={cfg ? formatMoney(cfg.initialBet) : formatMoney(10000)}
                       />
                       <AutoRow
-                        label="최대 금액"
-                        value={cfg ? formatMoney(cfg.maxBet) : formatMoney(maxBet)}
-                      />
-                      <AutoRow
-                        label="손실 한도"
-                        value={cfg ? formatMoney(cfg.lossCut, true) : '-'}
-                      />
-                      <AutoRow
-                        label="수익 목표"
-                        value={cfg ? formatMoney(cfg.winCut, true) : '-'}
-                      />
-                      <AutoRow
                         label="감시 테이블"
                         value={cfg ? `${cfg.maxTables}개` : '8개'}
                       />
@@ -766,10 +851,10 @@ export default function RightPanel({
                         playSfx('ui');
                         onOpenSessionSettings?.();
                       }}
-                      className="w-full py-2.5 rounded-lg border border-zinc-700 bg-zinc-950 text-zinc-300 text-sm font-medium hover:bg-zinc-800 flex items-center justify-center gap-2"
+                      className="w-full py-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200 text-sm font-bold hover:bg-amber-500/20 flex items-center justify-center gap-2"
                     >
                       <Settings2 size={15} />
-                      설정 변경
+                      금액·한도 등 상세 설정
                     </button>
 
                     <button

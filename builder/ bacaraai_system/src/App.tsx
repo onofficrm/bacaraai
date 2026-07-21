@@ -399,6 +399,23 @@ export default function App() {
           setActiveView(view);
         }}
       />
+      {activeView === 'multitable' && session.status === 'idle' && (
+        <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center justify-between gap-3">
+          <p className="text-[11px] text-zinc-400 min-w-0">
+            오토베팅: AI 추천 또는 <span className="text-amber-300 font-semibold">내가 만든 패턴</span>으로 8테이블 자동 베팅
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              playSfx('ui');
+              setIsModalOpen(true);
+            }}
+            className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-zinc-950 text-xs font-bold"
+          >
+            오토베팅 설정
+          </button>
+        </div>
+      )}
       {activeView === 'multitable' &&
         (session.status === 'running' || session.status === 'paused') && (
         <SessionBar
@@ -491,6 +508,7 @@ export default function App() {
                 return result;
               }}
               onOpenSessionSettings={() => setIsModalOpen(true)}
+              onUpdateSessionConfig={session.updateConfig}
               onClearBetResult={session.clearLastBetResult}
               onPauseAuto={session.pauseSession}
               onResumeAuto={session.resumeSession}

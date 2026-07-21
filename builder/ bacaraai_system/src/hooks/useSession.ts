@@ -82,7 +82,7 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
   maxBet: 2_000_000,
   maxTables: 8,
   maxTime: 90,
-  strategy: 'ai',
+  strategy: 'pattern',
   patternSequence: ['B', 'B', 'B', 'B', 'P'],
   patternBetSide: 'PLAYER',
   amountMode: 'martin',

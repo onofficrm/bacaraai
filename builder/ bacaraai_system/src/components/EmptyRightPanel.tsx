@@ -8,6 +8,7 @@ interface EmptyRightPanelProps {
   tables: TableData[];
   onSelectTable: (id: string) => void;
   beginnerMode?: boolean;
+  onOpenAutoSettings?: () => void;
 }
 
 const STATUS_PRIORITY: Record<string, number> = {
@@ -55,6 +56,7 @@ export default function EmptyRightPanel({
   tables,
   onSelectTable,
   beginnerMode = true,
+  onOpenAutoSettings,
 }: EmptyRightPanelProps) {
   const spotlight = useMemo(() => pickSpotlightTables(tables), [tables]);
 
@@ -71,6 +73,19 @@ export default function EmptyRightPanel({
             : '좌측 테이블을 선택하면 상세 분석이 열립니다.'}
         </p>
       </div>
+
+      {onOpenAutoSettings && (
+        <button
+          type="button"
+          onClick={onOpenAutoSettings}
+          className="w-full rounded-xl border border-amber-500/40 bg-amber-500/15 px-3 py-3 text-left hover:bg-amber-500/25 transition-colors"
+        >
+          <p className="text-sm font-bold text-amber-200">오토베팅 설정 열기</p>
+          <p className="text-[10px] text-amber-200/70 mt-1 leading-relaxed">
+            AI 추천 또는 내가 만든 패턴(B·P 버튼)으로 8테이블 자동 베팅을 설정합니다.
+          </p>
+        </button>
+      )}
 
       <div className="space-y-2">
         {[
