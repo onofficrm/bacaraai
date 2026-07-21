@@ -6,6 +6,7 @@ import {
   walletPlaceBet,
   walletSettleBet,
 } from '../api/walletBet';
+import { normalizePatternSegments } from '../utils/patternMatch';
 
 export type SessionMode = 'observe' | 'shadow' | 'live';
 export type SessionStatus = 'idle' | 'running' | 'paused';
@@ -83,8 +84,11 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
   maxTables: 8,
   maxTime: 90,
   strategy: 'pattern',
-  patternSequence: ['B', 'B', 'B', 'B', 'P'],
-  patternBetSide: 'PLAYER',
+  patternSegments: [
+    { side: 'P', count: 4, atLeast: true },
+    { side: 'B', count: 1, atLeast: false },
+  ],
+  patternBetSide: 'BANKER',
   amountMode: 'martin',
   customSteps: [],
 };
@@ -105,6 +109,18 @@ const DEFAULT_STATE: SessionState = {
   skippedCount: 0,
 };
 
+function normalizeConfig(partial?: Partial<SessionConfig>): SessionConfig {
+  const merged = { ...DEFAULT_SESSION_CONFIG, ...(partial || {}) };
+  const patternSegments = normalizePatternSegments(merged);
+  return {
+    ...merged,
+    patternSegments:
+      patternSegments.length > 0
+        ? patternSegments
+        : DEFAULT_SESSION_CONFIG.patternSegments,
+  };
+}
+
 function readStored(): SessionState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -113,7 +129,7 @@ function readStored(): SessionState {
     return {
       ...DEFAULT_STATE,
       ...parsed,
-      config: { ...DEFAULT_SESSION_CONFIG, ...(parsed.config || {}) },
+      config: normalizeConfig(parsed.config),
       status: parsed.status === 'running' ? 'paused' : parsed.status || 'idle',
       startedAt: null,
       elapsedMs: Number(parsed.elapsedMs) || 0,
@@ -331,7 +347,7 @@ export default function useSession() {
     setState({
       status: 'running',
       mode,
-      config,
+      config: normalizeConfig(config),
       startedAt: Date.now(),
       elapsedMs: 0,
       pnl: 0,
@@ -382,7 +398,7 @@ export default function useSession() {
   }, []);
 
   const updateConfig = useCallback((config: SessionConfig) => {
-    setState((prev) => ({ ...prev, config }));
+    setState((prev) => ({ ...prev, config: normalizeConfig(config) }));
   }, []);
 
   const setMode = useCallback((mode: SessionMode) => {

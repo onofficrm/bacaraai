@@ -29,7 +29,7 @@ import useSession from './hooks/useSession';
 import useLiveTable from './hooks/useLiveTable';
 import useWallet from './hooks/useWallet';
 import { installAudioUnlock, playSfx } from './audio/sfxEngine';
-import { matchesPattern } from './utils/patternMatch';
+import { matchesPattern, normalizePatternSegments, patternSignalKey } from './utils/patternMatch';
 
 const VIEW_LABELS: Record<ViewType, string> = {
   multitable: '라이브 테이블',
@@ -150,7 +150,7 @@ export default function App() {
       t.live?.connected ? String(t.live.latestId ?? 0) : String(t.stats.currentRound);
 
     if (strategy === 'pattern') {
-      const pattern = session.config.patternSequence || [];
+      const pattern = normalizePatternSegments(session.config);
       const betSide = session.config.patternBetSide || 'PLAYER';
 
       // 이미 패턴으로 진입한 테이블 → 마틴 이어가기 (같은 사이드)
@@ -173,11 +173,11 @@ export default function App() {
       }
 
       // 신규 진입: 패턴 일치 테이블 탐색
-      if (!candidate && !patternRunRef.current && pattern.length >= 2) {
+      if (!candidate && !patternRunRef.current && pattern.length >= 1) {
         for (const t of watchTables) {
           if (t.status === 'risk_blocked') continue;
           if (!matchesPattern(t.stats.recentResults || [], pattern)) continue;
-          const signal = `${t.id}:${roundKeyOf(t)}:pattern:${pattern.join('')}:${betSide}`;
+          const signal = `${t.id}:${roundKeyOf(t)}:pattern:${patternSignalKey(pattern)}:${betSide}`;
           if (autoBetSignalRef.current === signal) continue;
           candidate = {
             table: t,

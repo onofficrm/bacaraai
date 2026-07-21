@@ -14,7 +14,7 @@ import {
   type SessionMode,
 } from '../hooks/useSession';
 import PatternSequenceBuilder from './PatternSequenceBuilder';
-import { formatPattern, patternSideLabel } from '../utils/patternMatch';
+import { formatPattern, normalizePatternSegments, patternSideLabel, patternTotalGames } from '../utils/patternMatch';
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -36,7 +36,12 @@ export default function SessionModal({
 
   useEffect(() => {
     if (isOpen) {
-      setConfig({ ...DEFAULT_SESSION_CONFIG, ...initialConfig });
+      const merged = { ...DEFAULT_SESSION_CONFIG, ...initialConfig };
+      const patternSegments =
+        merged.patternSegments?.length
+          ? merged.patternSegments
+          : normalizePatternSegments(merged);
+      setConfig({ ...merged, patternSegments });
       setEditStage(1);
     }
   }, [isOpen, initialConfig]);
@@ -50,7 +55,7 @@ export default function SessionModal({
         ? config.seed >= (config.customSteps.reduce((a, b) => a + b, 0) || martinNeed)
         : config.seed >= martinNeed;
     const patternOk =
-      config.strategy !== 'pattern' || config.patternSequence.length >= 2;
+      config.strategy !== 'pattern' || patternTotalGames(config.patternSegments || []) >= 2;
     return { targetSeed, stopSeed, martinNeed, canDefend, patternOk };
   }, [config]);
 
@@ -167,9 +172,9 @@ export default function SessionModal({
             {config.strategy === 'pattern' && (
               <div className="flex flex-col gap-3">
                 <PatternSequenceBuilder
-                  sequence={config.patternSequence}
-                  onChange={(patternSequence) =>
-                    setConfig((prev) => ({ ...prev, patternSequence }))
+                  segments={config.patternSegments || []}
+                  onChange={(patternSegments) =>
+                    setConfig((prev) => ({ ...prev, patternSegments }))
                   }
                 />
 
@@ -376,7 +381,7 @@ export default function SessionModal({
               <>
                 <SummaryRow
                   label="패턴"
-                  value={formatPattern(config.patternSequence)}
+                  value={formatPattern(config.patternSegments || [])}
                   valueColor="text-zinc-200"
                 />
                 <SummaryRow

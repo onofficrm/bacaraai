@@ -114,6 +114,14 @@ export type AutoBetStrategy = 'ai' | 'pattern';
 /** 금액 진행 방식 */
 export type AmountProgressMode = 'martin' | 'custom';
 
+/** 패턴 한 구간 (예: Player 4개 이상) */
+export interface PatternSegment {
+  side: GameResult;
+  count: number;
+  /** true 면 최소 count 연속 (더 길어도 통과) */
+  atLeast: boolean;
+}
+
 export interface SessionConfig {
   seed: number;
   winCut: number;
@@ -125,8 +133,12 @@ export interface SessionConfig {
   maxTime: number; // in minutes
   /** AI 추천 vs 사용자 패턴 */
   strategy: AutoBetStrategy;
-  /** 사용자 패턴: 버튼으로 쌓은 결과 시퀀스 (예: B B B B P) */
-  patternSequence: GameResult[];
+  /**
+   * @deprecated 구버전 호환용. 새 코드는 patternSegments 사용
+   */
+  patternSequence?: GameResult[];
+  /** 사용자 패턴 구간 (이상 포함) */
+  patternSegments: PatternSegment[];
   /** 패턴 일치 후 베팅할 사이드 */
   patternBetSide: 'PLAYER' | 'BANKER' | 'TIE';
   /** 마틴(2배) 또는 단계별 직접 금액 */

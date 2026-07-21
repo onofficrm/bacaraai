@@ -758,8 +758,8 @@ export default function RightPanel({
                           {draft.strategy === 'pattern' && (
                             <>
                               <PatternSequenceBuilder
-                                sequence={draft.patternSequence || []}
-                                onChange={(patternSequence) => patch({ patternSequence })}
+                                segments={draft.patternSegments || []}
+                                onChange={(patternSegments) => patch({ patternSegments })}
                               />
                               <div>
                                 <p className="text-[11px] font-bold text-zinc-400 mb-1.5">
@@ -813,7 +813,7 @@ export default function RightPanel({
                         <>
                           <AutoRow
                             label="패턴"
-                            value={formatPattern(cfg.patternSequence || [])}
+                            value={formatPattern(cfg.patternSegments || [])}
                           />
                           <AutoRow
                             label="베팅"
@@ -885,7 +885,7 @@ export default function RightPanel({
                       {cfg?.strategy === 'pattern' && (
                         <AutoRow
                           label="패턴"
-                          value={formatPattern(cfg.patternSequence || [])}
+                          value={formatPattern(cfg.patternSegments || [])}
                         />
                       )}
                       <AutoRow
