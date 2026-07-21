@@ -92,30 +92,41 @@ export default function App() {
     return () => session.setCutHandler(null);
   }, [session.setCutHandler, session.pauseSession]);
 
-  // 라이브 테이블: 베팅 이후에 새로 들어온 결과로만 정산
+  // 라이브 테이블: 베팅 이후에 새로 들어온 결과로만 정산 (오토·직접 각각)
   useEffect(() => {
-    const pending = session.pendingBet;
-    if (!pending?.waitForLiveResult) return;
+    const livePendings = session.pendingBets.filter((p) => p.waitForLiveResult);
+    if (livePendings.length === 0) return;
 
-    const table = tables.find((t) => t.id === pending.tableId);
-    if (!table) return;
+    const byTable = new Map<string, typeof livePendings>();
+    for (const p of livePendings) {
+      const list = byTable.get(p.tableId) || [];
+      list.push(p);
+      byTable.set(p.tableId, list);
+    }
 
-    const latestId = table.live?.latestId ?? null;
-    const resultCount = table.stats.recentResults.length;
-    const baselineId = pending.baselineLatestId ?? 0;
-    const baselineCount = pending.baselineResultCount ?? 0;
+    for (const [tableId, bets] of byTable) {
+      const table = tables.find((t) => t.id === tableId);
+      if (!table) continue;
 
-    const idAdvanced = typeof latestId === 'number' && latestId > baselineId;
-    const countAdvanced = resultCount > baselineCount;
-    if (!idAdvanced && !countAdvanced) return;
+      const latestId = table.live?.latestId ?? null;
+      const resultCount = table.stats.recentResults.length;
+      const ready = bets.some((pending) => {
+        const baselineId = pending.baselineLatestId ?? 0;
+        const baselineCount = pending.baselineResultCount ?? 0;
+        const idAdvanced = typeof latestId === 'number' && latestId > baselineId;
+        const countAdvanced = resultCount > baselineCount;
+        return idAdvanced || countAdvanced;
+      });
+      if (!ready) continue;
 
-    const outcome = table.stats.recentResults[resultCount - 1];
-    if (!outcome || !['P', 'B', 'T'].includes(outcome)) return;
+      const outcome = table.stats.recentResults[resultCount - 1];
+      if (!outcome || !['P', 'B', 'T'].includes(outcome)) continue;
 
-    session.settlePendingWithOutcome(pending.tableId, outcome, latestId, resultCount);
+      session.settlePendingWithOutcome(tableId, outcome, latestId, resultCount);
+    }
   }, [
     tables,
-    session.pendingBet,
+    session.pendingBets,
     session.settlePendingWithOutcome,
   ]);
 
@@ -130,13 +141,18 @@ export default function App() {
       }
       return;
     }
-    if (session.pendingBet) return;
+    // 직접 베팅 대기 중이어도 오토는 따로 진행 가능
+    if (session.pendingBets.some((b) => b.source === 'auto')) return;
 
     // 패턴 런: 해당 런의 승이 확정되면 다시 패턴 대기
     const last = session.lastBetResult;
     if (last && last.id !== handledBetResultIdRef.current) {
       handledBetResultIdRef.current = last.id;
-      if (last.won === true && patternRunRef.current?.tableId === last.tableId) {
+      if (
+        last.won === true &&
+        last.appliedRule === '오토베팅' &&
+        patternRunRef.current?.tableId === last.tableId
+      ) {
         patternRunRef.current = null;
       }
     }
@@ -245,6 +261,7 @@ export default function App() {
         tableName: target.name,
         side: candidate.side,
         amount,
+        source: 'auto',
         waitForLiveResult: waitForLive,
         baselineLatestId: waitForLive ? target.live?.latestId ?? 0 : null,
         baselineResultCount: waitForLive ? target.stats.recentResults.length : undefined,
@@ -263,7 +280,7 @@ export default function App() {
   }, [
     session.status,
     session.mode,
-    session.pendingBet,
+    session.pendingBets,
     session.suggestedBet,
     session.martinStage,
     session.lastBetResult,
@@ -529,23 +546,24 @@ export default function App() {
               suggestedBet={session.suggestedBet}
               maxBet={session.config.maxBet}
               availableBankroll={availableBankroll}
-              pendingBet={session.pendingBet}
+              pendingBets={session.pendingBets}
               lastBetResult={session.lastBetResult}
               onPlaceBet={session.placeBet}
               onSkip={session.skipRound}
-              onCancelBet={async () => {
-                const pending = session.pendingBet;
-                patternRunRef.current = null;
-                if (pending) {
+              onCancelBet={async (betId) => {
+                const pending =
+                  session.pendingBets.find((b) => b.id === betId) ||
+                  session.pendingBets[0];
+                if (pending?.source === 'auto') {
+                  patternRunRef.current = null;
                   cancelledAutoUntilRef.current = {
                     tableId: pending.tableId,
                     baselineLatestId: pending.baselineLatestId ?? 0,
                     baselineResultCount: pending.baselineResultCount ?? 0,
                   };
-                  // 같은 시그널로 즉시 재베팅되지 않도록 유지 키 설정
                   autoBetSignalRef.current = `cancelled:${pending.tableId}:${pending.id}`;
                 }
-                return session.cancelPendingBet();
+                return session.cancelPendingBet(betId ? { id: betId } : undefined);
               }}
               onOpenSessionSettings={() => setIsModalOpen(true)}
               onUpdateSessionConfig={session.updateConfig}

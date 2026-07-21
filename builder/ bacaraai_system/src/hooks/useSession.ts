@@ -13,6 +13,8 @@ export type SessionMode = 'observe' | 'shadow' | 'live';
 export type SessionStatus = 'idle' | 'running' | 'paused';
 export type BetSide = 'PLAYER' | 'BANKER' | 'TIE';
 
+export type BetSource = 'manual' | 'auto';
+
 export type PendingBet = {
   id: string;
   tableId: string;
@@ -20,6 +22,8 @@ export type PendingBet = {
   side: BetSide;
   amount: number;
   placedAt: number;
+  /** 직접 베팅 / 오토베팅 구분 — 동시에 각각 진행·표시 가능 */
+  source: BetSource;
   /** 라이브 테이블: 베팅 시점의 마지막 결과 id (이후 더 큰 id 가 오면 정산) */
   baselineLatestId?: number | null;
   /** 베팅 시점 결과 개수 (id 보조 신호) */
@@ -57,6 +61,8 @@ export type PlaceBetInput = {
   waitForLiveResult?: boolean;
   /** 가상머니 잔액 (있으면 시드 대신 이 값으로 한도 검사) */
   availableBalance?: number;
+  /** 미지정 시 오토 실행 중이면 auto, 아니면 manual */
+  source?: BetSource;
 };
 
 export type PlaceBetResult =
@@ -73,7 +79,8 @@ export type SessionState = {
   elapsedMs: number;
   pnl: number;
   martinStage: number;
-  pendingBet: PendingBet | null;
+  /** 오토·직접 각각 1개까지 동시 대기 가능 */
+  pendingBets: PendingBet[];
   lastBetResult: LastBetResult | null;
   skippedCount: number;
 };
@@ -108,7 +115,7 @@ const DEFAULT_STATE: SessionState = {
   elapsedMs: 0,
   pnl: 0,
   martinStage: 1,
-  pendingBet: null,
+  pendingBets: [],
   lastBetResult: null,
   skippedCount: 0,
 };
@@ -137,7 +144,7 @@ function readStored(): SessionState {
       status: parsed.status === 'running' ? 'paused' : parsed.status || 'idle',
       startedAt: null,
       elapsedMs: Number(parsed.elapsedMs) || 0,
-      pendingBet: null,
+      pendingBets: [],
       lastBetResult: parsed.lastBetResult ?? null,
       skippedCount: Number(parsed.skippedCount) || 0,
     };
@@ -311,7 +318,7 @@ export default function useSession() {
     typeof localStorage !== 'undefined' ? readStored() : DEFAULT_STATE,
   );
   const [now, setNow] = useState(() => Date.now());
-  const settleTimer = useRef<number | null>(null);
+  const settleTimers = useRef<Map<string, number>>(new Map());
   const onCutRef = useRef<((type: 'wincut' | 'losscut') => void) | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -328,7 +335,8 @@ export default function useSession() {
 
   useEffect(() => {
     return () => {
-      if (settleTimer.current) window.clearTimeout(settleTimer.current);
+      settleTimers.current.forEach((tid) => window.clearTimeout(tid));
+      settleTimers.current.clear();
     };
   }, []);
 
@@ -352,11 +360,17 @@ export default function useSession() {
     return state.elapsedMs;
   }, [state.status, state.startedAt, state.elapsedMs, now]);
 
-  const clearSettleTimer = () => {
-    if (settleTimer.current) {
-      window.clearTimeout(settleTimer.current);
-      settleTimer.current = null;
+  const clearSettleTimer = (betId?: string) => {
+    if (betId) {
+      const tid = settleTimers.current.get(betId);
+      if (tid) {
+        window.clearTimeout(tid);
+        settleTimers.current.delete(betId);
+      }
+      return;
     }
+    settleTimers.current.forEach((tid) => window.clearTimeout(tid));
+    settleTimers.current.clear();
   };
 
   const startSession = useCallback((mode: SessionMode, config: SessionConfig) => {
@@ -369,7 +383,7 @@ export default function useSession() {
       elapsedMs: 0,
       pnl: 0,
       martinStage: 1,
-      pendingBet: null,
+      pendingBets: [],
       lastBetResult: null,
       skippedCount: 0,
     });
@@ -408,7 +422,7 @@ export default function useSession() {
       elapsedMs: 0,
       pnl: 0,
       martinStage: 1,
-      pendingBet: null,
+      pendingBets: [],
       lastBetResult: null,
       skippedCount: 0,
     }));
@@ -439,9 +453,12 @@ export default function useSession() {
     const settled = settlePnl(pending.side, pending.amount, outcome);
     const nextPnl = curr.pnl + settled.pnlDelta;
     let nextStage = curr.martinStage;
-    if (settled.won === true) nextStage = 1;
-    else if (settled.won === false) {
-      nextStage = Math.min(curr.config.maxMartin + 1, curr.martinStage + 1);
+    // 마틴 단계는 오토베팅 정산에만 반영
+    if (pending.source === 'auto') {
+      if (settled.won === true) nextStage = 1;
+      else if (settled.won === false) {
+        nextStage = Math.min(curr.config.maxMartin + 1, curr.martinStage + 1);
+      }
     }
 
     const result: LastBetResult = {
@@ -455,11 +472,10 @@ export default function useSession() {
       pnlDelta: settled.pnlDelta,
       message: settled.message,
       at: Date.now(),
-      appliedRule: curr.status === 'running' || curr.status === 'paused' ? '오토베팅' : '직접 베팅',
+      appliedRule: pending.source === 'auto' ? '오토베팅' : '직접 베팅',
       martinStage: curr.martinStage,
     };
 
-    // 가상머니 정산 입금 (차감된 원금 기준)
     void walletSettleBet({
       amount: pending.amount,
       side: pending.side,
@@ -476,28 +492,44 @@ export default function useSession() {
       else if (nextPnl <= curr.config.lossCut) onCutRef.current?.('losscut');
     }, 0);
 
+    const preferResult =
+      result.won === true
+        ? result
+        : curr.lastBetResult?.won === true
+          ? curr.lastBetResult
+          : result;
+
     return {
       ...curr,
       pnl: nextPnl,
       martinStage: nextStage,
-      pendingBet: null,
-      lastBetResult: result,
+      pendingBets: curr.pendingBets.filter((b) => b.id !== pending.id),
+      lastBetResult: preferResult,
     };
   }, []);
 
   const placeBet = useCallback(async (input: PlaceBetInput): Promise<PlaceBetResult> => {
     const prev = stateRef.current;
-    const autoBetting = prev.status === 'running';
+    const resolvedSource: BetSource = input.source ?? 'manual';
 
-    // 수동 베팅은 오토베팅(세션) 없이도 가능. 일시정지 중인 오토베팅만 막음.
-    if (prev.status === 'paused') {
+    if (prev.status === 'paused' && resolvedSource === 'manual') {
       return {
         ok: false,
         error: '오토베팅이 일시정지 중입니다. 재개하거나 오토베팅을 종료한 뒤 수동 베팅하세요.',
       };
     }
-    if (prev.pendingBet) {
-      return { ok: false, error: '이전 베팅 결과를 확인 중입니다.' };
+    if (prev.status === 'paused' && resolvedSource === 'auto') {
+      return { ok: false, error: '오토베팅이 일시정지 중입니다.' };
+    }
+
+    if (prev.pendingBets.some((b) => b.source === resolvedSource)) {
+      return {
+        ok: false,
+        error:
+          resolvedSource === 'auto'
+            ? '오토베팅 결과를 확인 중입니다.'
+            : '직접 베팅 결과를 확인 중입니다.',
+      };
     }
     if (input.side !== 'PLAYER' && input.side !== 'BANKER' && input.side !== 'TIE') {
       return { ok: false, error: 'Player, Banker, Tie 중 하나를 선택해 주세요.' };
@@ -519,15 +551,13 @@ export default function useSession() {
       return { ok: false, error: `가상머니가 부족합니다. (가능 ${formatMoney(available)})` };
     }
 
-    // 마틴 한도는 오토베팅 진행 중에만 적용
-    if (autoBetting && prev.martinStage > prev.config.maxMartin) {
+    if (resolvedSource === 'auto' && prev.martinStage > prev.config.maxMartin) {
       return {
         ok: false,
         error: '최대 마틴 단계에 도달했습니다. 오토베팅을 재설정하세요.',
       };
     }
 
-    // 가상머니 즉시 차감
     const walletRes = await walletPlaceBet({
       amount,
       side: input.side,
@@ -549,39 +579,37 @@ export default function useSession() {
     const useLiveSettle = waitForLiveResult || baselineLatestId !== null;
 
     const pending: PendingBet = {
-      id: `bet_${Date.now()}`,
+      id: `bet_${Date.now()}_${resolvedSource}`,
       tableId: input.tableId,
       tableName: input.tableName,
       side: input.side,
       amount,
       placedAt: Date.now(),
+      source: resolvedSource,
       baselineLatestId: useLiveSettle ? (baselineLatestId ?? 0) : null,
       baselineResultCount:
         typeof input.baselineResultCount === 'number' ? input.baselineResultCount : 0,
       waitForLiveResult: useLiveSettle,
     };
 
-    clearSettleTimer();
-
-    // 손익(pnl)은 정산 시에만 반영 — 베팅 접수 시점에는 손실로 잡지 않음
-    // lastBetResult 는 유지 (승리 축하 연출이 place 직후 사라지지 않도록)
     setState((curr) => ({
       ...curr,
-      pendingBet: pending,
+      pendingBets: [...curr.pendingBets.filter((b) => b.source !== resolvedSource), pending],
     }));
 
     if (!useLiveSettle) {
-      // 라이브가 아닌 데모 테이블만 짧은 시뮬레이션 정산
-      settleTimer.current = window.setTimeout(() => {
+      const tid = window.setTimeout(() => {
+        settleTimers.current.delete(pending.id);
         setState((curr) => {
-          if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
-          return applySettlement(curr, curr.pendingBet, rollOutcome());
+          const bet = curr.pendingBets.find((b) => b.id === pending.id);
+          if (!bet) return curr;
+          return applySettlement(curr, bet, rollOutcome());
         });
-        settleTimer.current = null;
       }, SETTLE_MS);
+      settleTimers.current.set(pending.id, tid);
     } else {
-      // 다음 실결과 대기 — 타임아웃 시에만 취소(시드 반환)
-      settleTimer.current = window.setTimeout(() => {
+      const tid = window.setTimeout(() => {
+        settleTimers.current.delete(pending.id);
         void walletCancelBet({
           amount: pending.amount,
           tableName: pending.tableName,
@@ -591,7 +619,7 @@ export default function useSession() {
           }
         });
         setState((curr) => {
-          if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
+          if (!curr.pendingBets.some((b) => b.id === pending.id)) return curr;
           const lastBetResult: LastBetResult = {
             id: pending.id,
             tableId: pending.tableId,
@@ -608,27 +636,39 @@ export default function useSession() {
           };
           return {
             ...curr,
-            pendingBet: null,
+            pendingBets: curr.pendingBets.filter((b) => b.id !== pending.id),
             lastBetResult,
           };
         });
-        settleTimer.current = null;
       }, 180_000);
+      settleTimers.current.set(pending.id, tid);
     }
 
     return { ok: true };
   }, [applySettlement]);
 
   /** 결과 대기 중인 베팅 취소 (시드/가상머니 반환) */
-  const cancelPendingBet = useCallback(async (): Promise<PlaceBetResult> => {
-    const pending = stateRef.current.pendingBet;
+  const cancelPendingBet = useCallback(async (opts?: {
+    id?: string;
+    source?: BetSource;
+    tableId?: string;
+  }): Promise<PlaceBetResult> => {
+    const list = stateRef.current.pendingBets;
+    const pending =
+      (opts?.id && list.find((b) => b.id === opts.id)) ||
+      list.find((b) => {
+        if (opts?.source && b.source !== opts.source) return false;
+        if (opts?.tableId && b.tableId !== opts.tableId) return false;
+        return Boolean(opts?.id || opts?.source || opts?.tableId);
+      }) ||
+      (!opts || (!opts.id && !opts.source && !opts.tableId) ? list[0] : undefined);
+
     if (!pending) {
       return { ok: false, error: '취소할 베팅이 없습니다.' };
     }
 
-    clearSettleTimer();
+    clearSettleTimer(pending.id);
 
-    // UI는 즉시 해제 (취소 체감) — 환불은 이어서 요청
     const lastBetResult: LastBetResult = {
       id: pending.id,
       tableId: pending.tableId,
@@ -644,10 +684,10 @@ export default function useSession() {
       martinStage: stateRef.current.martinStage,
     };
     setState((curr) => {
-      if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
+      if (!curr.pendingBets.some((b) => b.id === pending.id)) return curr;
       return {
         ...curr,
-        pendingBet: null,
+        pendingBets: curr.pendingBets.filter((b) => b.id !== pending.id),
         lastBetResult,
       };
     });
@@ -682,27 +722,32 @@ export default function useSession() {
     resultCount?: number,
   ) => {
     setState((curr) => {
-      const pending = curr.pendingBet;
-      if (!pending || pending.tableId !== tableId) return curr;
-      if (!pending.waitForLiveResult && pending.baselineLatestId == null) return curr;
+      const ready = curr.pendingBets.filter((pending) => {
+        if (pending.tableId !== tableId) return false;
+        if (!pending.waitForLiveResult && pending.baselineLatestId == null) return false;
 
-      const baselineId = pending.baselineLatestId ?? 0;
-      const baselineCount = pending.baselineResultCount ?? 0;
-      const idAdvanced = typeof latestId === 'number' && latestId > baselineId;
-      const countAdvanced =
-        typeof resultCount === 'number' && resultCount > baselineCount;
+        const baselineId = pending.baselineLatestId ?? 0;
+        const baselineCount = pending.baselineResultCount ?? 0;
+        const idAdvanced = typeof latestId === 'number' && latestId > baselineId;
+        const countAdvanced =
+          typeof resultCount === 'number' && resultCount > baselineCount;
+        return idAdvanced || countAdvanced;
+      });
 
-      // 베팅 시점보다 이후의 결과가 와야만 정산
-      if (!idAdvanced && !countAdvanced) return curr;
+      if (ready.length === 0) return curr;
 
-      clearSettleTimer();
-      return applySettlement(curr, pending, outcome);
+      let next = curr;
+      for (const pending of ready) {
+        clearSettleTimer(pending.id);
+        next = applySettlement(next, pending, outcome);
+      }
+      return next;
     });
   }, [applySettlement]);
 
   const skipRound = useCallback((tableId?: string) => {
     setState((prev) => {
-      if (prev.pendingBet) return prev;
+      if (prev.pendingBets.length > 0) return prev;
       const lastBetResult: LastBetResult = {
         id: `skip_${Date.now()}`,
         tableId: tableId || '',
@@ -736,8 +781,12 @@ export default function useSession() {
     Math.min(state.martinStage, state.config.maxMartin),
   );
 
+  // 하위 호환: 첫 번째 pending
+  const pendingBet = state.pendingBets[0] ?? null;
+
   return {
     ...state,
+    pendingBet,
     elapsedMs,
     isActive,
     availableBankroll,
