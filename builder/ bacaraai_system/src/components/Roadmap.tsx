@@ -103,14 +103,22 @@ export default function Roadmap({ data }: RoadmapProps) {
 
 function ResultIndicator({ cell }: { cell: BigRoadCell }) {
   const borderColor = getResultColor(cell.result, 'border');
-  
+  const showTieCount = cell.ties > 0 || cell.result === 'T';
+  const tieCount = cell.result === 'T' ? Math.max(1, cell.ties) : cell.ties;
+
   return (
-    <div className={`w-full h-full rounded-full border-[2px] ${borderColor} flex items-center justify-center relative ${cell.isNewest ? 'animate-pulse ring-2 ring-zinc-400/50' : ''}`}>
-      {cell.ties > 0 && (
-        <div className="absolute w-[120%] h-[2px] bg-emerald-500 -rotate-45 z-10"></div>
-      )}
-      {cell.result === 'T' && (
-        <div className="absolute w-[120%] h-[2px] bg-emerald-500 -rotate-45 z-10"></div>
+    <div
+      className={`w-full h-full rounded-full border-[2px] ${borderColor} flex items-center justify-center relative ${
+        cell.isNewest ? 'animate-pulse ring-2 ring-zinc-400/50' : ''
+      }`}
+    >
+      {showTieCount && (
+        <span
+          className="absolute inset-0 flex items-center justify-center z-10 text-[10px] sm:text-[11px] font-black leading-none text-emerald-500 select-none"
+          aria-label={`타이 ${tieCount}회`}
+        >
+          {tieCount}
+        </span>
       )}
     </div>
   );
