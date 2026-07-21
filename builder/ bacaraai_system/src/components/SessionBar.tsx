@@ -1,11 +1,11 @@
-import { Lock, Play, Pause, Square, Settings2 } from 'lucide-react';
+import { Lock, Square, Settings2 } from 'lucide-react';
 import HelpTooltip from './HelpTooltip';
 import { playSfx } from '../audio/sfxEngine';
 import type { SessionConfig } from '../types';
 import {
   computeGauge,
   formatMoney,
-  nextBetAmount,
+  resolveBetAmount,
   type SessionStatus,
 } from '../hooks/useSession';
 
@@ -23,8 +23,6 @@ interface SessionBarProps {
 
 export default function SessionBar({
   onOpenSettings,
-  onPause,
-  onResume,
   onStop,
   beginnerMode = true,
   status,
@@ -36,12 +34,11 @@ export default function SessionBar({
   const isPaused = status === 'paused';
   const isActive = isRunning || isPaused;
   const stage = Math.min(Math.max(1, martinStage), config.maxMartin);
-  const nextBet = nextBetAmount(config.initialBet, stage, config.maxBet);
+  const nextBet = resolveBetAmount(config, stage);
   const gauge = computeGauge(pnl, config.lossCut, config.winCut);
   const pnlColor =
     pnl > 0 ? 'text-emerald-400' : pnl < 0 ? 'text-rose-400' : 'text-zinc-300';
-  const fillColor =
-    pnl >= 0 ? 'bg-emerald-500' : 'bg-rose-500';
+  const fillColor = pnl >= 0 ? 'bg-emerald-500' : 'bg-rose-500';
 
   const zoneText =
     gauge.zone === 'hit_win'
@@ -58,46 +55,21 @@ export default function SessionBar({
     <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2">
       <div className="flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3 w-full">
         <div className="flex items-center gap-1.5 shrink-0">
-          {isPaused ? (
-            <button
-              type="button"
-              onClick={() => {
-                playSfx('sessionStart');
-                onResume();
-              }}
-              className="flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-zinc-950 px-3.5 py-2 rounded-lg font-bold text-sm transition-colors"
-            >
-              <Play size={14} fill="currentColor" />
-              재개
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                playSfx('sessionPause');
-                onPause();
-              }}
-              className="flex items-center justify-center gap-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-100 px-3.5 py-2 rounded-lg font-bold text-sm transition-colors"
-            >
-              <Pause size={14} />
-              일시정지
-            </button>
-          )}
-
-          <button
-            type="button"
-            className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors disabled:opacity-40"
-            onClick={() => {
-              if (!isActive) return;
-              playSfx('sessionPause');
-              if (isRunning) onPause();
-              else onResume();
-            }}
-            disabled={!isActive}
-            aria-label={isPaused ? '재개' : '일시정지'}
+          <span
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold ${
+              isPaused
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+            }`}
           >
-            {isPaused ? <Play size={15} /> : <Pause size={15} />}
-          </button>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                isPaused ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'
+              }`}
+            />
+            {isPaused ? '오토베팅 일시정지' : '오토베팅 실행 중'}
+          </span>
+
           <button
             type="button"
             className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors disabled:opacity-40"
@@ -107,7 +79,8 @@ export default function SessionBar({
               onStop();
             }}
             disabled={!isActive}
-            aria-label="중지"
+            aria-label="오토베팅 종료"
+            title="오토베팅 종료"
           >
             <Square size={15} />
           </button>
@@ -119,6 +92,7 @@ export default function SessionBar({
               onOpenSettings();
             }}
             aria-label="오토베팅 설정"
+            title="오토베팅 설정"
           >
             <Settings2 size={15} />
           </button>
@@ -136,6 +110,9 @@ export default function SessionBar({
           <span className="text-zinc-500">
             다음
             <span className="text-zinc-200 font-mono ml-1">{formatMoney(nextBet)}</span>
+          </span>
+          <span className="text-[10px] text-zinc-600 hidden sm:inline">
+            일시정지·재개는 오른쪽 오토베팅 탭에서
           </span>
         </div>
 
