@@ -4,15 +4,17 @@ import { formatMoney, type LastBetResult } from '../hooks/useSession';
 import { playSfx } from '../audio/sfxEngine';
 
 const WIN_LINES = [
-  '축하합니다!',
-  '잭팟 느낌!',
-  '멋진 판단이었어요',
-  '연속의 흐름!',
-  '한 판 더 가볼까요?',
-  '오늘의 행운!',
+  '오늘 당신은 불타요',
+  '잭팟 그 자체!',
+  '숨 막히는 한 판!',
+  '이게 바로 흐름!',
+  '한 판 더, 미인처럼!',
+  '운명의 미소!',
+  '완벽한 타이밍!',
+  '럭키 스트라이크!',
 ];
 
-/** 승리 축하용 글램 포트레이트 (public/win-glam) */
+/** 승리 축하용 강렬 글램 이미지 (public/win-glam) */
 const BASE = import.meta.env.BASE_URL || '/';
 const WIN_IMAGES = [
   `${BASE}win-glam/win-glam-01.jpg`,
@@ -21,6 +23,8 @@ const WIN_IMAGES = [
   `${BASE}win-glam/win-glam-04.jpg`,
   `${BASE}win-glam/win-glam-05.jpg`,
   `${BASE}win-glam/win-glam-06.jpg`,
+  `${BASE}win-glam/win-glam-07.jpg`,
+  `${BASE}win-glam/win-glam-08.jpg`,
 ];
 
 type Props = {
@@ -29,11 +33,10 @@ type Props = {
 };
 
 function pickImage(seed: number) {
-  const idx = Math.abs(seed) % WIN_IMAGES.length;
-  return WIN_IMAGES[idx];
+  return WIN_IMAGES[Math.abs(seed) % WIN_IMAGES.length];
 }
 
-/** 승리 시 랜덤 글램 이미지 + 축하 연출 */
+/** 승리 시 랜덤 강렬 글램 이미지 + 축하 연출 */
 export default function WinCelebration({ result, onDismiss }: Props) {
   const [held, setHeld] = useState<LastBetResult | null>(null);
   const shownIdsRef = useRef<Set<string>>(new Set());
@@ -53,14 +56,12 @@ export default function WinCelebration({ result, onDismiss }: Props) {
 
   const line = useMemo(() => {
     if (!display) return WIN_LINES[0];
-    const idx = Math.abs(display.at) % WIN_LINES.length;
-    return WIN_LINES[idx];
+    return WIN_LINES[Math.abs(display.at) % WIN_LINES.length];
   }, [display]);
 
   const imageSrc = useMemo(() => {
     if (!display) return WIN_IMAGES[0];
-    // 같은 승리는 같은 이미지, 다음 승리는 다른 시드로 섞임
-    return pickImage(display.at + display.amount);
+    return pickImage(display.at + display.amount * 7);
   }, [display]);
 
   useEffect(() => {
@@ -68,7 +69,7 @@ export default function WinCelebration({ result, onDismiss }: Props) {
     const autoClose = window.setTimeout(() => {
       setHeld(null);
       onDismiss();
-    }, 4800);
+    }, 5200);
     return () => window.clearTimeout(autoClose);
   }, [open, display?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -81,7 +82,7 @@ export default function WinCelebration({ result, onDismiss }: Props) {
     <AnimatePresence>
       {open && display && (
         <motion.div
-          className="fixed inset-0 z-[300] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[300] flex items-center justify-center p-3 sm:p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -90,28 +91,38 @@ export default function WinCelebration({ result, onDismiss }: Props) {
           aria-modal="true"
           aria-label="승리 축하"
         >
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-gradient-to-b from-rose-950/80 via-black/85 to-black/90 backdrop-blur-md" />
 
+          {/* Hot spark particles */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            {Array.from({ length: 24 }).map((_, i) => (
+            {Array.from({ length: 36 }).map((_, i) => (
               <motion.span
                 key={i}
-                className="absolute w-2 h-2 rounded-sm"
+                className="absolute rounded-full"
                 style={{
-                  left: `${4 + ((i * 37) % 92)}%`,
-                  top: '-8%',
+                  left: `${3 + ((i * 29) % 94)}%`,
+                  top: '-6%',
+                  width: 4 + (i % 4) * 2,
+                  height: 4 + (i % 4) * 2,
                   backgroundColor:
-                    i % 3 === 0 ? '#f59e0b' : i % 3 === 1 ? '#34d399' : '#f87171',
+                    i % 4 === 0
+                      ? '#fb7185'
+                      : i % 4 === 1
+                        ? '#fbbf24'
+                        : i % 4 === 2
+                          ? '#f472b6'
+                          : '#fde68a',
+                  boxShadow: '0 0 8px currentColor',
                 }}
                 initial={{ y: 0, opacity: 1, rotate: 0 }}
                 animate={{
-                  y: '110vh',
+                  y: '115vh',
                   opacity: [1, 1, 0],
-                  rotate: 360 + i * 40,
+                  rotate: 420 + i * 25,
                 }}
                 transition={{
-                  duration: 2.2 + (i % 5) * 0.25,
-                  delay: (i % 7) * 0.08,
+                  duration: 2 + (i % 6) * 0.3,
+                  delay: (i % 9) * 0.06,
                   ease: 'easeIn',
                 }}
               />
@@ -119,59 +130,72 @@ export default function WinCelebration({ result, onDismiss }: Props) {
           </div>
 
           <motion.div
-            className="relative w-full max-w-sm rounded-2xl border-2 border-amber-400/60 bg-zinc-950 shadow-2xl shadow-amber-500/30 overflow-hidden"
-            initial={{ scale: 0.72, y: 48 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.92, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+            className="relative w-full max-w-[22rem] rounded-2xl border-2 border-rose-400/50 bg-zinc-950 shadow-[0_0_60px_rgba(244,63,94,0.35)] overflow-hidden"
+            initial={{ scale: 0.68, y: 56, rotate: -2 }}
+            animate={{ scale: 1, y: 0, rotate: 0 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 280, damping: 20 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-600 via-yellow-300 to-amber-600 z-10" />
+            <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-rose-600 via-amber-300 to-fuchsia-500 z-20" />
 
-            {/* Hero image */}
-            <div className="relative h-56 sm:h-64 overflow-hidden bg-zinc-900">
+            {/* Full-bleed glam hero */}
+            <div className="relative h-[22rem] sm:h-[26rem] overflow-hidden bg-zinc-900">
               <motion.img
                 key={imageSrc}
                 src={imageSrc}
                 alt=""
-                className="absolute inset-0 w-full h-full object-cover object-top"
-                initial={{ scale: 1.15, opacity: 0 }}
-                animate={{ scale: 1, opacity: imgReady ? 1 : 0.4 }}
-                transition={{ duration: 0.7, ease: 'easeOut' }}
+                className="absolute inset-0 w-full h-full object-cover object-[center_18%]"
+                initial={{ scale: 1.25, opacity: 0 }}
+                animate={{
+                  scale: imgReady ? 1.05 : 1.2,
+                  opacity: imgReady ? 1 : 0.35,
+                }}
+                transition={{ duration: 0.85, ease: 'easeOut' }}
                 onLoad={() => setImgReady(true)}
                 draggable={false}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
-              <motion.p
-                className="absolute top-3 left-3 text-[10px] font-bold tracking-[0.25em] text-amber-300/95 uppercase px-2 py-1 rounded-md bg-black/45 border border-amber-400/30"
-                initial={{ opacity: 0, y: -6 }}
+              {/* Vignette + heat overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-rose-950/25 to-transparent" />
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.55)_100%)]" />
+
+              <motion.div
+                className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2 z-10"
+                initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
+                transition={{ delay: 0.15 }}
               >
-                WIN
-              </motion.p>
+                <span className="text-[10px] font-black tracking-[0.28em] text-rose-100 uppercase px-2.5 py-1 rounded-md bg-rose-600/80 border border-rose-300/40 shadow-lg shadow-rose-500/30">
+                  HOT WIN
+                </span>
+                <span className="text-[10px] font-bold text-amber-200/90 px-2 py-1 rounded-md bg-black/50 border border-amber-400/30">
+                  ★ LUCKY
+                </span>
+              </motion.div>
+
+              {/* Text over image */}
+              <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pt-16 z-10">
+                <motion.h3
+                  className="text-[1.65rem] leading-tight font-black text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.85)] mb-1"
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.28 }}
+                >
+                  {line}
+                </motion.h3>
+                <motion.p
+                  className="text-3xl font-mono font-black text-amber-300 tabular-nums drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                >
+                  {formatMoney(display.pnlDelta, true)}
+                </motion.p>
+              </div>
             </div>
 
-            <div className="px-5 pt-3 pb-5 text-center relative -mt-2">
-              <motion.h3
-                className="text-2xl font-black text-amber-300 mb-1"
-                initial={{ opacity: 0, scale: 0.85 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.25 }}
-              >
-                {line}
-              </motion.h3>
-
-              <motion.p
-                className="text-3xl font-mono font-black text-emerald-400 tabular-nums"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-              >
-                {formatMoney(display.pnlDelta, true)}
-              </motion.p>
-
-              <p className="mt-2 text-[12px] text-zinc-400">
+            <div className="px-4 pt-3 pb-4 text-center bg-zinc-950">
+              <p className="text-[12px] text-zinc-400">
                 {display.tableName} ·{' '}
                 {display.side === 'BANKER'
                   ? 'Banker'
@@ -179,12 +203,12 @@ export default function WinCelebration({ result, onDismiss }: Props) {
                     ? 'Tie'
                     : 'Player'}
               </p>
-              <p className="mt-1 text-[11px] text-zinc-500 line-clamp-2 px-2">{display.message}</p>
+              <p className="mt-1 text-[11px] text-zinc-500 line-clamp-2 px-1">{display.message}</p>
 
               <button
                 type="button"
                 onClick={dismiss}
-                className="mt-5 w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-sm font-bold transition-colors"
+                className="mt-4 w-full py-3.5 rounded-xl bg-gradient-to-r from-rose-500 via-fuchsia-500 to-amber-400 hover:brightness-110 text-zinc-950 text-sm font-black tracking-wide transition-[filter] shadow-lg shadow-rose-500/25"
               >
                 계속하기
               </button>
