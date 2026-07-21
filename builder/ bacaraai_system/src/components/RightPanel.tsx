@@ -129,8 +129,9 @@ export default function RightPanel({
 
   React.useEffect(() => {
     if (!lastBetResult) return;
-    if (lastBetResult.won === true) playSfx('win');
-    else if (lastBetResult.won === false) playSfx('loss');
+    // 승리는 WinCelebration 에서 사운드·연출
+    if (lastBetResult.won === true) return;
+    if (lastBetResult.won === false) playSfx('loss');
     else playSfx('tick');
   }, [lastBetResult?.id]);
 

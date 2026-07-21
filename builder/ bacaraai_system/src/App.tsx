@@ -13,6 +13,7 @@ import RightPanel from './components/RightPanel';
 import TableZoomModal from './components/TableZoomModal';
 import RuleCreationModal from './components/RuleCreationModal';
 import StopSessionModal from './components/StopSessionModal';
+import WinCelebration from './components/WinCelebration';
 import RuleLabView from "./components/RuleLabView";
 import DataInsightCenter from './components/DataInsightCenter';
 import OnboardingModal from './components/OnboardingModal';
@@ -604,6 +605,10 @@ export default function App() {
           setStopSessionType(null);
           session.stopSession();
         }}
+      />
+      <WinCelebration
+        result={session.lastBetResult}
+        onDismiss={session.clearLastBetResult}
       />
       
       <OnboardingModal 
