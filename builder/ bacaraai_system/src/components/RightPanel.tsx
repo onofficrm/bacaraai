@@ -294,7 +294,7 @@ export default function RightPanel({
             </button>
           )}
         </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar overscroll-contain scroll-touch p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <EmptyRightPanel
             tables={tables}
             onSelectTable={onSelectTable ?? (() => undefined)}
@@ -399,7 +399,7 @@ export default function RightPanel({
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar overscroll-contain">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar overscroll-contain scroll-touch">
         <div className="p-3 sm:p-4 flex flex-col gap-3 pb-3">
           {/* Mode tabs — 베팅 진입을 최상단 */}
           <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-zinc-900 border border-zinc-800 sticky top-0 z-[5]">

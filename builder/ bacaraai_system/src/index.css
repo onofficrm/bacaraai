@@ -10,14 +10,20 @@ body,
 #root {
   width: 100%;
   max-width: 100%;
-  min-height: 100%;
+  height: 100%;
   margin: 0;
   background-color: #09090b;
-  overflow-x: hidden;
 }
 
-body {
-  overscroll-behavior: none;
+html {
+  height: 100dvh;
+}
+
+body,
+#root {
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden; /* 앱 내부 영역만 세로 스크롤 */
 }
 
 @layer utilities {
@@ -34,5 +40,10 @@ body {
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #52525b;
+  }
+
+  .scroll-touch {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
   }
 }

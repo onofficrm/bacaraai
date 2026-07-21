@@ -411,7 +411,7 @@ export default function App() {
   }, [sortBy]);
 
   return (
-    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-zinc-950 text-zinc-200 font-sans flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
+    <div className="h-dvh max-h-dvh w-full overflow-hidden bg-zinc-950 text-zinc-200 font-sans flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
       <Header 
         onEmergencyStop={() => {
           playSfx('risk');
@@ -488,10 +488,10 @@ export default function App() {
         />
       )}
       
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 min-h-0 flex overflow-hidden">
         {activeView === 'multitable' ? (
           <>
-            <div className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto custom-scrollbar flex flex-col">
+            <div className="flex-1 min-h-0 p-3 sm:p-4 lg:p-6 overflow-y-auto overscroll-y-contain scroll-touch custom-scrollbar flex flex-col">
               <ScreenHelpBanner screen="multitable" beginnerMode={beginnerMode} />
               <TableToolbar 
                 sortBy={sortBy} 
@@ -501,7 +501,7 @@ export default function App() {
                 filterCounts={filterCounts} 
                 isAutoReordered={isAutoReordered} 
               />
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 flex-1 content-start pb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 content-start pb-8">
                 <AnimatePresence>
                   {filteredAndSortedTables.map(table => (
                     <motion.div
@@ -574,7 +574,7 @@ export default function App() {
             />
           </>
         ) : activeView === 'insight' ? (
-          <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain scroll-touch custom-scrollbar flex flex-col">
             <div className="p-4 lg:px-6 pt-4 lg:pt-6">
               <ScreenHelpBanner screen="insight" beginnerMode={beginnerMode} />
             </div>
@@ -597,7 +597,7 @@ export default function App() {
             }}
           />
         ) : activeView === 'lab' ? (
-          <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain scroll-touch custom-scrollbar flex flex-col">
             <div className="p-4 lg:px-6 pt-4 lg:pt-6">
               <ScreenHelpBanner screen="lab" beginnerMode={beginnerMode} />
             </div>
