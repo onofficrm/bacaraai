@@ -38,6 +38,8 @@ interface RightPanelProps {
     side: BetSide;
     amount: number;
     baselineLatestId?: number | null;
+    baselineResultCount?: number;
+    waitForLiveResult?: boolean;
     availableBalance?: number;
   }) => PlaceBetResult | Promise<PlaceBetResult>;
   onSkip?: (tableId: string) => void;
@@ -125,6 +127,13 @@ export default function RightPanel({
 
   const isSettling = Boolean(pendingBet && table && pendingBet.tableId === table.id);
   const autoBettingOn = sessionStatus === 'running';
+  /** Table1(MD2729) 및 live 메타가 있는 테이블은 다음 실결과로만 정산 */
+  const waitForLiveResult = Boolean(
+    table &&
+      (table.id === 't1' ||
+        table.gameCode === 'MD2729' ||
+        table.live != null),
+  );
   const hasLiveFeed = Boolean(table?.live?.connected);
 
   const primaryChips = [
@@ -196,7 +205,9 @@ export default function RightPanel({
       tableName: table.name,
       side: selectedSide,
       amount: betAmount,
-      baselineLatestId: hasLiveFeed ? table.live?.latestId ?? 0 : null,
+      waitForLiveResult,
+      baselineLatestId: waitForLiveResult ? table.live?.latestId ?? 0 : null,
+      baselineResultCount: waitForLiveResult ? table.stats.recentResults.length : undefined,
       availableBalance: availableBankroll,
     });
 
@@ -398,11 +409,13 @@ export default function RightPanel({
             {isSettling && (
               <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2.5 text-center">
                 <p className="text-sm font-bold text-sky-300 animate-pulse">
-                  {pendingBet?.baselineLatestId != null ? '실결과 대기 중…' : '결과 확인 중…'}
+                  {pendingBet?.waitForLiveResult ? '다음 게임 결과 대기 중…' : '결과 확인 중…'}
                 </p>
                 <p className="text-[11px] text-zinc-400 mt-1">
                   {sideShortLabel(pendingBet?.side || 'PLAYER')} · {formatMoney(pendingBet?.amount || 0)}
-                  {pendingBet?.baselineLatestId != null ? ' · 다음 회차 결과에 정산' : ''}
+                  {pendingBet?.waitForLiveResult
+                    ? ' · 다음 회차 P/B/T 로 손익 정산'
+                    : ''}
                 </p>
               </div>
             )}

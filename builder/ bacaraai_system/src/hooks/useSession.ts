@@ -18,8 +18,12 @@ export type PendingBet = {
   side: BetSide;
   amount: number;
   placedAt: number;
-  /** 라이브 테이블: 베팅 시점의 마지막 결과 id (이후 새 결과로 정산) */
+  /** 라이브 테이블: 베팅 시점의 마지막 결과 id (이후 더 큰 id 가 오면 정산) */
   baselineLatestId?: number | null;
+  /** 베팅 시점 결과 개수 (id 보조 신호) */
+  baselineResultCount?: number;
+  /** true 면 절대 시뮬레이션 정산하지 않고 다음 실결과 대기 */
+  waitForLiveResult?: boolean;
 };
 
 export type LastBetResult = {
@@ -42,6 +46,10 @@ export type PlaceBetInput = {
   amount: number;
   /** 라이브 결과 id — 있으면 랜덤 대신 다음 실결과로 정산 */
   baselineLatestId?: number | null;
+  /** 베팅 시점까지의 결과 수 */
+  baselineResultCount?: number;
+  /** true 면 다음 실결과까지 대기 (시뮬레이션 금지) */
+  waitForLiveResult?: boolean;
   /** 가상머니 잔액 (있으면 시드 대신 이 값으로 한도 검사) */
   availableBalance?: number;
 };
@@ -481,8 +489,10 @@ export default function useSession() {
       emitWalletBalance(walletRes.balance);
     }
 
-    const useLiveSettle =
-      input.baselineLatestId !== undefined && input.baselineLatestId !== null;
+    const waitForLiveResult = Boolean(input.waitForLiveResult);
+    const baselineLatestId =
+      typeof input.baselineLatestId === 'number' ? input.baselineLatestId : null;
+    const useLiveSettle = waitForLiveResult || baselineLatestId !== null;
 
     const pending: PendingBet = {
       id: `bet_${Date.now()}`,
@@ -491,7 +501,10 @@ export default function useSession() {
       side: input.side,
       amount,
       placedAt: Date.now(),
-      baselineLatestId: useLiveSettle ? input.baselineLatestId : null,
+      baselineLatestId: useLiveSettle ? (baselineLatestId ?? 0) : null,
+      baselineResultCount:
+        typeof input.baselineResultCount === 'number' ? input.baselineResultCount : 0,
+      waitForLiveResult: useLiveSettle,
     };
 
     clearSettleTimer();
@@ -505,6 +518,7 @@ export default function useSession() {
     }));
 
     if (!useLiveSettle) {
+      // 라이브가 아닌 데모 테이블만 짧은 시뮬레이션 정산
       settleTimer.current = window.setTimeout(() => {
         setState((curr) => {
           if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
@@ -517,6 +531,7 @@ export default function useSession() {
         settleTimer.current = null;
       }, SETTLE_MS);
     } else {
+      // 다음 실결과 대기 — 타임아웃 시에만 취소(시드 반환)
       settleTimer.current = window.setTimeout(() => {
         void walletCancelBet({
           amount: pending.amount,
@@ -541,7 +556,7 @@ export default function useSession() {
               outcome: 'T',
               won: null,
               pnlDelta: 0,
-              message: '결과 대기 시간이 초과되어 베팅을 취소했습니다 (시드 반환)',
+              message: '다음 게임 결과가 없어 베팅을 취소했습니다 (시드 반환)',
               at: Date.now(),
             },
           };
@@ -553,17 +568,27 @@ export default function useSession() {
     return { ok: true };
   }, [applySettlement]);
 
-  /** 라이브 테이블: 새 결과가 오면 대기 중인 베팅 정산 */
+  /** 라이브 테이블: 베팅 이후의 새 결과로만 정산 */
   const settlePendingWithOutcome = useCallback((
     tableId: string,
     outcome: 'P' | 'B' | 'T',
     latestId?: number | null,
+    resultCount?: number,
   ) => {
     setState((curr) => {
       const pending = curr.pendingBet;
       if (!pending || pending.tableId !== tableId) return curr;
-      if (pending.baselineLatestId == null) return curr;
-      if (latestId != null && latestId === pending.baselineLatestId) return curr;
+      if (!pending.waitForLiveResult && pending.baselineLatestId == null) return curr;
+
+      const baselineId = pending.baselineLatestId ?? 0;
+      const baselineCount = pending.baselineResultCount ?? 0;
+      const idAdvanced = typeof latestId === 'number' && latestId > baselineId;
+      const countAdvanced =
+        typeof resultCount === 'number' && resultCount > baselineCount;
+
+      // 베팅 시점보다 이후의 결과가 와야만 정산
+      if (!idAdvanced && !countAdvanced) return curr;
+
       clearSettleTimer();
       const mid = {
         ...curr,

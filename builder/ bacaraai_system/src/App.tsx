@@ -79,21 +79,27 @@ export default function App() {
     return () => session.setCutHandler(null);
   }, [session.setCutHandler, session.pauseSession]);
 
-  // 라이브 테이블: 베팅 후 새 결과가 오면 실결과로 정산
+  // 라이브 테이블: 베팅 이후에 새로 들어온 결과로만 정산
   useEffect(() => {
     const pending = session.pendingBet;
-    if (!pending || pending.baselineLatestId == null) return;
+    if (!pending?.waitForLiveResult) return;
 
     const table = tables.find((t) => t.id === pending.tableId);
-    if (!table?.live?.connected) return;
+    if (!table) return;
 
-    const latestId = table.live.latestId;
-    if (latestId == null || latestId === pending.baselineLatestId) return;
+    const latestId = table.live?.latestId ?? null;
+    const resultCount = table.stats.recentResults.length;
+    const baselineId = pending.baselineLatestId ?? 0;
+    const baselineCount = pending.baselineResultCount ?? 0;
 
-    const outcome = table.stats.recentResults[table.stats.recentResults.length - 1];
+    const idAdvanced = typeof latestId === 'number' && latestId > baselineId;
+    const countAdvanced = resultCount > baselineCount;
+    if (!idAdvanced && !countAdvanced) return;
+
+    const outcome = table.stats.recentResults[resultCount - 1];
     if (!outcome || !['P', 'B', 'T'].includes(outcome)) return;
 
-    session.settlePendingWithOutcome(pending.tableId, outcome, latestId);
+    session.settlePendingWithOutcome(pending.tableId, outcome, latestId, resultCount);
   }, [
     tables,
     session.pendingBet,
@@ -130,12 +136,16 @@ export default function App() {
     if (wallet.loggedIn && amount > wallet.balance) return;
 
     autoBetSignalRef.current = signal;
+    const waitForLive =
+      target.id === 't1' || target.gameCode === 'MD2729' || target.live != null;
     void session.placeBet({
       tableId: target.id,
       tableName: target.name,
       side: opinion,
       amount,
-      baselineLatestId: target.live?.connected ? target.live.latestId ?? 0 : null,
+      waitForLiveResult: waitForLive,
+      baselineLatestId: waitForLive ? target.live?.latestId ?? 0 : null,
+      baselineResultCount: waitForLive ? target.stats.recentResults.length : undefined,
       availableBalance: availableBankroll,
     }).then((result) => {
       if (!result.ok) {
