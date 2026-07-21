@@ -80,7 +80,7 @@ export const MOCK_RULES: RuleData[] = [
 export const MOCK_TABLES: TableData[] = [
   {
     id: 't1',
-    name: 'Table1(MD2729)',
+    name: 'TABLE1(MD2729)',
     gameCode: 'MD2729',
     status: 'rule_triggered',
     timer: 15,

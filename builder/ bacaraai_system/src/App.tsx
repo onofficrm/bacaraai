@@ -44,7 +44,7 @@ export default function App() {
   const { beginnerMode, toggleBeginnerMode, setBeginnerMode } = useBeginnerMode();
   const session = useSession();
   const wallet = useWallet();
-  const liveTable = useLiveTable(MOCK_TABLES[0], 'MD2729', 'Table1(MD2729)');
+  const liveTable = useLiveTable(MOCK_TABLES[0], 'MD2729', 'TABLE1(MD2729)');
   const tables = useMemo(() => [liveTable, ...MOCK_TABLES.slice(1)], [liveTable]);
   const availableBankroll = wallet.loggedIn
     ? wallet.balance

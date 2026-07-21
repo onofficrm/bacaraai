@@ -79,7 +79,7 @@ function liveOpinion(results: GameResult[]): 'PLAYER' | 'BANKER' | 'WAIT' {
 export default function useLiveTable(
   base: TableData,
   tableName = 'MD2729',
-  displayName = 'Table1(MD2729)',
+  displayName = 'TABLE1(MD2729)',
 ): TableData {
   const [state, setState] = useState<LiveState>({
     loading: true,
