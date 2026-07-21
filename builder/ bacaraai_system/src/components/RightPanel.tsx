@@ -97,6 +97,7 @@ export default function RightPanel({
   const [showRisk, setShowRisk] = useState(false);
   const [betError, setBetError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [roadmapOpen, setRoadmapOpen] = useState(false);
 
   const recommendedSide: BetSide | null =
     table?.ai.finalOpinion === 'PLAYER'
@@ -123,6 +124,10 @@ export default function RightPanel({
     setShowRisk(false);
     setBetError(null);
     setPanelMode('manual');
+    // 모바일·태블릿: 로드맵 접고 베팅부터 / 데스크톱(xl+): 펼침
+    setRoadmapOpen(
+      typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches,
+    );
   }, [table?.id]);
 
   // 금액은 테이블 전환 시에만 맞추고, 칩 입력 중에는 덮어쓰지 않음
@@ -272,19 +277,27 @@ export default function RightPanel({
           <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm xl:hidden" onClick={onClose} />
         )}
         <div
-          className={`fixed inset-y-0 right-0 z-50 w-[85vw] max-w-sm xl:max-w-none sm:w-80 2xl:w-[420px] xl:static h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex-col shrink-0 ${
+          className={`z-50 bg-zinc-950 border-zinc-800 flex-col shrink-0 ${
             isOpen ? 'flex' : 'hidden xl:flex'
-          }`}
+          } fixed inset-x-0 bottom-0 max-h-[min(70dvh,640px)] rounded-t-2xl border-t border-x shadow-2xl xl:rounded-none xl:shadow-none xl:inset-y-0 xl:right-0 xl:left-auto xl:bottom-auto xl:max-h-none xl:h-full xl:w-80 2xl:w-[420px] xl:border-t-0 xl:border-x-0 xl:border-l`}
         >
+          <div className="xl:hidden flex justify-center pt-2 pb-1 shrink-0">
+            <div className="w-10 h-1 rounded-full bg-zinc-700" />
+          </div>
           <div className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
             <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">시작하기</span>
             {onClose && (
-              <button type="button" onClick={onClose} className="xl:hidden p-1 text-zinc-500 hover:text-white">
-                <X size={18} />
+              <button
+                type="button"
+                onClick={onClose}
+                className="xl:hidden p-2 -mr-1 text-zinc-500 hover:text-white rounded-full touch-manipulation"
+                aria-label="닫기"
+              >
+                <X size={20} />
               </button>
             )}
           </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))]">
             <EmptyRightPanel
               tables={tables}
               onSelectTable={onSelectTable ?? (() => undefined)}
@@ -315,16 +328,21 @@ export default function RightPanel({
       )}
 
       <div
-        className={`fixed inset-y-0 right-0 z-50 w-[85vw] max-w-sm xl:max-w-none sm:w-80 2xl:w-[420px] xl:static h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex-col overflow-y-auto custom-scrollbar transition-transform ${
+        className={`z-50 bg-zinc-950 border-zinc-800 flex-col min-h-0 ${
           isOpen ? 'flex' : 'hidden xl:flex'
-        }`}
+        } fixed inset-x-0 bottom-0 max-h-[min(92dvh,900px)] rounded-t-2xl border-t border-x shadow-2xl xl:rounded-none xl:shadow-none xl:inset-y-0 xl:right-0 xl:left-auto xl:bottom-auto xl:max-h-none xl:h-full xl:w-80 2xl:w-[420px] xl:border-t-0 xl:border-x-0 xl:border-l xl:static`}
       >
+        {/* Mobile/tablet drag handle */}
+        <div className="xl:hidden flex justify-center pt-2 pb-0.5 shrink-0">
+          <div className="w-10 h-1 rounded-full bg-zinc-700" />
+        </div>
+
         {/* Header */}
-        <div className="px-4 py-3 border-b border-zinc-800/80 sticky top-0 bg-zinc-950/95 backdrop-blur-sm z-10">
+        <div className="px-4 py-2.5 sm:py-3 border-b border-zinc-800/80 shrink-0 bg-zinc-950/95 backdrop-blur-sm z-10">
           <div className="flex justify-between items-start gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white tracking-tight truncate">{table.name}</h2>
+                <h2 className="text-base sm:text-lg font-bold text-white tracking-tight truncate">{table.name}</h2>
                 <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded shrink-0">
                   선택됨
                 </span>
@@ -332,22 +350,18 @@ export default function RightPanel({
               <div className="text-[11px] text-zinc-500 font-mono mt-0.5 flex gap-1.5">
                 <span>{table.gameCode}</span>
                 <span>•</span>
-                <span>{table.stats.shoeNumber}</span>
+                <span>회차 {table.stats.currentRound}</span>
               </div>
             </div>
-            <div className="flex items-start gap-3 shrink-0">
-              <div className="text-right">
-                <div className="text-[11px] text-zinc-400">
-                  회차: <span className="font-mono text-zinc-200">{table.stats.currentRound}회</span>
-                </div>
-              </div>
+            <div className="flex items-start gap-2 shrink-0">
               {onClose && (
                 <button
                   type="button"
                   onClick={onClose}
-                  className="xl:hidden p-1 bg-zinc-900 text-zinc-400 hover:text-white rounded-full"
+                  className="xl:hidden p-2 -mr-1 bg-zinc-900 text-zinc-400 hover:text-white rounded-full touch-manipulation"
+                  aria-label="닫기"
                 >
-                  <X size={18} />
+                  <X size={20} />
                 </button>
               )}
             </div>
@@ -376,31 +390,17 @@ export default function RightPanel({
           </div>
         </div>
 
-        <div className="p-3 flex flex-col gap-3">
-          {/* Roadmap */}
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
-            <div className="px-3 py-1.5 border-b border-zinc-800 flex items-center justify-between">
-              <span className="text-[11px] font-bold text-zinc-300">게임 테이블 기록</span>
-              <div className="flex items-center gap-2 text-[10px] text-zinc-500">
-                <span className="text-blue-400">P {table.stats.player}</span>
-                <span className="text-red-400">B {table.stats.banker}</span>
-                <span className="text-emerald-400">T {table.stats.tie}</span>
-              </div>
-            </div>
-            <div className="p-2">
-              <Roadmap data={table.roadmap} />
-            </div>
-          </div>
-
-          {/* Mode tabs */}
-          <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-zinc-900 border border-zinc-800">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar overscroll-contain">
+        <div className="p-3 sm:p-4 flex flex-col gap-3 pb-3">
+          {/* Mode tabs — 베팅 진입을 최상단 */}
+          <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-zinc-900 border border-zinc-800 sticky top-0 z-[5]">
             <button
               type="button"
               onClick={() => {
                 playSfx('ui');
                 setPanelMode('manual');
               }}
-              className={`py-2.5 rounded-lg text-sm font-bold transition-colors ${
+              className={`min-h-[48px] py-3 rounded-lg text-sm font-bold transition-colors touch-manipulation ${
                 panelMode === 'manual'
                   ? 'bg-blue-600 text-white shadow'
                   : 'text-zinc-400 hover:text-zinc-200'
@@ -414,7 +414,7 @@ export default function RightPanel({
                 playSfx('ui');
                 setPanelMode('auto');
               }}
-              className={`py-2.5 rounded-lg text-sm font-bold transition-colors ${
+              className={`min-h-[48px] py-3 rounded-lg text-sm font-bold transition-colors touch-manipulation ${
                 panelMode === 'auto'
                   ? 'bg-amber-500 text-zinc-950 shadow'
                   : 'text-zinc-400 hover:text-zinc-200'
@@ -434,7 +434,7 @@ export default function RightPanel({
               </div>
               <ul className="divide-y divide-zinc-800">
                 {pendingBets.map((bet) => (
-                  <li key={bet.id} className="px-3 py-2.5 flex items-center gap-2">
+                  <li key={bet.id} className="px-3 py-3 flex items-center gap-2">
                     <span
                       className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded border ${
                         bet.source === 'auto'
@@ -445,7 +445,7 @@ export default function RightPanel({
                       {bet.source === 'auto' ? '오토' : '직접'}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[12px] text-zinc-200 truncate">
+                      <p className="text-[13px] text-zinc-200 truncate">
                         <span className={sideColor(bet.side)}>{sideShortLabel(bet.side)}</span>
                         <span className="text-zinc-600 mx-1">·</span>
                         <span className="font-mono font-bold">{formatMoney(bet.amount)}</span>
@@ -456,7 +456,7 @@ export default function RightPanel({
                       type="button"
                       disabled={cancelling}
                       onClick={() => void handleCancelBet(bet.id)}
-                      className="shrink-0 text-[10px] font-bold text-rose-300 hover:text-rose-200 disabled:opacity-50"
+                      className="shrink-0 min-h-[44px] px-3 text-[12px] font-bold text-rose-300 hover:text-rose-200 disabled:opacity-50 touch-manipulation"
                     >
                       취소
                     </button>
@@ -468,14 +468,14 @@ export default function RightPanel({
 
           {panelMode === 'manual' ? (
             <>
-              {/* AI recommendation — reference only */}
+              {/* AI recommendation — compact on mobile */}
               <div className="rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden">
                 <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between">
                   <span className="text-[11px] font-bold text-zinc-400">다음 게임 추천 · 참고용</span>
                   <span className="text-[10px] text-zinc-500">{table.ai.consensus}</span>
                 </div>
                 <div className="px-3 py-3 flex items-center justify-between gap-2">
-                  <div>
+                  <div className="min-w-0">
                     <p className={`text-lg font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
                       {opinionLabel}
                     </p>
@@ -490,9 +490,9 @@ export default function RightPanel({
                       type="button"
                       onClick={applyRecommendedBet}
                       disabled={isManualSettling}
-                      className="shrink-0 px-3 py-2 rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-300 text-xs font-bold hover:bg-blue-600/30 disabled:opacity-40"
+                      className="shrink-0 min-h-[44px] px-3 py-2 rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-300 text-xs font-bold hover:bg-blue-600/30 disabled:opacity-40 touch-manipulation"
                     >
-                      추천대로 선택
+                      추천대로
                     </button>
                   )}
                 </div>
@@ -501,7 +501,7 @@ export default function RightPanel({
               {isManualSettling && manualPending && (
                 <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-3 text-center">
                   <p className="text-sm font-bold text-sky-300 animate-pulse">직접 베팅 접수 완료</p>
-                  <p className="text-[11px] text-zinc-300 mt-1">
+                  <p className="text-[12px] text-zinc-300 mt-1">
                     {sideShortLabel(manualPending.side)} · {formatMoney(manualPending.amount)}
                   </p>
                   <p className="text-[11px] text-zinc-500 mt-1 mb-3">
@@ -511,7 +511,7 @@ export default function RightPanel({
                     type="button"
                     disabled={cancelling}
                     onClick={() => void handleCancelBet(manualPending.id)}
-                    className="w-full py-2.5 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors disabled:opacity-50"
+                    className="w-full min-h-[48px] py-3 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors disabled:opacity-50 touch-manipulation"
                   >
                     {cancelling ? '취소 중…' : '직접 베팅 취소 (금액 반환)'}
                   </button>
@@ -550,7 +550,7 @@ export default function RightPanel({
                     </div>
                     <button
                       type="button"
-                      className="text-[10px] text-zinc-500 hover:text-zinc-300"
+                      className="text-[10px] text-zinc-500 hover:text-zinc-300 min-h-[44px] px-2 touch-manipulation"
                       onClick={() => onClearBetResult?.()}
                     >
                       닫기
@@ -560,7 +560,7 @@ export default function RightPanel({
               )}
 
               {betError && (
-                <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300">
+                <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-300">
                   {betError}
                 </div>
               )}
@@ -574,12 +574,12 @@ export default function RightPanel({
                 <div className="rounded-xl border border-blue-500/25 bg-zinc-900 overflow-hidden">
                   <div className="px-3 py-2 border-b border-zinc-800 bg-blue-950/20">
                     <p className="text-xs font-bold text-blue-300">직접 베팅</p>
-                    <p className="text-[10px] text-zinc-500 mt-0.5">① 베팅할 곳 → ② 금액 → ③ 확정</p>
+                    <p className="text-[10px] text-zinc-500 mt-0.5">사이드 → 금액 → 확정</p>
                   </div>
 
-                  <div className="p-3 flex flex-col gap-3">
+                  <div className="p-3 sm:p-4 flex flex-col gap-3.5">
                     <div>
-                      <label className="text-[11px] font-bold text-zinc-400 mb-1.5 block">① 베팅할 곳</label>
+                      <label className="text-[11px] font-bold text-zinc-400 mb-2 block">베팅할 곳</label>
                       <div className="flex gap-2">
                         {sideOptions.map((opt) => {
                           const active = selectedSide === opt.id;
@@ -593,10 +593,10 @@ export default function RightPanel({
                                 setSelectedSide(opt.id);
                                 setBetError(null);
                               }}
-                              className={`${opt.flex} min-h-[52px] py-4 rounded-xl border text-base font-bold transition-colors disabled:opacity-40 ${
+                              className={`${opt.flex} min-h-[56px] sm:min-h-[60px] py-3 rounded-xl border text-base sm:text-lg font-bold transition-colors disabled:opacity-40 touch-manipulation active:scale-[0.98] ${
                                 active
                                   ? opt.active
-                                  : 'bg-zinc-950 border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                                  : 'bg-zinc-950 border-zinc-700 text-zinc-400'
                               }`}
                             >
                               {opt.label}
@@ -607,8 +607,8 @@ export default function RightPanel({
                     </div>
 
                     <div>
-                      <div className="flex justify-between items-center mb-1.5">
-                        <label className="text-[11px] font-bold text-zinc-400">② 베팅 금액</label>
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="text-[11px] font-bold text-zinc-400">베팅 금액</label>
                         <button
                           type="button"
                           onClick={() => {
@@ -616,13 +616,13 @@ export default function RightPanel({
                             setBetAmount(0);
                             setBetError(null);
                           }}
-                          className="text-[10px] text-zinc-500 hover:text-white"
+                          className="text-[12px] min-h-[36px] px-2 text-zinc-500 hover:text-white touch-manipulation"
                         >
                           초기화
                         </button>
                       </div>
                       <div
-                        className={`bg-zinc-950 border rounded-lg px-3 py-2.5 flex items-center justify-between ${
+                        className={`bg-zinc-950 border rounded-xl px-4 py-3.5 flex items-center justify-between ${
                           selectedSide === 'BANKER'
                             ? 'border-red-500/40'
                             : selectedSide === 'TIE'
@@ -634,42 +634,38 @@ export default function RightPanel({
                           {sideShortLabel(selectedSide)}
                         </span>
                         <div className="flex items-baseline gap-1">
-                          <span className="font-mono font-bold text-white text-xl leading-none">
+                          <span className="font-mono font-bold text-white text-2xl leading-none tabular-nums">
                             {betAmount.toLocaleString()}
                           </span>
                           <span className="text-zinc-500 text-xs">원</span>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap justify-center gap-1.5 mt-2">
+                      <div className="grid grid-cols-5 gap-2 mt-3">
                         {primaryChips.map((chip) => (
                           <button
                             key={chip.label}
                             type="button"
                             onClick={() => addChip(chip)}
                             disabled={isManualSettling}
-                            className={`w-10 h-10 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 ${chip.color}`}
+                            className={`aspect-square min-h-[48px] rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-95 disabled:opacity-40 ${chip.color}`}
                           >
-                            <div className="w-7 h-7 rounded-full border border-current flex items-center justify-center bg-black/10 text-[10px] font-bold">
-                              {chip.label}
-                            </div>
+                            <span className="text-[11px] sm:text-xs font-bold leading-none">{chip.label}</span>
                           </button>
                         ))}
                       </div>
 
                       {showMoreChips && (
-                        <div className="flex flex-wrap justify-center gap-1.5 mt-1.5">
+                        <div className="grid grid-cols-3 gap-2 mt-2">
                           {extraChips.map((chip) => (
                             <button
                               key={chip.label}
                               type="button"
                               onClick={() => addChip(chip)}
                               disabled={isManualSettling}
-                              className={`w-10 h-10 rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center transition-transform hover:scale-110 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 ${chip.color}`}
+                              className={`min-h-[48px] rounded-xl border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-95 disabled:opacity-40 ${chip.color}`}
                             >
-                              <div className="w-7 h-7 rounded-full border border-current flex items-center justify-center bg-black/10 text-[10px] font-bold">
-                                {chip.label}
-                              </div>
+                              <span className="text-xs font-bold">{chip.label}</span>
                             </button>
                           ))}
                         </div>
@@ -681,43 +677,36 @@ export default function RightPanel({
                           playSfx('ui');
                           setShowMoreChips((v) => !v);
                         }}
-                        className="text-[11px] text-zinc-500 hover:text-zinc-300 self-center w-full text-center mt-1"
+                        className="text-[12px] text-zinc-500 hover:text-zinc-300 w-full text-center mt-2 min-h-[40px] touch-manipulation"
                       >
                         {showMoreChips ? '고액 칩 접기' : '고액 · 2배'}
                       </button>
                     </div>
 
-                    <div className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2">
-                      <p className="text-[10px] text-zinc-500 mb-1">③ 베팅 내용 확인</p>
-                      <p className="text-sm font-bold text-zinc-100 text-center">
+                    <div className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2.5">
+                      <p className="text-[11px] text-zinc-400 text-center font-medium">
                         <span className={sideColor(selectedSide)}>{sideShortLabel(selectedSide)}</span>
                         <span className="text-zinc-600 mx-1.5">·</span>
-                        <span className="font-mono">{betAmount.toLocaleString()}원</span>
-                        <span className="text-zinc-600 mx-1.5">·</span>
-                        <span>{table.name}</span>
+                        <span className="font-mono text-zinc-100">{betAmount.toLocaleString()}원</span>
                       </p>
                       {autoPending && (
-                        <p className="mt-2 text-[10px] text-amber-400/90 text-center">
+                        <p className="mt-1.5 text-[10px] text-amber-400/90 text-center">
                           오토 진행 중 · {sideShortLabel(autoPending.side)} {formatMoney(autoPending.amount)}
                           {autoPending.tableId !== table.id ? ` (${autoPending.tableName})` : ''}
                         </p>
                       )}
                       <div className="mt-2 pt-2 border-t border-zinc-800 text-[11px] text-zinc-500 flex justify-between">
-                        <span>보유 가상머니</span>
+                        <span>보유</span>
                         <span className="font-mono text-zinc-300">{formatMoney(availableBankroll)}</span>
                       </div>
                       <div className="text-[11px] text-zinc-500 flex justify-between mt-0.5">
-                        <span>베팅 후 잔액</span>
+                        <span>베팅 후</span>
                         <span className="font-mono text-zinc-300">{formatMoney(afterBetBalance)}</span>
                       </div>
-                      {waitForLiveResult && (
-                        <p className="text-[10px] text-sky-400/90 mt-2 text-center">
-                          다음 게임 결과로 정산됩니다
-                        </p>
-                      )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    {/* Desktop actions (mobile uses sticky bar) */}
+                    <div className="hidden xl:grid grid-cols-2 gap-2">
                       {isManualSettling && manualPending ? (
                         <button
                           type="button"
@@ -1067,6 +1056,31 @@ export default function RightPanel({
             </div>
           )}
 
+          {/* Roadmap — 모바일에서는 접힌 채 (베팅 우선) */}
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => {
+                playSfx('ui');
+                setRoadmapOpen((v) => !v);
+              }}
+              className="w-full px-3 py-2.5 flex items-center justify-between gap-2 touch-manipulation min-h-[44px]"
+            >
+              <span className="text-[11px] font-bold text-zinc-300">게임 테이블 기록</span>
+              <span className="flex items-center gap-2 text-[10px] text-zinc-500">
+                <span className="text-blue-400">P {table.stats.player}</span>
+                <span className="text-red-400">B {table.stats.banker}</span>
+                <span className="text-emerald-400">T {table.stats.tie}</span>
+                {roadmapOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </span>
+            </button>
+            {roadmapOpen && (
+              <div className="p-2 border-t border-zinc-800">
+                <Roadmap data={table.roadmap} />
+              </div>
+            )}
+          </div>
+
           {/* Advanced — collapsed */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
             <button
@@ -1075,7 +1089,7 @@ export default function RightPanel({
                 playSfx('ui');
                 setShowAiDetails((v) => !v);
               }}
-              className="w-full px-3 py-1.5 flex justify-between items-center hover:bg-zinc-800/40 transition-colors"
+              className="w-full px-3 py-2.5 flex justify-between items-center hover:bg-zinc-800/40 transition-colors touch-manipulation min-h-[44px]"
             >
               <span className="text-[11px] text-zinc-400">AI 모델 상세</span>
               <span className="flex items-center gap-2 text-[11px] font-mono">
@@ -1110,7 +1124,7 @@ export default function RightPanel({
                 playSfx('ui');
                 setShowRisk((v) => !v);
               }}
-              className="w-full px-3 py-1.5 flex justify-between items-center hover:bg-zinc-800/40 transition-colors"
+              className="w-full px-3 py-2.5 flex justify-between items-center hover:bg-zinc-800/40 transition-colors touch-manipulation min-h-[44px]"
             >
               <span className="text-[11px] text-zinc-400">위험 관리</span>
               {showRisk ? <ChevronUp size={13} className="text-zinc-500" /> : <ChevronDown size={13} className="text-zinc-500" />}
@@ -1130,6 +1144,55 @@ export default function RightPanel({
             AI는 참고용이며 최종 판단은 사용자에게 있습니다.
           </div>
         </div>
+        </div>
+
+        {/* Mobile/tablet sticky bet bar */}
+        {panelMode === 'manual' && !isRisk && (
+          <div className="xl:hidden shrink-0 border-t border-zinc-800 bg-zinc-950/98 backdrop-blur-md px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            {isManualSettling && manualPending ? (
+              <button
+                type="button"
+                disabled={cancelling}
+                onClick={() => void handleCancelBet(manualPending.id)}
+                className="w-full min-h-[52px] py-3.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold disabled:opacity-50 touch-manipulation"
+              >
+                {cancelling ? '취소 중…' : '베팅 취소 · 금액 반환'}
+              </button>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] text-center text-zinc-400">
+                  <span className={`font-bold ${sideColor(selectedSide)}`}>{sideShortLabel(selectedSide)}</span>
+                  <span className="text-zinc-600 mx-1">·</span>
+                  <span className="font-mono font-bold text-zinc-100">{betAmount.toLocaleString()}원</span>
+                  {waitForLiveResult && (
+                    <span className="text-sky-400/80 ml-1.5">다음 결과 정산</span>
+                  )}
+                </p>
+                <div className="grid grid-cols-[1fr_1.6fr] gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playSfx('skip');
+                      onSkip?.(table.id);
+                      setBetError(null);
+                    }}
+                    className="min-h-[52px] py-3.5 bg-zinc-800 active:bg-zinc-700 text-zinc-300 rounded-xl text-sm font-medium touch-manipulation"
+                  >
+                    건너뛰기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmBet}
+                    disabled={betAmount <= 0 || isManualSettling}
+                    className="min-h-[52px] py-3.5 bg-blue-600 active:bg-blue-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-600/25 disabled:opacity-45 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none touch-manipulation"
+                  >
+                    베팅 확정
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

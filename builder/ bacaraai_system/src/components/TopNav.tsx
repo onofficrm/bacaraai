@@ -18,7 +18,7 @@ export default function TopNav({ activeView, onChangeView }: TopNavProps) {
   ] as const;
 
   return (
-    <nav className="flex items-center gap-1 overflow-x-auto custom-scrollbar px-6 bg-zinc-950 border-b border-zinc-800 shrink-0">
+    <nav className="flex items-center gap-1 overflow-x-auto custom-scrollbar px-3 sm:px-6 bg-zinc-950 border-b border-zinc-800 shrink-0 [-webkit-overflow-scrolling:touch]">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = activeView === item.id;
@@ -26,14 +26,14 @@ export default function TopNav({ activeView, onChangeView }: TopNavProps) {
           <button
             key={item.id}
             onClick={() => onChangeView(item.id)}
-            className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-3 min-h-[48px] text-xs sm:text-sm font-bold border-b-2 transition-colors whitespace-nowrap touch-manipulation ${
               isActive
                 ? 'text-amber-400 border-amber-500 bg-amber-500/5'
                 : 'text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-zinc-900/50'
             }`}
           >
             <Icon size={16} />
-            {item.label}
+            <span className="max-sm:max-w-[4.5rem] truncate">{item.label}</span>
           </button>
         );
       })}

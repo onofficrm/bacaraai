@@ -488,10 +488,10 @@ export default function App() {
         />
       )}
       
-      <main className="flex-1 flex overflow-hidden pb-16 sm:pb-0">
+      <main className="flex-1 flex overflow-hidden">
         {activeView === 'multitable' ? (
           <>
-            <div className="flex-1 p-4 lg:p-6 overflow-y-auto custom-scrollbar flex flex-col">
+            <div className="flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto custom-scrollbar flex flex-col">
               <ScreenHelpBanner screen="multitable" beginnerMode={beginnerMode} />
               <TableToolbar 
                 sortBy={sortBy} 
@@ -501,7 +501,7 @@ export default function App() {
                 filterCounts={filterCounts} 
                 isAutoReordered={isAutoReordered} 
               />
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 lg:gap-6 flex-1 content-start">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 flex-1 content-start pb-4">
                 <AnimatePresence>
                   {filteredAndSortedTables.map(table => (
                     <motion.div

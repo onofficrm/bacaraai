@@ -175,7 +175,9 @@ export default function TableCard({
 
         {beginnerMode ? (
           <p className="text-[11px] text-zinc-500 px-0.5">
-            {isSelected ? '오른쪽에서 금액을 확인하고 확정하세요.' : '카드를 눌러 자세히 보세요.'}
+            {isSelected
+              ? '하단 시트에서 금액을 확인하고 확정하세요.'
+              : '카드를 눌러 베팅 화면을 여세요.'}
           </p>
         ) : (
           <div className="flex justify-between text-[10px] px-1 text-zinc-500">
@@ -183,6 +185,17 @@ export default function TableCard({
             <span className="text-amber-500/80">{table.ai.appliedRule}</span>
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect?.(table.id);
+          }}
+          className="xl:hidden w-full min-h-[48px] mt-1 rounded-xl bg-blue-600 active:bg-blue-500 text-white text-sm font-bold touch-manipulation shadow-lg shadow-blue-600/20"
+        >
+          {isSelected ? '베팅 계속하기' : '베팅하기'}
+        </button>
       </div>
     </div>
   );
