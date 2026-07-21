@@ -316,7 +316,8 @@ export default function App() {
           setActiveView(view);
         }}
       />
-      {activeView === 'multitable' && (
+      {activeView === 'multitable' &&
+        (session.status === 'running' || session.status === 'paused') && (
         <SessionBar
           onOpenSettings={() => {
             playSfx('ui');
@@ -387,6 +388,9 @@ export default function App() {
               beginnerMode={beginnerMode}
               sessionStatus={session.status}
               sessionMode={session.mode}
+              sessionConfig={session.config}
+              sessionPnl={session.pnl}
+              martinStage={session.martinStage}
               suggestedBet={session.suggestedBet}
               maxBet={session.config.maxBet}
               availableBankroll={availableBankroll}
@@ -396,6 +400,9 @@ export default function App() {
               onSkip={session.skipRound}
               onOpenSessionSettings={() => setIsModalOpen(true)}
               onClearBetResult={session.clearLastBetResult}
+              onPauseAuto={session.pauseSession}
+              onResumeAuto={session.resumeSession}
+              onStopAuto={session.stopSession}
             />
           </>
         ) : activeView === 'insight' ? (

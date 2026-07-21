@@ -58,16 +58,7 @@ export default function SessionBar({
     <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2">
       <div className="flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3 w-full">
         <div className="flex items-center gap-1.5 shrink-0">
-          {!isActive ? (
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-zinc-950 px-3.5 py-2 rounded-lg font-bold text-sm transition-colors"
-            >
-              <Play size={14} fill="currentColor" />
-              오토베팅 시작
-            </button>
-          ) : isPaused ? (
+          {isPaused ? (
             <button
               type="button"
               onClick={() => {
@@ -192,7 +183,7 @@ export default function SessionBar({
                         : 'text-teal-400/90'
                   }`}
                 >
-                  {isActive ? zoneText : '오토베팅을 켜면 손익 게이지가 활성화됩니다'}
+                  {zoneText}
                 </p>
               )}
             </div>
