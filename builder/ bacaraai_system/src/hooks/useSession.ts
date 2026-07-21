@@ -564,10 +564,10 @@ export default function useSession() {
     clearSettleTimer();
 
     // 손익(pnl)은 정산 시에만 반영 — 베팅 접수 시점에는 손실로 잡지 않음
+    // lastBetResult 는 유지 (승리 축하 연출이 place 직후 사라지지 않도록)
     setState((curr) => ({
       ...curr,
       pendingBet: pending,
-      lastBetResult: null,
     }));
 
     if (!useLiveSettle) {

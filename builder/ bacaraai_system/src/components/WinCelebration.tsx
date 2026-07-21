@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatMoney, type LastBetResult } from '../hooks/useSession';
 import { playSfx } from '../audio/sfxEngine';
@@ -19,46 +19,63 @@ type Props = {
 
 /** 승리 시 슬롯머신풍 짧은 축하 연출 */
 export default function WinCelebration({ result, onDismiss }: Props) {
-  const open = Boolean(result && result.won === true && result.amount > 0);
+  // placeBet / 다음 정산이 lastBetResult 를 바꿔도 연출은 끝날 때까지 유지
+  const [held, setHeld] = useState<LastBetResult | null>(null);
+  const shownIdsRef = useRef<Set<string>>(new Set());
   const [reelDone, setReelDone] = useState(false);
 
-  const line = useMemo(() => {
-    if (!result) return WIN_LINES[0];
-    const idx = Math.abs(result.at) % WIN_LINES.length;
-    return WIN_LINES[idx];
-  }, [result]);
-
   useEffect(() => {
-    if (!open || !result) {
-      setReelDone(false);
-      return;
-    }
+    if (!result || result.won !== true || result.amount <= 0) return;
+    if (shownIdsRef.current.has(result.id)) return;
+    shownIdsRef.current.add(result.id);
+    setHeld(result);
     setReelDone(false);
     playSfx('win');
+  }, [result?.id, result?.won, result?.amount, result]);
+
+  const open = Boolean(held);
+  const display = held;
+
+  const line = useMemo(() => {
+    if (!display) return WIN_LINES[0];
+    const idx = Math.abs(display.at) % WIN_LINES.length;
+    return WIN_LINES[idx];
+  }, [display]);
+
+  useEffect(() => {
+    if (!open || !display) return;
+    setReelDone(false);
     const reelTimer = window.setTimeout(() => setReelDone(true), 900);
-    const autoClose = window.setTimeout(() => onDismiss(), 3800);
+    const autoClose = window.setTimeout(() => {
+      setHeld(null);
+      onDismiss();
+    }, 4200);
     return () => {
       window.clearTimeout(reelTimer);
       window.clearTimeout(autoClose);
     };
-  }, [open, result?.id, onDismiss, result]);
+  }, [open, display?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dismiss = () => {
+    setHeld(null);
+    onDismiss();
+  };
 
   return (
     <AnimatePresence>
-      {open && result && (
+      {open && display && (
         <motion.div
-          className="fixed inset-0 z-[120] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[300] flex items-center justify-center p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={onDismiss}
+          onClick={dismiss}
           role="dialog"
           aria-modal="true"
           aria-label="승리 축하"
         >
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" />
 
-          {/* Confetti dots */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             {Array.from({ length: 28 }).map((_, i) => (
               <motion.span
@@ -86,7 +103,7 @@ export default function WinCelebration({ result, onDismiss }: Props) {
           </div>
 
           <motion.div
-            className="relative w-full max-w-sm rounded-2xl border-2 border-amber-400/60 bg-zinc-950 shadow-2xl shadow-amber-500/20 overflow-hidden"
+            className="relative w-full max-w-sm rounded-2xl border-2 border-amber-400/60 bg-zinc-950 shadow-2xl shadow-amber-500/30 overflow-hidden"
             initial={{ scale: 0.7, y: 40 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0 }}
@@ -100,7 +117,6 @@ export default function WinCelebration({ result, onDismiss }: Props) {
                 WIN
               </p>
 
-              {/* Slot reels */}
               <div className="mx-auto mb-4 flex justify-center gap-2">
                 {['7', '7', '7'].map((sym, i) => (
                   <div
@@ -110,11 +126,7 @@ export default function WinCelebration({ result, onDismiss }: Props) {
                     <motion.div
                       className="absolute inset-x-0 top-0 flex flex-col items-center"
                       initial={{ y: 0 }}
-                      animate={
-                        reelDone
-                          ? { y: -128 }
-                          : { y: [-0, -320] }
-                      }
+                      animate={reelDone ? { y: -128 } : { y: [0, -320] }}
                       transition={
                         reelDone
                           ? { type: 'spring', stiffness: 200, damping: 18, delay: i * 0.08 }
@@ -156,17 +168,22 @@ export default function WinCelebration({ result, onDismiss }: Props) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 1 }}
               >
-                {formatMoney(result.pnlDelta, true)}
+                {formatMoney(display.pnlDelta, true)}
               </motion.p>
 
               <p className="mt-2 text-[12px] text-zinc-400">
-                {result.tableName} · {result.side === 'BANKER' ? 'Banker' : result.side === 'TIE' ? 'Tie' : 'Player'}
+                {display.tableName} ·{' '}
+                {display.side === 'BANKER'
+                  ? 'Banker'
+                  : display.side === 'TIE'
+                    ? 'Tie'
+                    : 'Player'}
               </p>
-              <p className="mt-1 text-[11px] text-zinc-500 line-clamp-2 px-2">{result.message}</p>
+              <p className="mt-1 text-[11px] text-zinc-500 line-clamp-2 px-2">{display.message}</p>
 
               <button
                 type="button"
-                onClick={onDismiss}
+                onClick={dismiss}
                 className="mt-5 w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-sm font-bold transition-colors"
               >
                 계속하기
