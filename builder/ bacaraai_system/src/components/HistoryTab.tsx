@@ -55,6 +55,9 @@ export default function HistoryTab({ history }: { history: GameHistoryEntry[] })
                   <div className="flex flex-col items-center justify-center gap-3">
                     <Search size={32} className="opacity-20" />
                     <p>게임 기록이 없습니다.</p>
+                    <p className="text-[11px] text-zinc-600 max-w-xs">
+                      직접 베팅 또는 오토베팅이 정산되면 여기에 표시됩니다.
+                    </p>
                   </div>
                 </td>
               </tr>

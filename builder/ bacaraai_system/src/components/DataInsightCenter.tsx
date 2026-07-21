@@ -1,11 +1,26 @@
 import { getResultColor, getResultLabel } from '../utils/colors';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { RefreshCw, Calendar, Download, Activity, Database, BarChart3, PieChart, Info, History } from 'lucide-react';
 import HistoryTab from './HistoryTab';
-import { MOCK_HISTORY } from '../data';
+import { clearBetHistory, loadBetHistory } from '../utils/betHistory';
+import type { GameHistoryEntry } from '../types';
 
 export default function DataInsightCenter() {
   const [activeTab, setActiveTab] = useState<'status' | 'analysis' | 'search' | 'similar' | 'rules' | 'quality' | 'history'>('history');
+  const [history, setHistory] = useState<GameHistoryEntry[]>(() =>
+    typeof localStorage !== 'undefined' ? loadBetHistory() : [],
+  );
+
+  useEffect(() => {
+    const refresh = () => setHistory(loadBetHistory());
+    refresh();
+    window.addEventListener('bacara-bet-history', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('bacara-bet-history', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
 
   const tabs = [
     { id: 'history', label: '게임 기록' },
@@ -27,30 +42,37 @@ export default function DataInsightCenter() {
               <Database size={24} className="text-blue-500" />
               데이터 인사이트 센터
               <span className="text-xs font-normal text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full ml-2 border border-emerald-500/20">
-                마지막 업데이트: 방금 전
+                내 베팅 기록 {history.length}건
               </span>
             </h2>
             <p className="text-sm text-zinc-400">
-              지금까지 수집된 게임 결과와 반복 패턴, 사용자 규칙 및 AI 분석에 사용된 데이터 현황을 확인합니다.
+              직접 베팅·오토베팅 정산/취소 결과가 여기에 쌓입니다.
             </p>
             <div className="flex items-start gap-2 mt-2 bg-amber-500/10 border border-amber-500/20 text-amber-500/90 text-xs px-3 py-2 rounded-lg max-w-2xl">
               <Info size={14} className="shrink-0 mt-0.5" />
-              <span>데이터 수집량과 패턴 출현 빈도는 다음 결과의 확정적인 예측을 의미하지 않습니다.</span>
+              <span>샘플 데모 기록이 아니라, 이 브라우저에서 진행한 실제 베팅 기록입니다.</span>
             </div>
           </div>
           
           <div className="flex flex-wrap items-center gap-2">
-            <button className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-sm font-medium text-zinc-300 transition-colors flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setHistory(loadBetHistory())}
+              className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-sm font-medium text-zinc-300 transition-colors flex items-center gap-2"
+            >
               <RefreshCw size={14} /> 새로고침
             </button>
-            <button className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-sm font-medium text-zinc-300 transition-colors flex items-center gap-2">
-              <Calendar size={14} /> 기간 설정
-            </button>
-            <button className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-sm font-medium text-zinc-300 transition-colors flex items-center gap-2">
-              <Download size={14} /> 데이터 내보내기
-            </button>
-            <button className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors flex items-center gap-2 shadow-lg shadow-blue-900/20">
-              <Activity size={14} /> 수집 상태 보기
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('저장된 베팅 기록을 모두 지울까요?')) {
+                  clearBetHistory();
+                  setHistory([]);
+                }
+              }}
+              className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-sm font-medium text-zinc-300 transition-colors flex items-center gap-2"
+            >
+              기록 비우기
             </button>
           </div>
         </div>
@@ -76,7 +98,7 @@ export default function DataInsightCenter() {
       {/* Content */}
       <div className="p-6 lg:p-8 flex flex-col gap-6">
         {activeTab === 'history' ? (
-          <HistoryTab history={MOCK_HISTORY} />
+          <HistoryTab history={history} />
         ) : activeTab === 'status' ? (
           <DataStatusTab />
         ) : activeTab === 'analysis' ? (

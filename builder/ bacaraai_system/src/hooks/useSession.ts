@@ -7,6 +7,7 @@ import {
   walletSettleBet,
 } from '../api/walletBet';
 import { normalizePatternSegments } from '../utils/patternMatch';
+import { recordBetResult } from '../utils/betHistory';
 
 export type SessionMode = 'observe' | 'shadow' | 'live';
 export type SessionStatus = 'idle' | 'running' | 'paused';
@@ -440,6 +441,11 @@ export default function useSession() {
       at: Date.now(),
     };
 
+    recordBetResult(result, {
+      martinStage: curr.martinStage,
+      appliedRule: curr.status === 'running' || curr.status === 'paused' ? '오토베팅' : '직접 베팅',
+    });
+
     // 가상머니 정산 입금 (차감된 원금 기준)
     void walletSettleBet({
       amount: pending.amount,
@@ -578,22 +584,27 @@ export default function useSession() {
         });
         setState((curr) => {
           if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
+          const lastBetResult: LastBetResult = {
+            id: pending.id,
+            tableId: pending.tableId,
+            tableName: pending.tableName,
+            side: pending.side,
+            amount: pending.amount,
+            outcome: 'T',
+            won: null,
+            pnlDelta: 0,
+            message: '다음 게임 결과가 없어 베팅을 취소했습니다 (시드 반환)',
+            at: Date.now(),
+          };
+          recordBetResult(lastBetResult, {
+            martinStage: curr.martinStage,
+            appliedRule: '자동 취소',
+          });
           return {
             ...curr,
             pnl: curr.pnl + pending.amount,
             pendingBet: null,
-            lastBetResult: {
-              id: pending.id,
-              tableId: pending.tableId,
-              tableName: pending.tableName,
-              side: pending.side,
-              amount: pending.amount,
-              outcome: 'T',
-              won: null,
-              pnlDelta: 0,
-              message: '다음 게임 결과가 없어 베팅을 취소했습니다 (시드 반환)',
-              at: Date.now(),
-            },
+            lastBetResult,
           };
         });
         settleTimer.current = null;
@@ -623,22 +634,27 @@ export default function useSession() {
 
     setState((curr) => {
       if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
+      const lastBetResult: LastBetResult = {
+        id: pending.id,
+        tableId: pending.tableId,
+        tableName: pending.tableName,
+        side: pending.side,
+        amount: pending.amount,
+        outcome: 'T',
+        won: null,
+        pnlDelta: 0,
+        message: `베팅 취소 · ${formatMoney(pending.amount)} 반환`,
+        at: Date.now(),
+      };
+      recordBetResult(lastBetResult, {
+        martinStage: curr.martinStage,
+        appliedRule: '사용자 취소',
+      });
       return {
         ...curr,
         pnl: curr.pnl + pending.amount,
         pendingBet: null,
-        lastBetResult: {
-          id: pending.id,
-          tableId: pending.tableId,
-          tableName: pending.tableName,
-          side: pending.side,
-          amount: pending.amount,
-          outcome: 'T',
-          won: null,
-          pnlDelta: 0,
-          message: `베팅 취소 · ${formatMoney(pending.amount)} 반환`,
-          at: Date.now(),
-        },
+        lastBetResult,
       };
     });
 
@@ -677,21 +693,26 @@ export default function useSession() {
   const skipRound = useCallback((tableId?: string) => {
     setState((prev) => {
       if (prev.pendingBet) return prev;
+      const lastBetResult: LastBetResult = {
+        id: `skip_${Date.now()}`,
+        tableId: tableId || '',
+        tableName: '',
+        side: 'PLAYER',
+        amount: 0,
+        outcome: 'T',
+        won: null,
+        pnlDelta: 0,
+        message: '이번 회차를 건너뛰었습니다',
+        at: Date.now(),
+      };
+      recordBetResult(lastBetResult, {
+        martinStage: prev.martinStage,
+        appliedRule: '건너뛰기',
+      });
       return {
         ...prev,
         skippedCount: prev.skippedCount + 1,
-        lastBetResult: {
-          id: `skip_${Date.now()}`,
-          tableId: tableId || '',
-          tableName: '',
-          side: 'PLAYER',
-          amount: 0,
-          outcome: 'T',
-          won: null,
-          pnlDelta: 0,
-          message: '이번 회차를 건너뛰었습니다',
-          at: Date.now(),
-        },
+        lastBetResult,
       };
     });
   }, []);
