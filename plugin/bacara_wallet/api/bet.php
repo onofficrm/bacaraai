@@ -1,0 +1,222 @@
+<?php
+/**
+ * 가상머니 베팅 차감 / 정산 입금
+ *
+ * POST JSON or form:
+ *   action=place|settle|cancel
+ *   amount=100000
+ *   side=PLAYER|BANKER|TIE   (settle)
+ *   outcome=P|B|T           (settle)
+ *   table_name=...
+ *   note=...
+ */
+include_once dirname(__FILE__) . '/../../../common.php';
+include_once G5_LIB_PATH . '/bacara-wallet.lib.php';
+
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(array('ok' => false, 'message' => 'POST only'), JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (empty($is_member) || empty($member['mb_id'])) {
+    http_response_code(401);
+    echo json_encode(array(
+        'ok' => false,
+        'logged_in' => false,
+        'message' => '로그인이 필요합니다.',
+    ), JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$raw = file_get_contents('php://input');
+$json = array();
+if ($raw) {
+    $decoded = json_decode($raw, true);
+    if (is_array($decoded)) {
+        $json = $decoded;
+    }
+}
+
+$action = isset($json['action']) ? (string) $json['action'] : (isset($_POST['action']) ? (string) $_POST['action'] : '');
+$action = preg_replace('/[^a-z_]/', '', strtolower($action));
+
+$amount = isset($json['amount']) ? (int) $json['amount'] : (isset($_POST['amount']) ? (int) $_POST['amount'] : 0);
+$side = isset($json['side']) ? strtoupper((string) $json['side']) : (isset($_POST['side']) ? strtoupper((string) $_POST['side']) : '');
+$outcome = isset($json['outcome']) ? strtoupper((string) $json['outcome']) : (isset($_POST['outcome']) ? strtoupper((string) $_POST['outcome']) : '');
+$table_name = isset($json['table_name']) ? trim((string) $json['table_name']) : (isset($_POST['table_name']) ? trim((string) $_POST['table_name']) : '');
+$note = isset($json['note']) ? trim((string) $json['note']) : (isset($_POST['note']) ? trim((string) $_POST['note']) : '');
+
+$mb_id = $member['mb_id'];
+bacara_wallet_install_tables();
+
+/**
+ * 정산 시 입금액 (이미 베팅금이 차감된 상태 기준)
+ * - Player 적중: 원금 + 1배 = 2 * amount
+ * - Banker 적중: 원금 + 0.95배 (5% 수수료)  → 10만 베팅 시 +195,000 (순익 +95,000)
+ * - Tie 적중: 원금 + 8배 = 9 * amount
+ * - P/B 베팅 중 타이(푸시): 원금 반환
+ * - 패배: 0
+ */
+function bacara_bet_settle_credit($side, $amount, $outcome)
+{
+    $amount = (int) $amount;
+    $side = strtoupper((string) $side);
+    $outcome = strtoupper((string) $outcome);
+
+    if ($side === 'TIE') {
+        if ($outcome === 'T') {
+            return $amount + ($amount * 8);
+        }
+        return 0;
+    }
+
+    if ($outcome === 'T') {
+        return $amount; // push
+    }
+
+    $hit = ($side === 'PLAYER' && $outcome === 'P') || ($side === 'BANKER' && $outcome === 'B');
+    if (!$hit) {
+        return 0;
+    }
+
+    if ($side === 'BANKER') {
+        $profit = (int) floor($amount * 0.95);
+        return $amount + $profit;
+    }
+
+    return $amount + $amount; // Player 1:1
+}
+
+function bacara_bet_net_pnl($side, $amount, $outcome)
+{
+    $credit = bacara_bet_settle_credit($side, $amount, $outcome);
+    return $credit - (int) $amount;
+}
+
+if ($action === 'place') {
+    if ($amount <= 0) {
+        http_response_code(400);
+        echo json_encode(array('ok' => false, 'message' => '베팅 금액을 입력해 주세요.'), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $label = $table_name !== '' ? $table_name : '테이블';
+    $content = $note !== '' ? $note : "베팅 차감 · {$label}";
+    $result = bacara_wallet_adjust($mb_id, -$amount, 'bet', $content, $mb_id);
+
+    if (empty($result['ok'])) {
+        http_response_code(400);
+        echo json_encode(array(
+            'ok' => false,
+            'message' => $result['message'],
+            'balance' => isset($result['balance']) ? (int) $result['balance'] : bacara_wallet_get_balance($mb_id),
+        ), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    echo json_encode(array(
+        'ok' => true,
+        'action' => 'place',
+        'amount' => $amount,
+        'balance' => (int) $result['balance'],
+        'balance_text' => bacara_wallet_format($result['balance']),
+        'message' => '베팅금이 차감되었습니다.',
+    ), JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($action === 'cancel') {
+    if ($amount <= 0) {
+        http_response_code(400);
+        echo json_encode(array('ok' => false, 'message' => '반환 금액이 없습니다.'), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $content = $note !== '' ? $note : '베팅 취소 · 시드 반환';
+    $result = bacara_wallet_adjust($mb_id, $amount, 'bet_cancel', $content, $mb_id);
+
+    if (empty($result['ok'])) {
+        http_response_code(400);
+        echo json_encode(array(
+            'ok' => false,
+            'message' => $result['message'],
+            'balance' => isset($result['balance']) ? (int) $result['balance'] : bacara_wallet_get_balance($mb_id),
+        ), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    echo json_encode(array(
+        'ok' => true,
+        'action' => 'cancel',
+        'amount' => $amount,
+        'balance' => (int) $result['balance'],
+        'balance_text' => bacara_wallet_format($result['balance']),
+        'message' => '베팅금이 반환되었습니다.',
+    ), JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($action === 'settle') {
+    if ($amount <= 0) {
+        http_response_code(400);
+        echo json_encode(array('ok' => false, 'message' => '정산 금액이 올바르지 않습니다.'), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if (!in_array($side, array('PLAYER', 'BANKER', 'TIE'), true)) {
+        http_response_code(400);
+        echo json_encode(array('ok' => false, 'message' => '베팅 사이드가 올바르지 않습니다.'), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if (!in_array($outcome, array('P', 'B', 'T'), true)) {
+        http_response_code(400);
+        echo json_encode(array('ok' => false, 'message' => '결과가 올바르지 않습니다.'), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $credit = bacara_bet_settle_credit($side, $amount, $outcome);
+    $pnl = bacara_bet_net_pnl($side, $amount, $outcome);
+    $balance = bacara_wallet_get_balance($mb_id);
+
+    if ($credit > 0) {
+        $side_label = $side === 'BANKER' ? 'Banker' : ($side === 'TIE' ? 'Tie' : 'Player');
+        $out_label = $outcome === 'B' ? 'Banker' : ($outcome === 'T' ? 'Tie' : 'Player');
+        $content = $note !== ''
+            ? $note
+            : "베팅 정산 · {$side_label} / 결과 {$out_label} / 입금 " . number_format($credit) . '원';
+        $result = bacara_wallet_adjust($mb_id, $credit, 'bet_win', $content, $mb_id);
+        if (empty($result['ok'])) {
+            http_response_code(500);
+            echo json_encode(array(
+                'ok' => false,
+                'message' => $result['message'],
+                'balance' => isset($result['balance']) ? (int) $result['balance'] : $balance,
+            ), JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $balance = (int) $result['balance'];
+    }
+
+    echo json_encode(array(
+        'ok' => true,
+        'action' => 'settle',
+        'side' => $side,
+        'outcome' => $outcome,
+        'stake' => $amount,
+        'credit' => $credit,
+        'pnl' => $pnl,
+        'balance' => $balance,
+        'balance_text' => bacara_wallet_format($balance),
+        'message' => $credit > 0
+            ? ('정산 입금 ' . number_format($credit) . '원')
+            : '패배 — 추가 입금 없음',
+    ), JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+http_response_code(400);
+echo json_encode(array('ok' => false, 'message' => '잘못된 요청입니다.'), JSON_UNESCAPED_UNICODE);
+exit;

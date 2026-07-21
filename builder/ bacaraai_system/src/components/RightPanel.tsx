@@ -38,7 +38,8 @@ interface RightPanelProps {
     side: BetSide;
     amount: number;
     baselineLatestId?: number | null;
-  }) => PlaceBetResult;
+    availableBalance?: number;
+  }) => PlaceBetResult | Promise<PlaceBetResult>;
   onSkip?: (tableId: string) => void;
   onOpenSessionSettings?: () => void;
   onClearBetResult?: () => void;
@@ -179,7 +180,7 @@ export default function RightPanel({
     );
   };
 
-  const handleConfirmBet = () => {
+  const handleConfirmBet = async () => {
     if (!table || !onPlaceBet) return;
     if (!sessionReady) {
       setBetError('먼저 세션을 시작해 주세요.');
@@ -197,12 +198,13 @@ export default function RightPanel({
       return;
     }
 
-    const result = onPlaceBet({
+    const result = await onPlaceBet({
       tableId: table.id,
       tableName: table.name,
       side: selectedSide,
       amount: betAmount,
       baselineLatestId: hasLiveFeed ? table.live?.latestId ?? 0 : null,
+      availableBalance,
     });
 
     if (!result.ok) {
@@ -572,8 +574,8 @@ export default function RightPanel({
 
                 {beginnerMode && (
                   <p className="text-[11px] text-zinc-500 leading-snug -mt-0.5">
-                    잔여 {formatMoney(availableBankroll)} · 최대 {formatMoney(maxBet)}
-                    {hasLiveFeed ? ' · 실결과 정산' : ' · AI는 참고용'}
+                    가상머니 {formatMoney(availableBankroll)} · 최대 {formatMoney(maxBet)}
+                    {hasLiveFeed ? ' · 실결과 정산' : ' · 적중 시 입금 / 뱅커 5% 수수료'}
                   </p>
                 )}
 

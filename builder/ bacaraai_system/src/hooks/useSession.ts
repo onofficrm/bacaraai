@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionConfig } from '../types';
+import {
+  emitWalletBalance,
+  walletCancelBet,
+  walletPlaceBet,
+  walletSettleBet,
+} from '../api/walletBet';
 
 export type SessionMode = 'observe' | 'shadow' | 'live';
 export type SessionStatus = 'idle' | 'running' | 'paused';
@@ -36,11 +42,15 @@ export type PlaceBetInput = {
   amount: number;
   /** 라이브 결과 id — 있으면 랜덤 대신 다음 실결과로 정산 */
   baselineLatestId?: number | null;
+  /** 가상머니 잔액 (있으면 시드 대신 이 값으로 한도 검사) */
+  availableBalance?: number;
 };
 
 export type PlaceBetResult =
   | { ok: true }
   | { ok: false; error: string };
+
+export type PlaceBetFn = (input: PlaceBetInput) => Promise<PlaceBetResult>;
 
 export type SessionState = {
   status: SessionStatus;
@@ -238,8 +248,8 @@ export function settlePnl(side: BetSide, amount: number, outcome: 'P' | 'B' | 'T
       pnlDelta,
       message:
         side === 'BANKER'
-          ? `Banker 적중 (+${formatMoney(pnlDelta)}, 5% 수수료 반영)`
-          : `Player 적중 (+${formatMoney(pnlDelta)})`,
+          ? `Banker 적중 · 순익 +${formatMoney(pnlDelta)} (5% 수수료) · 입금 ${formatMoney(amount + pnlDelta)}`
+          : `Player 적중 · 순익 +${formatMoney(pnlDelta)} · 입금 ${formatMoney(amount * 2)}`,
     };
   }
   return {
@@ -387,6 +397,18 @@ export default function useSession() {
       at: Date.now(),
     };
 
+    // 가상머니 정산 입금 (차감된 원금 기준)
+    void walletSettleBet({
+      amount: pending.amount,
+      side: pending.side,
+      outcome,
+      tableName: pending.tableName,
+    }).then((res) => {
+      if (res.ok && typeof res.balance === 'number') {
+        emitWalletBalance(res.balance);
+      }
+    });
+
     window.setTimeout(() => {
       if (nextPnl >= curr.config.winCut) onCutRef.current?.('wincut');
       else if (nextPnl <= curr.config.lossCut) onCutRef.current?.('losscut');
@@ -401,7 +423,7 @@ export default function useSession() {
     };
   }, []);
 
-  const placeBet = useCallback((input: PlaceBetInput): PlaceBetResult => {
+  const placeBet = useCallback(async (input: PlaceBetInput): Promise<PlaceBetResult> => {
     const prev = stateRef.current;
 
     if (prev.status !== 'running') {
@@ -434,9 +456,12 @@ export default function useSession() {
       return { ok: false, error: `1회 최대 베팅액은 ${formatMoney(prev.config.maxBet)}입니다.` };
     }
 
-    const available = bankroll(prev.config.seed, prev.pnl);
+    const available =
+      typeof input.availableBalance === 'number'
+        ? Math.max(0, input.availableBalance)
+        : bankroll(prev.config.seed, prev.pnl);
     if (amount > available) {
-      return { ok: false, error: `잔여 시드가 부족합니다. (가능 ${formatMoney(available)})` };
+      return { ok: false, error: `가상머니가 부족합니다. (가능 ${formatMoney(available)})` };
     }
 
     if (prev.martinStage > prev.config.maxMartin) {
@@ -444,6 +469,22 @@ export default function useSession() {
         ok: false,
         error: '최대 마틴 단계에 도달했습니다. 관망하거나 세션을 재설정하세요.',
       };
+    }
+
+    // 가상머니 즉시 차감
+    const walletRes = await walletPlaceBet({
+      amount,
+      side: input.side,
+      tableName: input.tableName,
+    });
+    if (!walletRes.ok) {
+      return {
+        ok: false,
+        error: walletRes.message || '가상머니 차감에 실패했습니다. 로그인·잔액을 확인해 주세요.',
+      };
+    }
+    if (typeof walletRes.balance === 'number') {
+      emitWalletBalance(walletRes.balance);
     }
 
     const useLiveSettle =
@@ -461,22 +502,43 @@ export default function useSession() {
 
     clearSettleTimer();
 
-    // 라이브 결과가 없으면 시뮬레이션 정산 (섀도/데모 테이블)
+    // 세션 PnL: 베팅 순간 차감 반영
+    setState((curr) => ({
+      ...curr,
+      pnl: curr.pnl - amount,
+      pendingBet: pending,
+      lastBetResult: null,
+    }));
+
     if (!useLiveSettle) {
       settleTimer.current = window.setTimeout(() => {
         setState((curr) => {
           if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
-          return applySettlement(curr, curr.pendingBet, rollOutcome());
+          // 차감분 되돌린 뒤 settlePnl 순손익을 적용하기 위해
+          // applySettlement의 pnlDelta는 순손익이므로, 먼저 차감한 amount를 보정
+          const mid = {
+            ...curr,
+            pnl: curr.pnl + pending.amount,
+          };
+          return applySettlement(mid, curr.pendingBet, rollOutcome());
         });
         settleTimer.current = null;
       }, SETTLE_MS);
     } else {
-      // 실결과 미수신 시 3분 후 취소(시드 반환)
       settleTimer.current = window.setTimeout(() => {
+        void walletCancelBet({
+          amount: pending.amount,
+          tableName: pending.tableName,
+        }).then((res) => {
+          if (res.ok && typeof res.balance === 'number') {
+            emitWalletBalance(res.balance);
+          }
+        });
         setState((curr) => {
           if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
           return {
             ...curr,
+            pnl: curr.pnl + pending.amount, // 차감 복구
             pendingBet: null,
             lastBetResult: {
               id: pending.id,
@@ -496,12 +558,6 @@ export default function useSession() {
       }, 180_000);
     }
 
-    setState((curr) => ({
-      ...curr,
-      pendingBet: pending,
-      lastBetResult: null,
-    }));
-
     return { ok: true };
   }, [applySettlement]);
 
@@ -517,7 +573,11 @@ export default function useSession() {
       if (pending.baselineLatestId == null) return curr;
       if (latestId != null && latestId === pending.baselineLatestId) return curr;
       clearSettleTimer();
-      return applySettlement(curr, pending, outcome);
+      const mid = {
+        ...curr,
+        pnl: curr.pnl + pending.amount,
+      };
+      return applySettlement(mid, pending, outcome);
     });
   }, [applySettlement]);
 

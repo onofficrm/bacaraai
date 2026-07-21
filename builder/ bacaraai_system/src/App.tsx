@@ -27,6 +27,7 @@ import TableToolbar, { SortOption, FilterOption } from './components/TableToolba
 import useBeginnerMode from './hooks/useBeginnerMode';
 import useSession from './hooks/useSession';
 import useLiveTable from './hooks/useLiveTable';
+import useWallet from './hooks/useWallet';
 import { installAudioUnlock, playSfx } from './audio/sfxEngine';
 
 const VIEW_LABELS: Record<ViewType, string> = {
@@ -41,8 +42,12 @@ export default function App() {
   const [activeView, setActiveView] = useState<ViewType>('multitable');
   const { beginnerMode, toggleBeginnerMode, setBeginnerMode } = useBeginnerMode();
   const session = useSession();
+  const wallet = useWallet();
   const liveTable = useLiveTable(MOCK_TABLES[0], 'MD2729', 'Table1(MD2729)');
   const tables = useMemo(() => [liveTable, ...MOCK_TABLES.slice(1)], [liveTable]);
+  const availableBankroll = wallet.loggedIn
+    ? wallet.balance
+    : session.availableBankroll;
   
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return localStorage.getItem('onboardingComplete') !== 'true';
@@ -314,7 +319,7 @@ export default function App() {
               sessionMode={session.mode}
               suggestedBet={session.suggestedBet}
               maxBet={session.config.maxBet}
-              availableBankroll={session.availableBankroll}
+              availableBankroll={availableBankroll}
               pendingBet={session.pendingBet}
               lastBetResult={session.lastBetResult}
               onPlaceBet={session.placeBet}
