@@ -10,6 +10,7 @@ import {
   formatMoney,
   modeLabel,
   nextBetAmount,
+  strategyLabel,
   type BetSide,
   type LastBetResult,
   type PendingBet,
@@ -17,6 +18,7 @@ import {
   type SessionMode,
   type SessionStatus,
 } from '../hooks/useSession';
+import { formatPattern, patternSideLabel } from '../utils/patternMatch';
 
 type PanelMode = 'manual' | 'auto';
 
@@ -682,12 +684,34 @@ export default function RightPanel({
                 {!autoActive ? (
                   <>
                     <p className="text-[12px] text-zinc-400 leading-relaxed">
-                      AI 추천이 나오면 설정한 규칙대로 <strong className="text-zinc-200">자동으로 베팅</strong>합니다.
-                      직접 베팅과 별개로 동작합니다.
+                      <strong className="text-zinc-200">8개 테이블</strong>을 감시합니다.
+                      AI 추천 또는 <strong className="text-zinc-200">내가 만든 패턴</strong>이
+                      나온 테이블에만 자동 베팅합니다.
                     </p>
 
                     <div className="rounded-lg bg-zinc-950 border border-zinc-800 divide-y divide-zinc-800 text-[12px]">
-                      <AutoRow label="전략" value="AI 추천대로" />
+                      <AutoRow
+                        label="전략"
+                        value={cfg ? strategyLabel(cfg.strategy) : 'AI 추천대로'}
+                      />
+                      {cfg?.strategy === 'pattern' && (
+                        <>
+                          <AutoRow
+                            label="패턴"
+                            value={formatPattern(cfg.patternSequence || [])}
+                          />
+                          <AutoRow
+                            label="베팅"
+                            value={patternSideLabel(cfg.patternBetSide || 'PLAYER')}
+                          />
+                        </>
+                      )}
+                      <AutoRow
+                        label="금액"
+                        value={
+                          cfg?.amountMode === 'custom' ? '단계별 직접' : '마틴(2배)'
+                        }
+                      />
                       <AutoRow
                         label="기본 금액"
                         value={cfg ? formatMoney(cfg.initialBet) : formatMoney(10000)}
@@ -704,7 +728,10 @@ export default function RightPanel({
                         label="수익 목표"
                         value={cfg ? formatMoney(cfg.winCut, true) : '-'}
                       />
-                      <AutoRow label="대상 테이블" value={table.name} />
+                      <AutoRow
+                        label="감시 테이블"
+                        value={cfg ? `${cfg.maxTables}개` : '8개'}
+                      />
                     </div>
 
                     <button
@@ -739,13 +766,25 @@ export default function RightPanel({
                       </p>
                       <p className="text-[11px] text-zinc-400 mt-1">
                         {sessionMode === 'live'
-                          ? '다음 추천이 나오면 자동 베팅합니다.'
+                          ? cfg?.strategy === 'pattern'
+                            ? '패턴이 나온 테이블에 자동 베팅 · 패 시 마틴 이어감'
+                            : 'AI 추천 테이블에 자동 베팅합니다.'
                           : `${modeLabel(sessionMode)} — 자동 베팅은 하지 않습니다.`}
                       </p>
                     </div>
 
                     <div className="rounded-lg bg-zinc-950 border border-zinc-800 divide-y divide-zinc-800 text-[12px]">
                       <AutoRow label="모드" value={modeLabel(sessionMode)} />
+                      <AutoRow
+                        label="전략"
+                        value={cfg ? strategyLabel(cfg.strategy) : 'AI 추천대로'}
+                      />
+                      {cfg?.strategy === 'pattern' && (
+                        <AutoRow
+                          label="패턴"
+                          value={formatPattern(cfg.patternSequence || [])}
+                        />
+                      )}
                       <AutoRow
                         label="다음 금액"
                         value={formatMoney(nextAutoBet)}
@@ -766,7 +805,10 @@ export default function RightPanel({
                         }
                       />
                       <AutoRow label="보유 가상머니" value={formatMoney(availableBankroll)} />
-                      <AutoRow label="대상" value={table.name} />
+                      <AutoRow
+                        label="감시"
+                        value={cfg ? `${cfg.maxTables}개 테이블` : '8개'}
+                      />
                     </div>
 
                     {isSettling && (

@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { X, Calculator, Info } from 'lucide-react';
 import { playSfx } from '../audio/sfxEngine';
-import type { SessionConfig } from '../types';
+import type { AmountProgressMode, AutoBetStrategy, SessionConfig } from '../types';
 import {
   DEFAULT_SESSION_CONFIG,
   formatMoney,
   formatMoneyInput,
   martinRequiredCapital,
+  nextBetAmount,
   parseMoneyInput,
+  strategyLabel,
+  type BetSide,
   type SessionMode,
 } from '../hooks/useSession';
+import PatternSequenceBuilder from './PatternSequenceBuilder';
+import { formatPattern, patternSideLabel } from '../utils/patternMatch';
 
 interface SessionModalProps {
   isOpen: boolean;
@@ -18,6 +23,8 @@ interface SessionModalProps {
   onStart: (mode: SessionMode, config: SessionConfig) => void;
 }
 
+const CHIP_PRESETS = [1000, 5000, 10000, 50000, 100000, 500000];
+
 export default function SessionModal({
   isOpen,
   onClose,
@@ -25,22 +32,32 @@ export default function SessionModal({
   onStart,
 }: SessionModalProps) {
   const [config, setConfig] = useState<SessionConfig>(initialConfig);
+  const [editStage, setEditStage] = useState(1);
 
   useEffect(() => {
-    if (isOpen) setConfig(initialConfig);
+    if (isOpen) {
+      setConfig({ ...DEFAULT_SESSION_CONFIG, ...initialConfig });
+      setEditStage(1);
+    }
   }, [isOpen, initialConfig]);
 
   const summary = useMemo(() => {
     const targetSeed = config.seed + config.winCut;
     const stopSeed = config.seed + config.lossCut;
     const martinNeed = martinRequiredCapital(config.initialBet, config.maxMartin);
-    const canDefend = config.seed >= martinNeed;
-    return { targetSeed, stopSeed, martinNeed, canDefend };
+    const canDefend =
+      config.amountMode === 'custom'
+        ? config.seed >= (config.customSteps.reduce((a, b) => a + b, 0) || martinNeed)
+        : config.seed >= martinNeed;
+    const patternOk =
+      config.strategy !== 'pattern' || config.patternSequence.length >= 2;
+    return { targetSeed, stopSeed, martinNeed, canDefend, patternOk };
   }, [config]);
 
   if (!isOpen) return null;
 
   const start = (mode: SessionMode) => {
+    if (mode === 'live' && !summary.patternOk) return;
     playSfx('sessionStart');
     if (mode === 'shadow') window.setTimeout(() => playSfx('shuffle'), 280);
     onStart(mode, config);
@@ -50,6 +67,45 @@ export default function SessionModal({
   const setNum = (key: keyof SessionConfig, value: number) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
   };
+
+  const setStrategy = (strategy: AutoBetStrategy) => {
+    playSfx('ui');
+    setConfig((prev) => ({ ...prev, strategy }));
+  };
+
+  const setAmountMode = (amountMode: AmountProgressMode) => {
+    playSfx('ui');
+    setConfig((prev) => {
+      if (amountMode === 'custom' && (!prev.customSteps.length || prev.customSteps.length < prev.maxMartin)) {
+        const steps = Array.from({ length: prev.maxMartin }, (_, i) =>
+          prev.customSteps[i] ?? nextBetAmount(prev.initialBet, i + 1, prev.maxBet),
+        );
+        return { ...prev, amountMode, customSteps: steps };
+      }
+      return { ...prev, amountMode };
+    });
+  };
+
+  const setBetSide = (side: BetSide) => {
+    playSfx('ui');
+    setConfig((prev) => ({ ...prev, patternBetSide: side }));
+  };
+
+  const applyChipToStage = (amount: number) => {
+    playSfx('chip');
+    setConfig((prev) => {
+      const steps = Array.from({ length: prev.maxMartin }, (_, i) =>
+        prev.customSteps[i] ?? nextBetAmount(prev.initialBet, i + 1, prev.maxBet),
+      );
+      steps[editStage - 1] = Math.min(amount, prev.maxBet);
+      return { ...prev, customSteps: steps, amountMode: 'custom' };
+    });
+  };
+
+  const liveLabel =
+    config.strategy === 'pattern'
+      ? '오토베팅 시작 (내 패턴으로)'
+      : '오토베팅 시작 (AI 추천으로)';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -76,6 +132,157 @@ export default function SessionModal({
             >
               <X size={24} />
             </button>
+          </div>
+
+          {/* Strategy */}
+          <div className="mb-6">
+            <p className="text-xs font-bold text-zinc-400 mb-2">① 언제 베팅할까요?</p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setStrategy('ai')}
+                className={`py-3 rounded-xl border-2 text-sm font-bold transition-colors ${
+                  config.strategy === 'ai'
+                    ? 'bg-indigo-600 border-indigo-400 text-white'
+                    : 'bg-zinc-950 border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                }`}
+              >
+                AI 추천대로
+                <span className="block text-[10px] font-medium opacity-80 mt-0.5">AI가 말한 테이블·사이드</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStrategy('pattern')}
+                className={`py-3 rounded-xl border-2 text-sm font-bold transition-colors ${
+                  config.strategy === 'pattern'
+                    ? 'bg-amber-500 border-amber-300 text-zinc-950'
+                    : 'bg-zinc-950 border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                }`}
+              >
+                내가 만든 패턴
+                <span className="block text-[10px] font-medium opacity-80 mt-0.5">결과 버튼을 눌러 설정</span>
+              </button>
+            </div>
+
+            {config.strategy === 'pattern' && (
+              <div className="flex flex-col gap-3">
+                <PatternSequenceBuilder
+                  sequence={config.patternSequence}
+                  onChange={(patternSequence) =>
+                    setConfig((prev) => ({ ...prev, patternSequence }))
+                  }
+                />
+
+                <div>
+                  <p className="text-xs font-bold text-zinc-400 mb-2">
+                    패턴이 나온 다음 게임에서 베팅할 곳
+                  </p>
+                  <div className="flex gap-2">
+                    {(
+                      [
+                        { id: 'PLAYER' as const, label: 'Player', cls: 'bg-blue-600 border-blue-400' },
+                        { id: 'TIE' as const, label: 'Tie', cls: 'bg-emerald-500 border-emerald-400' },
+                        { id: 'BANKER' as const, label: 'Banker', cls: 'bg-red-500 border-red-400' },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setBetSide(opt.id)}
+                        className={`flex-1 min-h-[44px] rounded-xl border-2 text-sm font-bold transition-colors ${
+                          config.patternBetSide === opt.id
+                            ? `${opt.cls} text-white`
+                            : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {config.strategy === 'ai' && (
+              <p className="text-[11px] text-zinc-500 leading-relaxed rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+                8개 테이블을 감시하다가, AI가 Player/Banker를 추천한 테이블에 자동 베팅합니다.
+              </p>
+            )}
+          </div>
+
+          {/* Amount progress */}
+          <div className="mb-6">
+            <p className="text-xs font-bold text-zinc-400 mb-2">② 금액은 어떻게 올릴까요?</p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setAmountMode('martin')}
+                className={`py-3 rounded-xl border-2 text-sm font-bold ${
+                  config.amountMode === 'martin'
+                    ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                    : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                }`}
+              >
+                마틴 (2배씩)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAmountMode('custom')}
+                className={`py-3 rounded-xl border-2 text-sm font-bold ${
+                  config.amountMode === 'custom'
+                    ? 'bg-amber-500/20 border-amber-400 text-amber-200'
+                    : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                }`}
+              >
+                단계별 직접 설정
+              </button>
+            </div>
+
+            {config.amountMode === 'custom' && (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 flex flex-col gap-3">
+                <p className="text-[10px] text-zinc-500">
+                  단계를 고른 뒤, 아래 금액 버튼을 눌러 넣으세요.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.from({ length: config.maxMartin }, (_, i) => {
+                    const stage = i + 1;
+                    const amt =
+                      config.customSteps[i] ??
+                      nextBetAmount(config.initialBet, stage, config.maxBet);
+                    const active = editStage === stage;
+                    return (
+                      <button
+                        key={stage}
+                        type="button"
+                        onClick={() => {
+                          playSfx('ui');
+                          setEditStage(stage);
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-bold ${
+                          active
+                            ? 'border-amber-400 bg-amber-500/20 text-amber-200'
+                            : 'border-zinc-700 text-zinc-400'
+                        }`}
+                      >
+                        {stage}단 {formatMoney(amt)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {CHIP_PRESETS.map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => applyChipToStage(v)}
+                      className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200 hover:border-amber-500"
+                    >
+                      {formatMoney(v)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -106,11 +313,19 @@ export default function SessionModal({
 
             <div className="col-span-1 sm:col-span-2 border-t border-zinc-800 pt-6 mt-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
               <NumberInput
-                label="최대 마틴 단계"
+                label="최대 마틴/단계"
                 value={config.maxMartin}
                 min={1}
                 max={20}
-                onChange={(v) => setNum('maxMartin', v)}
+                onChange={(v) => {
+                  setConfig((prev) => {
+                    if (prev.amountMode !== 'custom') return { ...prev, maxMartin: v };
+                    const steps = Array.from({ length: v }, (_, i) =>
+                      prev.customSteps[i] ?? nextBetAmount(prev.initialBet, i + 1, prev.maxBet),
+                    );
+                    return { ...prev, maxMartin: v, customSteps: steps };
+                  });
+                }}
               />
               <MoneyInput
                 label="1회 최대 베팅액 (원)"
@@ -118,10 +333,10 @@ export default function SessionModal({
                 onChange={(v) => setNum('maxBet', Math.max(config.initialBet, v))}
               />
               <NumberInput
-                label="최대 동시 진행 테이블"
+                label="감시 테이블 수 (최대 8)"
                 value={config.maxTables}
                 min={1}
-                max={12}
+                max={8}
                 onChange={(v) => setNum('maxTables', v)}
               />
               <NumberInput
@@ -156,6 +371,25 @@ export default function SessionModal({
           </h3>
 
           <div className="flex flex-col gap-4 text-sm flex-1">
+            <SummaryRow label="전략" value={strategyLabel(config.strategy)} valueColor="text-amber-300" />
+            {config.strategy === 'pattern' && (
+              <>
+                <SummaryRow
+                  label="패턴"
+                  value={formatPattern(config.patternSequence)}
+                  valueColor="text-zinc-200"
+                />
+                <SummaryRow
+                  label="베팅"
+                  value={patternSideLabel(config.patternBetSide)}
+                  valueColor="text-zinc-200"
+                />
+              </>
+            )}
+            <SummaryRow
+              label="금액"
+              value={config.amountMode === 'custom' ? '단계별 직접' : '마틴 2배'}
+            />
             <SummaryRow
               label="목표 시드"
               value={formatMoney(summary.targetSeed)}
@@ -166,6 +400,7 @@ export default function SessionModal({
               value={formatMoney(summary.stopSeed)}
               valueColor="text-red-400"
             />
+            <SummaryRow label="감시" value={`${config.maxTables}개 테이블`} />
 
             <div
               className={`rounded-lg p-4 mt-2 border ${
@@ -181,7 +416,7 @@ export default function SessionModal({
               >
                 <Info size={16} className="mt-0.5 shrink-0" />
                 <span className="font-medium text-sm">
-                  마틴 {config.maxMartin}단계 필요 자금
+                  {config.maxMartin}단계 필요 자금
                 </span>
               </div>
               <div
@@ -198,15 +433,9 @@ export default function SessionModal({
                   원
                 </span>
               </div>
-              <p
-                className={`text-xs mt-2 ${
-                  summary.canDefend ? 'text-amber-500/70' : 'text-rose-300/80'
-                }`}
-              >
-                {summary.canDefend
-                  ? `현재 설정된 시작 시드로 ${config.maxMartin}단계 마틴게일 방어가 가능합니다.`
-                  : `시작 시드가 부족합니다. 시드를 늘리거나 마틴 단계·초기 베팅액을 낮추세요.`}
-              </p>
+              {!summary.patternOk && (
+                <p className="text-xs mt-2 text-rose-300">패턴은 최소 2게임 이상 만들어 주세요.</p>
+              )}
             </div>
           </div>
 
@@ -228,10 +457,10 @@ export default function SessionModal({
             <button
               type="button"
               onClick={() => start('live')}
-              disabled={!summary.canDefend}
+              disabled={!summary.canDefend || !summary.patternOk}
               className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
             >
-              오토베팅 시작 (AI 추천 자동 베팅)
+              {liveLabel}
             </button>
           </div>
         </div>
@@ -309,9 +538,9 @@ function SummaryRow({
   valueColor?: string;
 }) {
   return (
-    <div className="flex justify-between items-center">
-      <span className="text-zinc-500">{label}</span>
-      <span className={`font-mono font-medium ${valueColor}`}>{value}</span>
+    <div className="flex justify-between items-center gap-2">
+      <span className="text-zinc-500 shrink-0">{label}</span>
+      <span className={`font-mono font-medium text-right text-xs ${valueColor}`}>{value}</span>
     </div>
   );
 }

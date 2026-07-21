@@ -29,6 +29,7 @@ import useSession from './hooks/useSession';
 import useLiveTable from './hooks/useLiveTable';
 import useWallet from './hooks/useWallet';
 import { installAudioUnlock, playSfx } from './audio/sfxEngine';
+import { matchesPattern } from './utils/patternMatch';
 
 const VIEW_LABELS: Record<ViewType, string> = {
   multitable: '라이브 테이블',
@@ -65,6 +66,11 @@ export default function App() {
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [isAutoReordered, setIsAutoReordered] = useState(false);
   const autoBetSignalRef = useRef<string | null>(null);
+  /** 패턴 진입 후 마틴 진행 중인 테이블 (승이 나면 해제) */
+  const patternRunRef = useRef<{ tableId: string; side: 'PLAYER' | 'BANKER' | 'TIE' } | null>(
+    null,
+  );
+  const handledBetResultIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     installAudioUnlock();
@@ -106,64 +112,141 @@ export default function App() {
     session.settlePendingWithOutcome,
   ]);
 
-  // 오토베팅(live): AI가 P/B 추천하면 자동 베팅
+  // 오토베팅(live): 8테이블 감시 — AI 추천 또는 사용자 패턴 일치 시 베팅
   useEffect(() => {
     if (session.status !== 'running' || session.mode !== 'live') {
-      if (session.status === 'idle') autoBetSignalRef.current = null;
+      if (session.status === 'idle') {
+        autoBetSignalRef.current = null;
+        patternRunRef.current = null;
+        handledBetResultIdRef.current = null;
+      }
       return;
     }
     if (session.pendingBet) return;
 
-    const target =
-      (selectedTableId ? tables.find((t) => t.id === selectedTableId) : null) || liveTable;
-    if (!target || target.status === 'risk_blocked') return;
+    // 패턴 런: 해당 런의 승이 확정되면 다시 패턴 대기
+    const last = session.lastBetResult;
+    if (last && last.id !== handledBetResultIdRef.current) {
+      handledBetResultIdRef.current = last.id;
+      if (last.won === true && patternRunRef.current?.tableId === last.tableId) {
+        patternRunRef.current = null;
+      }
+    }
 
-    const opinion = target.ai.finalOpinion;
-    if (opinion !== 'PLAYER' && opinion !== 'BANKER') return;
+    const strategy = session.config.strategy || 'ai';
+    const watchCount = Math.max(1, Math.min(8, session.config.maxTables || 8));
+    const watchTables = tables.slice(0, watchCount);
 
-    const signal = target.live?.connected
-      ? `${target.id}:${target.live.latestId ?? 0}:${opinion}`
-      : `${target.id}:${target.stats.currentRound}:${opinion}`;
-    if (autoBetSignalRef.current === signal) return;
+    type Candidate = {
+      table: TableData;
+      side: 'PLAYER' | 'BANKER' | 'TIE';
+      signal: string;
+      fromPatternEntry: boolean;
+    };
+
+    let candidate: Candidate | null = null;
+
+    const roundKeyOf = (t: TableData) =>
+      t.live?.connected ? String(t.live.latestId ?? 0) : String(t.stats.currentRound);
+
+    if (strategy === 'pattern') {
+      const pattern = session.config.patternSequence || [];
+      const betSide = session.config.patternBetSide || 'PLAYER';
+
+      // 이미 패턴으로 진입한 테이블 → 마틴 이어가기 (같은 사이드)
+      if (patternRunRef.current) {
+        const run = patternRunRef.current;
+        const t = watchTables.find((x) => x.id === run.tableId);
+        if (t && t.status !== 'risk_blocked') {
+          const signal = `${t.id}:${roundKeyOf(t)}:run:${run.side}:${session.martinStage}`;
+          if (autoBetSignalRef.current !== signal) {
+            candidate = {
+              table: t,
+              side: run.side,
+              signal,
+              fromPatternEntry: false,
+            };
+          }
+        } else {
+          patternRunRef.current = null;
+        }
+      }
+
+      // 신규 진입: 패턴 일치 테이블 탐색
+      if (!candidate && !patternRunRef.current && pattern.length >= 2) {
+        for (const t of watchTables) {
+          if (t.status === 'risk_blocked') continue;
+          if (!matchesPattern(t.stats.recentResults || [], pattern)) continue;
+          const signal = `${t.id}:${roundKeyOf(t)}:pattern:${pattern.join('')}:${betSide}`;
+          if (autoBetSignalRef.current === signal) continue;
+          candidate = {
+            table: t,
+            side: betSide,
+            signal,
+            fromPatternEntry: true,
+          };
+          break;
+        }
+      }
+    } else {
+      for (const t of watchTables) {
+        if (t.status === 'risk_blocked') continue;
+        const opinion = t.ai.finalOpinion;
+        if (opinion !== 'PLAYER' && opinion !== 'BANKER') continue;
+        const signal = `${t.id}:${roundKeyOf(t)}:ai:${opinion}`;
+        if (autoBetSignalRef.current === signal) continue;
+        candidate = {
+          table: t,
+          side: opinion,
+          signal,
+          fromPatternEntry: false,
+        };
+        break;
+      }
+    }
+
+    if (!candidate) return;
 
     const amount =
-      session.suggestedBet > 0
-        ? session.suggestedBet
-        : target.ai.recommendedAmount > 0
-          ? target.ai.recommendedAmount
-          : session.config.initialBet;
+      session.suggestedBet > 0 ? session.suggestedBet : session.config.initialBet;
     if (amount <= 0) return;
     if (wallet.loggedIn && amount > wallet.balance) return;
 
-    autoBetSignalRef.current = signal;
+    const target = candidate.table;
+    autoBetSignalRef.current = candidate.signal;
     const waitForLive =
       target.id === 't1' || target.gameCode === 'MD2729' || target.live != null;
-    void session.placeBet({
-      tableId: target.id,
-      tableName: target.name,
-      side: opinion,
-      amount,
-      waitForLiveResult: waitForLive,
-      baselineLatestId: waitForLive ? target.live?.latestId ?? 0 : null,
-      baselineResultCount: waitForLive ? target.stats.recentResults.length : undefined,
-      availableBalance: availableBankroll,
-    }).then((result) => {
-      if (!result.ok) {
-        autoBetSignalRef.current = null;
-      } else {
-        playSfx('betConfirm');
-      }
-    });
+    void session
+      .placeBet({
+        tableId: target.id,
+        tableName: target.name,
+        side: candidate.side,
+        amount,
+        waitForLiveResult: waitForLive,
+        baselineLatestId: waitForLive ? target.live?.latestId ?? 0 : null,
+        baselineResultCount: waitForLive ? target.stats.recentResults.length : undefined,
+        availableBalance: availableBankroll,
+      })
+      .then((result) => {
+        if (!result.ok) {
+          autoBetSignalRef.current = null;
+        } else {
+          if (candidate.fromPatternEntry || strategy === 'pattern') {
+            patternRunRef.current = { tableId: target.id, side: candidate.side };
+          }
+          playSfx('betConfirm');
+        }
+      });
   }, [
     session.status,
     session.mode,
     session.pendingBet,
     session.suggestedBet,
-    session.config.initialBet,
+    session.martinStage,
+    session.lastBetResult,
+    session.config,
     session.placeBet,
-    selectedTableId,
     tables,
-    liveTable,
     wallet.loggedIn,
     wallet.balance,
     availableBankroll,

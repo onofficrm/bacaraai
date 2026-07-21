@@ -109,6 +109,11 @@ export interface Notification {
   isRiskAlert?: boolean;
 }
 
+/** 오토베팅 진입 방식 */
+export type AutoBetStrategy = 'ai' | 'pattern';
+/** 금액 진행 방식 */
+export type AmountProgressMode = 'martin' | 'custom';
+
 export interface SessionConfig {
   seed: number;
   winCut: number;
@@ -118,4 +123,14 @@ export interface SessionConfig {
   maxBet: number;
   maxTables: number;
   maxTime: number; // in minutes
+  /** AI 추천 vs 사용자 패턴 */
+  strategy: AutoBetStrategy;
+  /** 사용자 패턴: 버튼으로 쌓은 결과 시퀀스 (예: B B B B P) */
+  patternSequence: GameResult[];
+  /** 패턴 일치 후 베팅할 사이드 */
+  patternBetSide: 'PLAYER' | 'BANKER' | 'TIE';
+  /** 마틴(2배) 또는 단계별 직접 금액 */
+  amountMode: AmountProgressMode;
+  /** amountMode=custom 일 때 단계별 금액 (index 0 = 1단계) */
+  customSteps: number[];
 }

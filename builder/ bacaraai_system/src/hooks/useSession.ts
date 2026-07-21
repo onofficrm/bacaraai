@@ -80,8 +80,13 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
   lossCut: -2_000_000,
   maxMartin: 8,
   maxBet: 2_000_000,
-  maxTables: 1,
+  maxTables: 8,
   maxTime: 90,
+  strategy: 'ai',
+  patternSequence: ['B', 'B', 'B', 'B', 'P'],
+  patternBetSide: 'PLAYER',
+  amountMode: 'martin',
+  customSteps: [],
 };
 
 const STORAGE_KEY = 'bacara_session_state_v1';
@@ -153,6 +158,20 @@ export function martinRequiredCapital(initialBet: number, maxMartin: number): nu
 export function nextBetAmount(initialBet: number, stage: number, maxBet: number): number {
   const s = Math.max(1, stage);
   return Math.min(initialBet * 2 ** (s - 1), maxBet);
+}
+
+/** 마틴 또는 사용자 지정 단계 금액 */
+export function resolveBetAmount(config: SessionConfig, stage: number): number {
+  if (config.amountMode === 'custom' && config.customSteps?.length) {
+    const idx = Math.max(0, Math.min(stage - 1, config.customSteps.length - 1));
+    const amt = config.customSteps[idx] ?? config.initialBet;
+    return Math.min(Math.max(0, amt), config.maxBet);
+  }
+  return nextBetAmount(config.initialBet, stage, config.maxBet);
+}
+
+export function strategyLabel(strategy: SessionConfig['strategy'] | undefined): string {
+  return strategy === 'pattern' ? '내 패턴 규칙' : 'AI 추천대로';
 }
 
 export function formatElapsed(ms: number): string {
@@ -626,10 +645,9 @@ export default function useSession() {
 
   const isActive = state.status === 'running' || state.status === 'paused';
   const availableBankroll = bankroll(state.config.seed, state.pnl);
-  const suggestedBet = nextBetAmount(
-    state.config.initialBet,
+  const suggestedBet = resolveBetAmount(
+    state.config,
     Math.min(state.martinStage, state.config.maxMartin),
-    state.config.maxBet,
   );
 
   return {
