@@ -481,6 +481,15 @@ export default function App() {
               lastBetResult={session.lastBetResult}
               onPlaceBet={session.placeBet}
               onSkip={session.skipRound}
+              onCancelBet={async () => {
+                patternRunRef.current = null;
+                const result = await session.cancelPendingBet();
+                if (result.ok) {
+                  autoBetSignalRef.current = null;
+                  playSfx('ui');
+                }
+                return result;
+              }}
               onOpenSessionSettings={() => setIsModalOpen(true)}
               onClearBetResult={session.clearLastBetResult}
               onPauseAuto={session.pauseSession}

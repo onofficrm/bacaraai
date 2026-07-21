@@ -50,6 +50,7 @@ interface RightPanelProps {
     availableBalance?: number;
   }) => PlaceBetResult | Promise<PlaceBetResult>;
   onSkip?: (tableId: string) => void;
+  onCancelBet?: () => void | Promise<PlaceBetResult>;
   onOpenSessionSettings?: () => void;
   onClearBetResult?: () => void;
   onPauseAuto?: () => void;
@@ -76,6 +77,7 @@ export default function RightPanel({
   lastBetResult = null,
   onPlaceBet,
   onSkip,
+  onCancelBet,
   onOpenSessionSettings,
   onClearBetResult,
   onPauseAuto,
@@ -437,9 +439,19 @@ export default function RightPanel({
                   <p className="text-[11px] text-zinc-300 mt-1">
                     {sideShortLabel(pendingBet?.side || 'PLAYER')} · {formatMoney(pendingBet?.amount || 0)}
                   </p>
-                  <p className="text-[11px] text-zinc-500 mt-1">
+                  <p className="text-[11px] text-zinc-500 mt-1 mb-3">
                     다음 게임 결과를 기다리고 있습니다.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playSfx('ui');
+                      void onCancelBet?.();
+                    }}
+                    className="w-full py-2.5 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors"
+                  >
+                    베팅 취소 (금액 반환)
+                  </button>
                 </div>
               )}
 
@@ -637,26 +649,40 @@ export default function RightPanel({
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          playSfx('skip');
-                          onSkip?.(table.id);
-                          setBetError(null);
-                        }}
-                        disabled={isSettling}
-                        className="py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
-                      >
-                        건너뛰기
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleConfirmBet}
-                        className="py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
-                        disabled={betAmount <= 0 || isSettling}
-                      >
-                        {isSettling ? '대기 중…' : '베팅 확정'}
-                      </button>
+                      {isSettling ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            playSfx('ui');
+                            void onCancelBet?.();
+                          }}
+                          className="col-span-2 py-3 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors"
+                        >
+                          베팅 취소 (금액 반환)
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playSfx('skip');
+                              onSkip?.(table.id);
+                              setBetError(null);
+                            }}
+                            className="py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
+                          >
+                            건너뛰기
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleConfirmBet}
+                            className="py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
+                            disabled={betAmount <= 0}
+                          >
+                            베팅 확정
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -812,8 +838,20 @@ export default function RightPanel({
                     </div>
 
                     {isSettling && (
-                      <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-center text-[11px] text-sky-300">
-                        자동 베팅 접수 · 다음 게임 결과 대기 중
+                      <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2.5 text-center">
+                        <p className="text-[11px] text-sky-300 mb-2">
+                          자동 베팅 접수 · 다음 게임 결과 대기 중
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            playSfx('ui');
+                            void onCancelBet?.();
+                          }}
+                          className="w-full py-2 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-xs font-bold hover:bg-rose-500/25"
+                        >
+                          베팅 취소 (금액 반환)
+                        </button>
                       </div>
                     )}
 

@@ -587,7 +587,48 @@ export default function useSession() {
     return { ok: true };
   }, [applySettlement]);
 
-  /** 라이브 테이블: 베팅 이후의 새 결과로만 정산 */
+  /** 결과 대기 중인 베팅 취소 (시드/가상머니 반환) */
+  const cancelPendingBet = useCallback(async (): Promise<PlaceBetResult> => {
+    const pending = stateRef.current.pendingBet;
+    if (!pending) {
+      return { ok: false, error: '취소할 베팅이 없습니다.' };
+    }
+
+    clearSettleTimer();
+
+    const res = await walletCancelBet({
+      amount: pending.amount,
+      tableName: pending.tableName,
+    });
+    if (res.ok && typeof res.balance === 'number') {
+      emitWalletBalance(res.balance);
+    }
+    // 로그인 안 된 데모/시드 모드에서도 UI 잔액은 pnl 복구로 맞춤
+
+    setState((curr) => {
+      if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
+      return {
+        ...curr,
+        pnl: curr.pnl + pending.amount,
+        pendingBet: null,
+        lastBetResult: {
+          id: pending.id,
+          tableId: pending.tableId,
+          tableName: pending.tableName,
+          side: pending.side,
+          amount: pending.amount,
+          outcome: 'T',
+          won: null,
+          pnlDelta: 0,
+          message: `베팅 취소 · ${formatMoney(pending.amount)} 반환`,
+          at: Date.now(),
+        },
+      };
+    });
+
+    return { ok: true };
+  }, []);
+
   const settlePendingWithOutcome = useCallback((
     tableId: string,
     outcome: 'P' | 'B' | 'T',
@@ -663,6 +704,7 @@ export default function useSession() {
     updateConfig,
     setMode,
     placeBet,
+    cancelPendingBet,
     settlePendingWithOutcome,
     skipRound,
     clearLastBetResult,
