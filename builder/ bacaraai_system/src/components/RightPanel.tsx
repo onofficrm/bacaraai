@@ -37,6 +37,7 @@ interface RightPanelProps {
     tableName: string;
     side: BetSide;
     amount: number;
+    baselineLatestId?: number | null;
   }) => PlaceBetResult;
   onSkip?: (tableId: string) => void;
   onOpenSessionSettings?: () => void;
@@ -63,12 +64,19 @@ export default function RightPanel({
   onClearBetResult,
 }: RightPanelProps) {
   const [betAmount, setBetAmount] = useState<number>(0);
+  const [selectedSide, setSelectedSide] = useState<BetSide>('PLAYER');
   const [showMoreChips, setShowMoreChips] = useState(false);
   const [showEvidence, setShowEvidence] = useState(false);
   const [showAiDetails, setShowAiDetails] = useState(false);
   const [showRisk, setShowRisk] = useState(false);
-  const [forceBet, setForceBet] = useState(false);
   const [betError, setBetError] = useState<string | null>(null);
+
+  const recommendedSide: BetSide | null =
+    table?.ai.finalOpinion === 'PLAYER'
+      ? 'PLAYER'
+      : table?.ai.finalOpinion === 'BANKER'
+        ? 'BANKER'
+        : null;
 
   React.useEffect(() => {
     const preferred =
@@ -76,13 +84,28 @@ export default function RightPanel({
         ? suggestedBet
         : table?.ai?.recommendedAmount || 0;
     setBetAmount(preferred);
+    setSelectedSide(
+      table?.ai.finalOpinion === 'BANKER'
+        ? 'BANKER'
+        : table?.ai.finalOpinion === 'PLAYER'
+          ? 'PLAYER'
+          : 'PLAYER',
+    );
     setShowMoreChips(false);
     setShowEvidence(false);
     setShowAiDetails(false);
     setShowRisk(false);
-    setForceBet(false);
     setBetError(null);
-  }, [table?.id, table?.ai?.recommendedAmount, suggestedBet, sessionStatus]);
+  }, [table?.id]);
+
+  React.useEffect(() => {
+    if (!table) return;
+    const preferred =
+      sessionStatus === 'running' && suggestedBet > 0
+        ? suggestedBet
+        : table.ai.recommendedAmount || 0;
+    setBetAmount(preferred);
+  }, [table?.ai?.recommendedAmount, suggestedBet, sessionStatus, table]);
 
   React.useEffect(() => {
     if (!lastBetResult) return;
@@ -92,21 +115,13 @@ export default function RightPanel({
   }, [lastBetResult?.id]);
 
   const isPassive = table
-    ? ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion) &&
-      !forceBet
+    ? ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion)
     : true;
-
-  const canBetSide =
-    table?.ai.finalOpinion === 'PLAYER' ||
-    table?.ai.finalOpinion === 'BANKER' ||
-    forceBet;
-
-  const betSide: BetSide =
-    table?.ai.finalOpinion === 'BANKER' ? 'BANKER' : 'PLAYER';
 
   const isSettling = Boolean(pendingBet && table && pendingBet.tableId === table.id);
   const sessionReady = sessionStatus === 'running';
   const observeBlocked = sessionMode === 'observe';
+  const hasLiveFeed = Boolean(table?.live?.connected);
 
   const primaryChips = [
     { label: '1천', value: 1000, color: 'bg-zinc-200 text-zinc-900 border-zinc-400' },
@@ -120,6 +135,12 @@ export default function RightPanel({
     { label: '50만', value: 500000, color: 'bg-amber-500 text-amber-950 border-amber-700' },
     { label: '100만', value: 1000000, color: 'bg-zinc-900 text-yellow-500 border-yellow-700' },
     { label: '2배', value: 'DOUBLE' as const, color: 'bg-zinc-800 text-white border-zinc-950' },
+  ];
+
+  const sideOptions: { id: BetSide; label: string; short: string; active: string }[] = [
+    { id: 'PLAYER', label: beginnerMode ? 'Player(P)' : 'PLAYER', short: 'P', active: 'bg-blue-600 border-blue-400 text-white' },
+    { id: 'BANKER', label: beginnerMode ? 'Banker(B)' : 'BANKER', short: 'B', active: 'bg-red-500 border-red-400 text-white' },
+    { id: 'TIE', label: beginnerMode ? 'Tie(T)' : 'TIE', short: 'T', active: 'bg-emerald-500 border-emerald-400 text-white' },
   ];
 
   const clampAmount = (amount: number) =>
@@ -138,6 +159,26 @@ export default function RightPanel({
     setBetError(null);
   };
 
+  const applyRecommendedBet = () => {
+    if (!table) return;
+    playSfx('ui');
+    if (recommendedSide) {
+      setSelectedSide(recommendedSide);
+    }
+    const amount =
+      suggestedBet > 0
+        ? suggestedBet
+        : table.ai.recommendedAmount > 0
+          ? table.ai.recommendedAmount
+          : 10000;
+    setBetAmount(clampAmount(amount));
+    setBetError(
+      recommendedSide
+        ? null
+        : 'AI가 관망 중입니다. 사이드를 직접 선택한 뒤 금액을 확인하세요.',
+    );
+  };
+
   const handleConfirmBet = () => {
     if (!table || !onPlaceBet) return;
     if (!sessionReady) {
@@ -150,8 +191,8 @@ export default function RightPanel({
       playSfx('error');
       return;
     }
-    if (!canBetSide) {
-      setBetError('Player/Banker 추천일 때만 베팅할 수 있습니다.');
+    if (betAmount <= 0) {
+      setBetError('베팅 금액을 입력해 주세요.');
       playSfx('error');
       return;
     }
@@ -159,8 +200,9 @@ export default function RightPanel({
     const result = onPlaceBet({
       tableId: table.id,
       tableName: table.name,
-      side: betSide,
+      side: selectedSide,
       amount: betAmount,
+      baselineLatestId: hasLiveFeed ? table.live?.latestId ?? 0 : null,
     });
 
     if (!result.ok) {
@@ -171,6 +213,18 @@ export default function RightPanel({
 
     setBetError(null);
     playSfx('betConfirm');
+  };
+
+  const sideDisplayLabel = (side: BetSide) => {
+    if (side === 'BANKER') return beginnerMode ? 'Banker(B)' : 'BANKER';
+    if (side === 'TIE') return beginnerMode ? 'Tie(T)' : 'TIE';
+    return beginnerMode ? 'Player(P)' : 'PLAYER';
+  };
+
+  const sideShortLabel = (side: BetSide) => {
+    if (side === 'BANKER') return 'Banker';
+    if (side === 'TIE') return 'Tie';
+    return 'Player';
   };
 
   if (!table) {
@@ -291,8 +345,8 @@ export default function RightPanel({
               {isRisk
                 ? '위험 한도에 걸려 이번 회차는 쉬세요.'
                 : isPassive
-                  ? `지금은 ${opinionLabel} 상태입니다. 관망하거나 다른 테이블을 보세요.`
-                  : `① 금액 확인 → ② 베팅 확정 · 추천 ${opinionLabel} / ${(table.ai.recommendedAmount).toLocaleString()}원`}
+                  ? `AI는 ${opinionLabel}입니다. Player/Banker/Tie를 직접 고르거나 다른 테이블을 보세요.`
+                  : `① 사이드·금액 확인 → ② 베팅 확정 · 추천 ${opinionLabel} / ${(table.ai.recommendedAmount).toLocaleString()}원`}
             </p>
           </div>
         )}
@@ -344,9 +398,12 @@ export default function RightPanel({
 
             {isSettling && (
               <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2.5 text-center">
-                <p className="text-sm font-bold text-sky-300 animate-pulse">결과 확인 중…</p>
+                <p className="text-sm font-bold text-sky-300 animate-pulse">
+                  {pendingBet?.baselineLatestId != null ? '실결과 대기 중…' : '결과 확인 중…'}
+                </p>
                 <p className="text-[11px] text-zinc-400 mt-1">
-                  {pendingBet?.side === 'BANKER' ? 'Banker' : 'Player'} · {formatMoney(pendingBet?.amount || 0)}
+                  {sideShortLabel(pendingBet?.side || 'PLAYER')} · {formatMoney(pendingBet?.amount || 0)}
+                  {pendingBet?.baselineLatestId != null ? ' · 다음 회차 결과에 정산' : ''}
                 </p>
               </div>
             )}
@@ -403,8 +460,53 @@ export default function RightPanel({
                 <p className="text-sm font-bold text-red-300 mb-1">이번 회차는 쉬세요</p>
                 <p className="text-[11px] text-zinc-400">로스컷·마틴 한도 때문에 베팅이 막혀 있습니다.</p>
               </div>
-            ) : !isPassive ? (
+            ) : (
               <>
+                <div className="flex justify-between items-center gap-2">
+                  <label className="text-xs font-bold text-zinc-200">베팅 사이드</label>
+                  {recommendedSide && (
+                    <button
+                      type="button"
+                      onClick={applyRecommendedBet}
+                      disabled={isSettling || !sessionReady || observeBlocked}
+                      className="text-[10px] font-bold text-amber-400 hover:text-amber-300 disabled:opacity-40"
+                    >
+                      추천대로 ({sideShortLabel(recommendedSide)}
+                      {table.ai.recommendedAmount > 0
+                        ? ` · ${table.ai.recommendedAmount.toLocaleString()}원`
+                        : suggestedBet > 0
+                          ? ` · ${suggestedBet.toLocaleString()}원`
+                          : ''}
+                      )
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5">
+                  {sideOptions.map((opt) => {
+                    const active = selectedSide === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        disabled={isSettling || !sessionReady || observeBlocked}
+                        onClick={() => {
+                          playSfx('ui');
+                          setSelectedSide(opt.id);
+                          setBetError(null);
+                        }}
+                        className={`py-2.5 rounded-lg border text-xs font-bold transition-colors disabled:opacity-40 ${
+                          active
+                            ? opt.active
+                            : 'bg-zinc-950 border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 <div className="flex justify-between items-center">
                   <label className="text-xs font-bold text-zinc-200">실행 금액</label>
                   <div className="flex items-center gap-2">
@@ -421,7 +523,7 @@ export default function RightPanel({
                         단계 금액
                       </button>
                     )}
-                    {betAmount !== table.ai.recommendedAmount && (
+                    {table.ai.recommendedAmount > 0 && betAmount !== table.ai.recommendedAmount && (
                       <button
                         type="button"
                         onClick={() => {
@@ -431,7 +533,7 @@ export default function RightPanel({
                         }}
                         className="text-[10px] text-amber-400 hover:text-amber-300"
                       >
-                        추천으로
+                        추천 금액
                       </button>
                     )}
                     <button
@@ -448,9 +550,19 @@ export default function RightPanel({
                   </div>
                 </div>
 
-                <div className="bg-zinc-950 border border-amber-500/30 rounded-lg px-3 py-2 flex items-center justify-between">
-                  <span className={`text-sm font-bold ${getOpinionColor(betSide === 'BANKER' ? 'BANKER' : 'PLAYER')}`}>
-                    {betSide === 'BANKER' ? (beginnerMode ? 'Banker(B)' : 'BANKER') : (beginnerMode ? 'Player(P)' : 'PLAYER')}
+                <div className={`bg-zinc-950 border rounded-lg px-3 py-2 flex items-center justify-between ${
+                  selectedSide === 'BANKER'
+                    ? 'border-red-500/40'
+                    : selectedSide === 'TIE'
+                      ? 'border-emerald-500/40'
+                      : 'border-blue-500/40'
+                }`}>
+                  <span className={`text-sm font-bold ${getOpinionColor(selectedSide === 'TIE' ? 'WAIT' : selectedSide)}`}>
+                    {selectedSide === 'TIE' ? (
+                      <span className="text-emerald-400">{sideDisplayLabel(selectedSide)}</span>
+                    ) : (
+                      sideDisplayLabel(selectedSide)
+                    )}
                   </span>
                   <div className="flex items-baseline gap-1">
                     <span className="font-mono font-bold text-white text-xl leading-none">{betAmount.toLocaleString()}</span>
@@ -460,7 +572,8 @@ export default function RightPanel({
 
                 {beginnerMode && (
                   <p className="text-[11px] text-zinc-500 leading-snug -mt-0.5">
-                    잔여 {formatMoney(availableBankroll)} · 최대 {formatMoney(maxBet)} · AI는 참고용
+                    잔여 {formatMoney(availableBankroll)} · 최대 {formatMoney(maxBet)}
+                    {hasLiveFeed ? ' · 실결과 정산' : ' · AI는 참고용'}
                   </p>
                 )}
 
@@ -518,8 +631,14 @@ export default function RightPanel({
                 <div className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-center">
                   <p className="text-[10px] text-zinc-500 mb-0.5">확정 전 확인</p>
                   <p className="text-sm font-bold text-zinc-100">
-                    <span className={getOpinionColor(betSide === 'BANKER' ? 'BANKER' : 'PLAYER')}>
-                      {betSide === 'BANKER' ? 'Banker' : 'Player'}
+                    <span className={
+                      selectedSide === 'BANKER'
+                        ? 'text-red-400'
+                        : selectedSide === 'TIE'
+                          ? 'text-emerald-400'
+                          : 'text-blue-400'
+                    }>
+                      {sideShortLabel(selectedSide)}
                     </span>
                     <span className="text-zinc-600 mx-1.5">·</span>
                     <span className="font-mono">{betAmount.toLocaleString()}원</span>
@@ -550,31 +669,13 @@ export default function RightPanel({
                     {isSettling ? '확인 중…' : '베팅 확정'}
                   </button>
                 </div>
+
+                {isPassive && (
+                  <p className="text-[10px] text-zinc-500 text-center leading-relaxed">
+                    AI는 {opinionLabel} 상태입니다. 사이드를 직접 고르거나 「추천대로」로 베팅할 수 있습니다.
+                  </p>
+                )}
               </>
-            ) : (
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    playSfx('skip');
-                    onSkip?.(table.id);
-                  }}
-                  className="py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
-                >
-                  관찰 계속
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    playSfx('ruleTrigger');
-                    setForceBet(true);
-                    setBetError(null);
-                  }}
-                  className="py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
-                >
-                  강제 개입
-                </button>
-              </div>
             )}
           </div>
         </div>

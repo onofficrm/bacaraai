@@ -73,6 +73,27 @@ export default function App() {
     return () => session.setCutHandler(null);
   }, [session.setCutHandler, session.pauseSession]);
 
+  // 라이브 테이블: 베팅 후 새 결과가 오면 실결과로 정산
+  useEffect(() => {
+    const pending = session.pendingBet;
+    if (!pending || pending.baselineLatestId == null) return;
+
+    const table = tables.find((t) => t.id === pending.tableId);
+    if (!table?.live?.connected) return;
+
+    const latestId = table.live.latestId;
+    if (latestId == null || latestId === pending.baselineLatestId) return;
+
+    const outcome = table.stats.recentResults[table.stats.recentResults.length - 1];
+    if (!outcome || !['P', 'B', 'T'].includes(outcome)) return;
+
+    session.settlePendingWithOutcome(pending.tableId, outcome, latestId);
+  }, [
+    tables,
+    session.pendingBet,
+    session.settlePendingWithOutcome,
+  ]);
+
   const handleTableSelect = (id: string) => {
     setSelectedTableId(id);
     setIsRightPanelOpen(true);

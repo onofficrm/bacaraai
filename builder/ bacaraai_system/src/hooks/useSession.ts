@@ -3,7 +3,7 @@ import type { SessionConfig } from '../types';
 
 export type SessionMode = 'observe' | 'shadow' | 'live';
 export type SessionStatus = 'idle' | 'running' | 'paused';
-export type BetSide = 'PLAYER' | 'BANKER';
+export type BetSide = 'PLAYER' | 'BANKER' | 'TIE';
 
 export type PendingBet = {
   id: string;
@@ -12,6 +12,8 @@ export type PendingBet = {
   side: BetSide;
   amount: number;
   placedAt: number;
+  /** 라이브 테이블: 베팅 시점의 마지막 결과 id (이후 새 결과로 정산) */
+  baselineLatestId?: number | null;
 };
 
 export type LastBetResult = {
@@ -32,6 +34,8 @@ export type PlaceBetInput = {
   tableName: string;
   side: BetSide;
   amount: number;
+  /** 라이브 결과 id — 있으면 랜덤 대신 다음 실결과로 정산 */
+  baselineLatestId?: number | null;
 };
 
 export type PlaceBetResult =
@@ -187,14 +191,45 @@ function rollOutcome(): 'P' | 'B' | 'T' {
   return 'T';
 }
 
-function settlePnl(side: BetSide, amount: number, outcome: 'P' | 'B' | 'T'): {
+function sideLabel(side: BetSide): string {
+  if (side === 'BANKER') return 'Banker';
+  if (side === 'TIE') return 'Tie';
+  return 'Player';
+}
+
+function outcomeLabel(outcome: 'P' | 'B' | 'T'): string {
+  if (outcome === 'B') return 'Banker';
+  if (outcome === 'T') return 'Tie';
+  return 'Player';
+}
+
+export function settlePnl(side: BetSide, amount: number, outcome: 'P' | 'B' | 'T'): {
   won: boolean | null;
   pnlDelta: number;
   message: string;
 } {
+  // Tie 베팅: 적중 시 8배 (원금 제외 순이익), 미적중 시 전액 손실
+  if (side === 'TIE') {
+    if (outcome === 'T') {
+      const pnlDelta = amount * 8;
+      return {
+        won: true,
+        pnlDelta,
+        message: `Tie 적중 (+${formatMoney(pnlDelta)}, 8배)`,
+      };
+    }
+    return {
+      won: false,
+      pnlDelta: -amount,
+      message: `${outcomeLabel(outcome)} 결과 — Tie 미적중 ${formatMoney(amount)} 손실`,
+    };
+  }
+
+  // P/B 베팅 중 타이 나오면 푸시(반환)
   if (outcome === 'T') {
     return { won: null, pnlDelta: 0, message: '타이 — 베팅금이 반환되었습니다' };
   }
+
   const hit = (side === 'PLAYER' && outcome === 'P') || (side === 'BANKER' && outcome === 'B');
   if (hit) {
     const pnlDelta = side === 'BANKER' ? Math.floor(amount * 0.95) : amount;
@@ -210,7 +245,7 @@ function settlePnl(side: BetSide, amount: number, outcome: 'P' | 'B' | 'T'): {
   return {
     won: false,
     pnlDelta: -amount,
-    message: `${outcome === 'P' ? 'Player' : 'Banker'} 결과 — ${formatMoney(amount)} 손실`,
+    message: `${outcomeLabel(outcome)} 결과 — ${sideLabel(side)} 베팅 ${formatMoney(amount)} 손실`,
   };
 }
 
@@ -326,6 +361,46 @@ export default function useSession() {
     onCutRef.current = handler;
   }, []);
 
+  const applySettlement = useCallback((
+    curr: SessionState,
+    pending: PendingBet,
+    outcome: 'P' | 'B' | 'T',
+  ): SessionState => {
+    const settled = settlePnl(pending.side, pending.amount, outcome);
+    const nextPnl = curr.pnl + settled.pnlDelta;
+    let nextStage = curr.martinStage;
+    if (settled.won === true) nextStage = 1;
+    else if (settled.won === false) {
+      nextStage = Math.min(curr.config.maxMartin + 1, curr.martinStage + 1);
+    }
+
+    const result: LastBetResult = {
+      id: pending.id,
+      tableId: pending.tableId,
+      tableName: pending.tableName,
+      side: pending.side,
+      amount: pending.amount,
+      outcome,
+      won: settled.won,
+      pnlDelta: settled.pnlDelta,
+      message: settled.message,
+      at: Date.now(),
+    };
+
+    window.setTimeout(() => {
+      if (nextPnl >= curr.config.winCut) onCutRef.current?.('wincut');
+      else if (nextPnl <= curr.config.lossCut) onCutRef.current?.('losscut');
+    }, 0);
+
+    return {
+      ...curr,
+      pnl: nextPnl,
+      martinStage: nextStage,
+      pendingBet: null,
+      lastBetResult: result,
+    };
+  }, []);
+
   const placeBet = useCallback((input: PlaceBetInput): PlaceBetResult => {
     const prev = stateRef.current;
 
@@ -347,8 +422,8 @@ export default function useSession() {
     if (prev.pendingBet) {
       return { ok: false, error: '이전 베팅 결과를 확인 중입니다.' };
     }
-    if (input.side !== 'PLAYER' && input.side !== 'BANKER') {
-      return { ok: false, error: 'Player 또는 Banker만 베팅할 수 있습니다.' };
+    if (input.side !== 'PLAYER' && input.side !== 'BANKER' && input.side !== 'TIE') {
+      return { ok: false, error: 'Player, Banker, Tie 중 하나를 선택해 주세요.' };
     }
 
     const amount = Math.floor(input.amount);
@@ -371,6 +446,9 @@ export default function useSession() {
       };
     }
 
+    const useLiveSettle =
+      input.baselineLatestId !== undefined && input.baselineLatestId !== null;
+
     const pending: PendingBet = {
       id: `bet_${Date.now()}`,
       tableId: input.tableId,
@@ -378,49 +456,45 @@ export default function useSession() {
       side: input.side,
       amount,
       placedAt: Date.now(),
+      baselineLatestId: useLiveSettle ? input.baselineLatestId : null,
     };
 
     clearSettleTimer();
-    settleTimer.current = window.setTimeout(() => {
-      setState((curr) => {
-        if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
-        const outcome = rollOutcome();
-        const settled = settlePnl(curr.pendingBet.side, curr.pendingBet.amount, outcome);
-        const nextPnl = curr.pnl + settled.pnlDelta;
-        let nextStage = curr.martinStage;
-        if (settled.won === true) nextStage = 1;
-        else if (settled.won === false) {
-          nextStage = Math.min(curr.config.maxMartin + 1, curr.martinStage + 1);
-        }
 
-        const result: LastBetResult = {
-          id: curr.pendingBet.id,
-          tableId: curr.pendingBet.tableId,
-          tableName: curr.pendingBet.tableName,
-          side: curr.pendingBet.side,
-          amount: curr.pendingBet.amount,
-          outcome,
-          won: settled.won,
-          pnlDelta: settled.pnlDelta,
-          message: settled.message,
-          at: Date.now(),
-        };
-
-        window.setTimeout(() => {
-          if (nextPnl >= curr.config.winCut) onCutRef.current?.('wincut');
-          else if (nextPnl <= curr.config.lossCut) onCutRef.current?.('losscut');
-        }, 0);
-
-        return {
-          ...curr,
-          pnl: nextPnl,
-          martinStage: nextStage,
-          pendingBet: null,
-          lastBetResult: result,
-        };
-      });
-      settleTimer.current = null;
-    }, SETTLE_MS);
+    // 라이브 결과가 없으면 시뮬레이션 정산 (섀도/데모 테이블)
+    if (!useLiveSettle) {
+      settleTimer.current = window.setTimeout(() => {
+        setState((curr) => {
+          if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
+          return applySettlement(curr, curr.pendingBet, rollOutcome());
+        });
+        settleTimer.current = null;
+      }, SETTLE_MS);
+    } else {
+      // 실결과 미수신 시 3분 후 취소(시드 반환)
+      settleTimer.current = window.setTimeout(() => {
+        setState((curr) => {
+          if (!curr.pendingBet || curr.pendingBet.id !== pending.id) return curr;
+          return {
+            ...curr,
+            pendingBet: null,
+            lastBetResult: {
+              id: pending.id,
+              tableId: pending.tableId,
+              tableName: pending.tableName,
+              side: pending.side,
+              amount: pending.amount,
+              outcome: 'T',
+              won: null,
+              pnlDelta: 0,
+              message: '결과 대기 시간이 초과되어 베팅을 취소했습니다 (시드 반환)',
+              at: Date.now(),
+            },
+          };
+        });
+        settleTimer.current = null;
+      }, 180_000);
+    }
 
     setState((curr) => ({
       ...curr,
@@ -429,7 +503,23 @@ export default function useSession() {
     }));
 
     return { ok: true };
-  }, []);
+  }, [applySettlement]);
+
+  /** 라이브 테이블: 새 결과가 오면 대기 중인 베팅 정산 */
+  const settlePendingWithOutcome = useCallback((
+    tableId: string,
+    outcome: 'P' | 'B' | 'T',
+    latestId?: number | null,
+  ) => {
+    setState((curr) => {
+      const pending = curr.pendingBet;
+      if (!pending || pending.tableId !== tableId) return curr;
+      if (pending.baselineLatestId == null) return curr;
+      if (latestId != null && latestId === pending.baselineLatestId) return curr;
+      clearSettleTimer();
+      return applySettlement(curr, pending, outcome);
+    });
+  }, [applySettlement]);
 
   const skipRound = useCallback((tableId?: string) => {
     setState((prev) => {
@@ -478,6 +568,7 @@ export default function useSession() {
     updateConfig,
     setMode,
     placeBet,
+    settlePendingWithOutcome,
     skipRound,
     clearLastBetResult,
     setCutHandler,
