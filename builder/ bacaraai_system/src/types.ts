@@ -86,6 +86,7 @@ export interface GameHistoryEntry {
   tableName: string;
   shoeNumber: string;
   round: number;
+  /** 베팅 직전 로드맵 요약 (예: P B B P) */
   previousResult: string;
   gptOpinion: AiOpinion;
   geminiOpinion: AiOpinion;
@@ -102,6 +103,10 @@ export interface GameHistoryEntry {
   at?: number;
   /** YYYY-MM-DD */
   day?: string;
+  /** 직접 / 오토 구분 */
+  betSource?: 'manual' | 'auto' | 'unknown';
+  /** 정산·취소 메시지 (직전 결과와 분리) */
+  note?: string;
 }
 
 export interface Notification {

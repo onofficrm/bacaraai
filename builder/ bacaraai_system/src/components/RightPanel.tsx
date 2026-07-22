@@ -55,6 +55,17 @@ interface RightPanelProps {
     waitForLiveResult?: boolean;
     availableBalance?: number;
     source?: 'manual' | 'auto';
+    historyMeta?: {
+      gameCode?: string;
+      shoeNumber?: string;
+      round?: number;
+      recentResults?: Array<'P' | 'B' | 'T'>;
+      gptOpinion?: string;
+      geminiOpinion?: string;
+      claudeOpinion?: string;
+      finalOpinion?: string;
+      ruleLabel?: string;
+    };
   }) => PlaceBetResult | Promise<PlaceBetResult>;
   onSkip?: (tableId: string) => void;
   onCancelBet?: (betId?: string) => void | Promise<PlaceBetResult>;
@@ -271,6 +282,17 @@ export default function RightPanel({
         baselineLatestId: waitForLiveResult ? table.live?.latestId ?? 0 : null,
         baselineResultCount: waitForLiveResult ? table.stats.recentResults.length : undefined,
         availableBalance: availableBankroll,
+        historyMeta: {
+          gameCode: table.gameCode,
+          shoeNumber: table.stats.shoeNumber || table.gameCode,
+          round: table.stats.currentRound,
+          recentResults: table.stats.recentResults.slice(-8),
+          gptOpinion: table.ai.gpt.opinion,
+          geminiOpinion: table.ai.gemini.opinion,
+          claudeOpinion: table.ai.claude.opinion,
+          finalOpinion: table.ai.finalOpinion,
+          ruleLabel: '직접 베팅',
+        },
       });
 
       if (!result.ok) {

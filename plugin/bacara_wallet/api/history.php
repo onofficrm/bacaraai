@@ -83,24 +83,36 @@ function bacara_wallet_parse_bet_log_row($row)
         $time = $m[1];
     }
 
+    $betSource = 'unknown';
+    $shoeNumber = '-';
+    $round = 0;
+    $note = $content;
+
     // 접수(차감) — 과거 패배는 정산 로그가 없을 수 있어 표시
     if ($kind === 'bet') {
         $tableName = '-';
         $side = 'WAIT';
-        if (preg_match('/·\s*(.+?)\s*·\s*(PLAYER|BANKER|TIE)/u', $content, $m)) {
+        $amount = abs($delta);
+        if (preg_match('/^PLACE\|(manual|auto)\|([^|]*)\|(PLAYER|BANKER|TIE|WAIT)\|(\d+)\|(\d+)\|([^|]*)/', $content, $m)) {
+            $betSource = $m[1];
+            $tableName = $m[2] !== '' ? $m[2] : '-';
+            $side = $m[3] === 'WAIT' ? 'WAIT' : $m[3];
+            $amount = (int) $m[4];
+            $round = (int) $m[5];
+            $shoeNumber = $m[6] !== '' ? $m[6] : '-';
+        } elseif (preg_match('/·\s*(.+?)\s*·\s*(PLAYER|BANKER|TIE)/u', $content, $m)) {
             $tableName = trim($m[1]);
             $side = $m[2];
         } elseif (preg_match('/베팅 차감\s*·\s*(.+)$/u', $content, $m)) {
             $tableName = trim($m[1]);
         }
-        $amount = abs($delta);
         return array(
             'id' => 'wlog_' . $id,
             'time' => $time,
             'tableName' => $tableName,
-            'shoeNumber' => '-',
-            'round' => 0,
-            'previousResult' => $content,
+            'shoeNumber' => $shoeNumber,
+            'round' => $round,
+            'previousResult' => '-',
             'gptOpinion' => 'WAIT',
             'geminiOpinion' => 'WAIT',
             'claudeOpinion' => 'WAIT',
@@ -110,9 +122,11 @@ function bacara_wallet_parse_bet_log_row($row)
             'actualResult' => 'NONE',
             'pnl' => 0,
             'martingaleStage' => 1,
-            'appliedRule' => '베팅 접수',
+            'appliedRule' => $betSource === 'auto' ? '오토베팅' : ($betSource === 'manual' ? '직접 베팅' : '베팅 접수'),
             'dataStatus' => '접수',
             'createdAt' => $created,
+            'betSource' => $betSource,
+            'note' => $note,
         );
     }
 
@@ -124,14 +138,36 @@ function bacara_wallet_parse_bet_log_row($row)
     $dataStatus = '정상';
     $appliedRule = '가상머니 베팅';
 
-    // 구조화 메모: SETTLE|table|SIDE|OUT|stake|pnl
-    if (preg_match('/^SETTLE\|([^|]*)\|(PLAYER|BANKER|TIE)\|(P|B|T)\|(\d+)\|(-?\d+)/', $content, $m)) {
+    // 신규: SETTLE|source|table|SIDE|OUT|stake|pnl|round|shoe
+    if (preg_match('/^SETTLE\|(manual|auto)\|([^|]*)\|(PLAYER|BANKER|TIE)\|(P|B|T)\|(\d+)\|(-?\d+)(?:\|(\d+)\|([^|]*))?/', $content, $m)) {
+        $betSource = $m[1];
+        $tableName = $m[2] !== '' ? $m[2] : '-';
+        $side = $m[3];
+        $outcome = $m[4];
+        $amount = (int) $m[5];
+        $pnl = (int) $m[6];
+        $round = isset($m[7]) ? (int) $m[7] : 0;
+        $shoeNumber = isset($m[8]) && $m[8] !== '' ? $m[8] : '-';
+        $appliedRule = $betSource === 'auto' ? '오토베팅' : '직접 베팅';
+        $note = ($betSource === 'auto' ? '오토' : '직접') . ' 정산';
+    // 구형식: SETTLE|table|SIDE|OUT|stake|pnl
+    } elseif (preg_match('/^SETTLE\|([^|]*)\|(PLAYER|BANKER|TIE)\|(P|B|T)\|(\d+)\|(-?\d+)/', $content, $m)) {
         $tableName = $m[1] !== '' ? $m[1] : '-';
         $side = $m[2];
         $outcome = $m[3];
         $amount = (int) $m[4];
         $pnl = (int) $m[5];
         $appliedRule = '직접/오토 베팅';
+    } elseif (preg_match('/^CANCEL\|(manual|auto)\|([^|]*)\|(\d+)/', $content, $m)) {
+        $betSource = $m[1];
+        $tableName = $m[2] !== '' ? $m[2] : '-';
+        $amount = (int) $m[3];
+        $pnl = 0;
+        $outcome = 'NONE';
+        $dataStatus = '취소';
+        $appliedRule = $betSource === 'auto' ? '오토 · 취소' : '직접 · 취소';
+        $side = 'SKIP';
+        $note = '베팅 취소 · 시드 반환';
     } elseif (preg_match('/^CANCEL\|([^|]*)\|(\d+)/', $content, $m)) {
         $tableName = $m[1] !== '' ? $m[1] : '-';
         $amount = (int) $m[2];
@@ -140,6 +176,7 @@ function bacara_wallet_parse_bet_log_row($row)
         $dataStatus = '취소';
         $appliedRule = '베팅 취소';
         $side = 'SKIP';
+        $note = '베팅 취소 · 시드 반환';
     } else {
         // 구 메모 파싱
         if (preg_match('/베팅 취소|시드 반환/', $content)) {
@@ -152,9 +189,9 @@ function bacara_wallet_parse_bet_log_row($row)
                 $tableName = trim($tm[1]);
             }
             $amount = abs($delta);
+            $note = $content;
         } elseif ($kind === 'bet_lose') {
             $pnl = $delta !== 0 ? $delta : -abs($amount);
-            // delta 0 lose log: amount in content
             if (preg_match('/베팅\s*([\d,]+)/u', $content, $am)) {
                 $amount = (int) str_replace(',', '', $am[1]);
                 $pnl = -$amount;
@@ -181,21 +218,15 @@ function bacara_wallet_parse_bet_log_row($row)
             if (preg_match('/·\s*([^·]+)\s*·/u', $content, $tm)) {
                 $tableName = trim($tm[1]);
             }
+            $note = $content;
         } elseif ($kind === 'bet_win') {
-            if (preg_match('/입금\s*([\d,]+)/u', $content, $cm)) {
-                $credit = (int) str_replace(',', '', $cm[1]);
-                // credit = stake + profit for P; stake+0.95 for B; etc. Approximate pnl from delta
-                $pnl = $delta; // not exact stake; better use structured
-            }
-            $pnl = $delta; // fallback wrong
-            // Prefer: 손익 in content
+            $pnl = $delta;
             if (preg_match('/손익\s*(-?[\d,]+)/u', $content, $pm)) {
                 $pnl = (int) str_replace(',', '', $pm[1]);
             }
             if (preg_match('/베팅\s*([\d,]+)/u', $content, $am)) {
                 $amount = (int) str_replace(',', '', $am[1]);
             } elseif ($delta > 0 && $pnl !== 0) {
-                // Player win credit = 2*stake, pnl = stake → amount ≈ delta/2
                 $amount = (int) round($delta / 2);
             }
             if (preg_match('/(PLAYER|BANKER|TIE)/', $content, $sm)) {
@@ -210,6 +241,7 @@ function bacara_wallet_parse_bet_log_row($row)
             if (preg_match('/정산\s*·\s*([^·\/]+)/u', $content, $tm)) {
                 $tableName = trim($tm[1]);
             }
+            $note = $content;
         } else {
             return null;
         }
@@ -224,9 +256,9 @@ function bacara_wallet_parse_bet_log_row($row)
         'id' => 'wlog_' . $id,
         'time' => $time,
         'tableName' => $tableName,
-        'shoeNumber' => '-',
-        'round' => 0,
-        'previousResult' => $content,
+        'shoeNumber' => $shoeNumber,
+        'round' => $round,
+        'previousResult' => '-',
         'gptOpinion' => 'WAIT',
         'geminiOpinion' => 'WAIT',
         'claudeOpinion' => 'WAIT',
@@ -239,5 +271,7 @@ function bacara_wallet_parse_bet_log_row($row)
         'appliedRule' => $appliedRule,
         'dataStatus' => $dataStatus,
         'createdAt' => $created,
+        'betSource' => $betSource,
+        'note' => $note,
     );
 }

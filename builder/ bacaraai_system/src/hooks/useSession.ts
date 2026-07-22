@@ -15,6 +15,20 @@ export type BetSide = 'PLAYER' | 'BANKER' | 'TIE';
 
 export type BetSource = 'manual' | 'auto';
 
+/** 베팅 시점 테이블·AI 스냅샷 (게임 기록용) */
+export type BetHistoryMeta = {
+  gameCode?: string;
+  shoeNumber?: string;
+  round?: number;
+  recentResults?: Array<'P' | 'B' | 'T'>;
+  gptOpinion?: string;
+  geminiOpinion?: string;
+  claudeOpinion?: string;
+  finalOpinion?: string;
+  /** 예: 오토 · 패턴 / 오토 · AI / 직접 베팅 */
+  ruleLabel?: string;
+};
+
 export type PendingBet = {
   id: string;
   tableId: string;
@@ -30,6 +44,7 @@ export type PendingBet = {
   baselineResultCount?: number;
   /** true 면 절대 시뮬레이션 정산하지 않고 다음 실결과 대기 */
   waitForLiveResult?: boolean;
+  historyMeta?: BetHistoryMeta;
 };
 
 export type LastBetResult = {
@@ -48,6 +63,7 @@ export type LastBetResult = {
   /** 게임 기록용 */
   appliedRule?: string;
   martinStage?: number;
+  historyMeta?: BetHistoryMeta;
 };
 
 export type PlaceBetInput = {
@@ -65,6 +81,8 @@ export type PlaceBetInput = {
   availableBalance?: number;
   /** 미지정 시 오토 실행 중이면 auto, 아니면 manual */
   source?: BetSource;
+  /** 게임 기록용 스냅샷 */
+  historyMeta?: BetHistoryMeta;
 };
 
 export type PlaceBetResult =
@@ -367,7 +385,7 @@ export default function useSession() {
       recordedBetIdsRef.current.add(r.id);
       recordBetResult(r, {
         martinStage: r.martinStage ?? state.martinStage,
-        appliedRule: r.appliedRule || '직접/오토 베팅',
+        appliedRule: r.appliedRule || (r.source === 'auto' ? '오토베팅' : '직접 베팅'),
       });
     }
   }, [state.lastManualResult, state.lastAutoResult, state.lastBetResult, state.martinStage]);
@@ -484,6 +502,10 @@ export default function useSession() {
       }
     }
 
+    const ruleLabel =
+      pending.historyMeta?.ruleLabel ||
+      (pending.source === 'auto' ? '오토베팅' : '직접 베팅');
+
     const result: LastBetResult = {
       id: pending.id,
       tableId: pending.tableId,
@@ -496,8 +518,9 @@ export default function useSession() {
       message: settled.message,
       at: Date.now(),
       source: pending.source,
-      appliedRule: pending.source === 'auto' ? '오토베팅' : '직접 베팅',
+      appliedRule: ruleLabel,
       martinStage: curr.martinStage,
+      historyMeta: pending.historyMeta,
     };
 
     void walletSettleBet({
@@ -505,6 +528,9 @@ export default function useSession() {
       side: pending.side,
       outcome,
       tableName: pending.tableName,
+      source: pending.source,
+      round: pending.historyMeta?.round,
+      shoeNumber: pending.historyMeta?.shoeNumber || pending.historyMeta?.gameCode,
     }).then((res) => {
       if (res.ok && typeof res.balance === 'number') {
         emitWalletBalance(res.balance);
@@ -588,6 +614,9 @@ export default function useSession() {
       amount,
       side: input.side,
       tableName: input.tableName,
+      source: resolvedSource,
+      round: input.historyMeta?.round,
+      shoeNumber: input.historyMeta?.shoeNumber || input.historyMeta?.gameCode,
     });
     if (!walletRes.ok) {
       return {
@@ -604,6 +633,8 @@ export default function useSession() {
       typeof input.baselineLatestId === 'number' ? input.baselineLatestId : null;
     const useLiveSettle = waitForLiveResult || baselineLatestId !== null;
 
+    const defaultRule =
+      resolvedSource === 'auto' ? '오토베팅' : '직접 베팅';
     const pending: PendingBet = {
       id: `bet_${Date.now()}_${resolvedSource}`,
       tableId: input.tableId,
@@ -616,6 +647,10 @@ export default function useSession() {
       baselineResultCount:
         typeof input.baselineResultCount === 'number' ? input.baselineResultCount : 0,
       waitForLiveResult: useLiveSettle,
+      historyMeta: {
+        ...input.historyMeta,
+        ruleLabel: input.historyMeta?.ruleLabel || defaultRule,
+      },
     };
 
     setState((curr) => ({
@@ -639,6 +674,7 @@ export default function useSession() {
         void walletCancelBet({
           amount: pending.amount,
           tableName: pending.tableName,
+          source: pending.source,
         }).then((res) => {
           if (res.ok && typeof res.balance === 'number') {
             emitWalletBalance(res.balance);
@@ -658,8 +694,9 @@ export default function useSession() {
             message: '다음 게임 결과가 없어 베팅을 취소했습니다 (시드 반환)',
             at: Date.now(),
             source: pending.source,
-            appliedRule: '자동 취소',
+            appliedRule: pending.historyMeta?.ruleLabel || '자동 취소',
             martinStage: curr.martinStage,
+            historyMeta: pending.historyMeta,
           };
           return {
             ...curr,
@@ -712,8 +749,9 @@ export default function useSession() {
       message: `베팅 취소 · ${formatMoney(pending.amount)} 반환`,
       at: Date.now(),
       source: pending.source,
-      appliedRule: '사용자 취소',
+      appliedRule: pending.historyMeta?.ruleLabel || '사용자 취소',
       martinStage: stateRef.current.martinStage,
+      historyMeta: pending.historyMeta,
     };
     setState((curr) => {
       if (!curr.pendingBets.some((b) => b.id === pending.id)) return curr;
@@ -732,6 +770,7 @@ export default function useSession() {
       const res = await walletCancelBet({
         amount: pending.amount,
         tableName: pending.tableName,
+        source: pending.source,
       });
       if (res.ok && typeof res.balance === 'number') {
         emitWalletBalance(res.balance);

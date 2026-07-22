@@ -266,6 +266,20 @@ export default function App() {
         baselineLatestId: waitForLive ? target.live?.latestId ?? 0 : null,
         baselineResultCount: waitForLive ? target.stats.recentResults.length : undefined,
         availableBalance: availableBankroll,
+        historyMeta: {
+          gameCode: target.gameCode,
+          shoeNumber: target.stats.shoeNumber || target.gameCode,
+          round: target.stats.currentRound,
+          recentResults: target.stats.recentResults.slice(-8),
+          gptOpinion: target.ai.gpt.opinion,
+          geminiOpinion: target.ai.gemini.opinion,
+          claudeOpinion: target.ai.claude.opinion,
+          finalOpinion: target.ai.finalOpinion,
+          ruleLabel:
+            strategy === 'pattern' || candidate.fromPatternEntry
+              ? '오토 · 패턴'
+              : '오토 · AI',
+        },
       })
       .then((result) => {
         if (!result.ok) {

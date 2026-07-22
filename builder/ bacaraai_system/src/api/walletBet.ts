@@ -36,13 +36,19 @@ export async function walletPlaceBet(input: {
   amount: number;
   side: WalletBetSide;
   tableName: string;
+  source?: 'manual' | 'auto';
+  round?: number;
+  shoeNumber?: string;
 }): Promise<BetApiResponse> {
+  const source = input.source === 'auto' ? 'auto' : 'manual';
   return postBet({
     action: 'place',
     amount: input.amount,
     side: input.side,
     table_name: input.tableName,
-    note: `베팅 차감 · ${input.tableName} · ${input.side}`,
+    source,
+    round: typeof input.round === 'number' ? input.round : 0,
+    shoe: input.shoeNumber || '-',
   });
 }
 
@@ -52,13 +58,20 @@ export async function walletSettleBet(input: {
   side: WalletBetSide;
   outcome: 'P' | 'B' | 'T';
   tableName: string;
+  source?: 'manual' | 'auto';
+  round?: number;
+  shoeNumber?: string;
 }): Promise<BetApiResponse> {
+  const source = input.source === 'auto' ? 'auto' : 'manual';
   return postBet({
     action: 'settle',
     amount: input.amount,
     side: input.side,
     outcome: input.outcome,
     table_name: input.tableName,
+    source,
+    round: typeof input.round === 'number' ? input.round : 0,
+    shoe: input.shoeNumber || '-',
   });
 }
 
@@ -66,11 +79,14 @@ export async function walletSettleBet(input: {
 export async function walletCancelBet(input: {
   amount: number;
   tableName: string;
+  source?: 'manual' | 'auto';
 }): Promise<BetApiResponse> {
+  const source = input.source === 'auto' ? 'auto' : 'manual';
   return postBet({
     action: 'cancel',
     amount: input.amount,
     table_name: input.tableName,
+    source,
   });
 }
 
@@ -99,6 +115,8 @@ export type WalletHistoryItem = {
   appliedRule: string;
   dataStatus: string;
   createdAt?: string;
+  betSource?: 'manual' | 'auto' | 'unknown';
+  note?: string;
 };
 
 /** 서버 가상머니 베팅 로그 → 게임 기록 */

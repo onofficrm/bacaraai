@@ -49,6 +49,16 @@ $side = isset($json['side']) ? strtoupper((string) $json['side']) : (isset($_POS
 $outcome = isset($json['outcome']) ? strtoupper((string) $json['outcome']) : (isset($_POST['outcome']) ? strtoupper((string) $_POST['outcome']) : '');
 $table_name = isset($json['table_name']) ? trim((string) $json['table_name']) : (isset($_POST['table_name']) ? trim((string) $_POST['table_name']) : '');
 $note = isset($json['note']) ? trim((string) $json['note']) : (isset($_POST['note']) ? trim((string) $_POST['note']) : '');
+$source_raw = isset($json['source']) ? strtolower((string) $json['source']) : (isset($_POST['source']) ? strtolower((string) $_POST['source']) : '');
+$source = ($source_raw === 'auto') ? 'auto' : 'manual';
+$round = isset($json['round']) ? (int) $json['round'] : (isset($_POST['round']) ? (int) $_POST['round'] : 0);
+$shoe = isset($json['shoe']) ? trim((string) $json['shoe']) : (isset($_POST['shoe']) ? trim((string) $_POST['shoe']) : '');
+if ($shoe === '' && isset($json['shoeNumber'])) {
+    $shoe = trim((string) $json['shoeNumber']);
+}
+if ($shoe === '') {
+    $shoe = '-';
+}
 
 $mb_id = $member['mb_id'];
 bacara_wallet_install_tables();
@@ -105,7 +115,9 @@ if ($action === 'place') {
     }
 
     $label = $table_name !== '' ? $table_name : '테이블';
-    $content = $note !== '' ? $note : "베팅 차감 · {$label}";
+    $content = $note !== ''
+        ? $note
+        : ('PLACE|' . $source . '|' . $label . '|' . ($side !== '' ? $side : 'WAIT') . '|' . $amount . '|' . $round . '|' . $shoe);
     $result = bacara_wallet_adjust($mb_id, -$amount, 'bet', $content, $mb_id);
 
     if (empty($result['ok'])) {
@@ -137,7 +149,7 @@ if ($action === 'cancel') {
     }
 
     $label = $table_name !== '' ? $table_name : '테이블';
-    $content = $note !== '' ? $note : ('CANCEL|' . $label . '|' . $amount);
+    $content = $note !== '' ? $note : ('CANCEL|' . $source . '|' . $label . '|' . $amount);
     $result = bacara_wallet_adjust($mb_id, $amount, 'bet_cancel', $content, $mb_id);
 
     if (empty($result['ok'])) {
@@ -182,9 +194,11 @@ if ($action === 'settle') {
     $pnl = bacara_bet_net_pnl($side, $amount, $outcome);
     $label = $table_name !== '' ? $table_name : '테이블';
     $kind = $credit > 0 ? 'bet_win' : 'bet_lose';
-    $content = $note !== ''
-        ? $note
-        : ('SETTLE|' . $label . '|' . $side . '|' . $outcome . '|' . $amount . '|' . $pnl);
+    // SETTLE|source|table|SIDE|OUT|stake|pnl|round|shoe
+    $content = 'SETTLE|' . $source . '|' . $label . '|' . $side . '|' . $outcome . '|' . $amount . '|' . $pnl . '|' . $round . '|' . $shoe;
+    if ($note !== '' && strpos($note, 'SETTLE|') !== 0) {
+        $content .= '|' . $note;
+    }
 
     // 패배(credit=0)도 반드시 로그에 남겨 게임 기록에 표시
     $result = bacara_wallet_adjust($mb_id, $credit, $kind, $content, $mb_id);
