@@ -548,6 +548,8 @@ export default function App() {
               availableBankroll={availableBankroll}
               pendingBets={session.pendingBets}
               lastBetResult={session.lastBetResult}
+              lastManualResult={session.lastManualResult}
+              lastAutoResult={session.lastAutoResult}
               onPlaceBet={session.placeBet}
               onSkip={session.skipRound}
               onCancelBet={async (betId) => {

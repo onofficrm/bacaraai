@@ -43,6 +43,8 @@ interface RightPanelProps {
   availableBankroll?: number;
   pendingBets?: PendingBet[];
   lastBetResult?: LastBetResult | null;
+  lastManualResult?: LastBetResult | null;
+  lastAutoResult?: LastBetResult | null;
   onPlaceBet?: (input: {
     tableId: string;
     tableName: string;
@@ -58,7 +60,7 @@ interface RightPanelProps {
   onCancelBet?: (betId?: string) => void | Promise<PlaceBetResult>;
   onOpenSessionSettings?: () => void;
   onUpdateSessionConfig?: (config: SessionConfig) => void;
-  onClearBetResult?: () => void;
+  onClearBetResult?: (source?: 'manual' | 'auto') => void;
   onPauseAuto?: () => void;
   onResumeAuto?: () => void;
   onStopAuto?: () => void;
@@ -81,6 +83,8 @@ export default function RightPanel({
   availableBankroll = 0,
   pendingBets = [],
   lastBetResult = null,
+  lastManualResult = null,
+  lastAutoResult = null,
   onPlaceBet,
   onSkip,
   onCancelBet,
@@ -100,7 +104,13 @@ export default function RightPanel({
   const [betError, setBetError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [roadmapOpen, setRoadmapOpen] = useState(false);
+  /** 모바일: 빠른 베팅(사이드+칩 우선). 데스크톱은 상세 기본 */
+  const [quickBet, setQuickBet] = useState(true);
+  const [showAiRec, setShowAiRec] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [highConfirmOpen, setHighConfirmOpen] = useState(false);
   const isDesktop = useIsDesktopXl();
+  const submittingRef = React.useRef(false);
 
   const recommendedSide: BetSide | null =
     table?.ai.finalOpinion === 'PLAYER'
@@ -128,18 +138,24 @@ export default function RightPanel({
     setBetError(null);
     setPanelMode('manual');
     setRoadmapOpen(isDesktop);
+    setQuickBet(!isDesktop);
+    setShowAiRec(isDesktop);
+    setHighConfirmOpen(false);
+    setSubmitting(false);
+    submittingRef.current = false;
   }, [table?.id, isDesktop]);
 
   // 금액은 테이블 전환 시에만 맞추고, 칩 입력 중에는 덮어쓰지 않음
   // (라이브 폴링으로 table/suggestedBet 이 바뀌면 초기화되던 문제 방지)
 
+  const resultForSfx = lastManualResult || lastAutoResult || lastBetResult;
   React.useEffect(() => {
-    if (!lastBetResult) return;
+    if (!resultForSfx) return;
     // 승리는 WinCelebration 에서 사운드·연출
-    if (lastBetResult.won === true) return;
-    if (lastBetResult.won === false) playSfx('loss');
+    if (resultForSfx.won === true) return;
+    if (resultForSfx.won === false) playSfx('loss');
     else playSfx('tick');
-  }, [lastBetResult?.id]);
+  }, [resultForSfx?.id]);
 
   const handleCancelBet = async (betId?: string) => {
     if (cancelling) return;
@@ -228,34 +244,68 @@ export default function RightPanel({
     );
   };
 
+  const afterBetBalance = Math.max(0, availableBankroll - betAmount);
+  const balanceWarn =
+    betAmount > 0 && availableBankroll > 0 && betAmount > availableBankroll * 0.3
+      ? `잔액의 ${Math.round((betAmount / availableBankroll) * 100)}%를 걸게 됩니다`
+      : null;
+  const needsHighConfirm =
+    betAmount >= 100_000 ||
+    (availableBankroll > 0 && betAmount >= availableBankroll * 0.25) ||
+    betAmount >= maxBet * 0.5;
+
+  const placeManualBet = async () => {
+    if (!table || !onPlaceBet) return;
+    if (submittingRef.current || isManualSettling) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setBetError(null);
+    try {
+      const result = await onPlaceBet({
+        tableId: table.id,
+        tableName: table.name,
+        side: selectedSide,
+        amount: betAmount,
+        source: 'manual',
+        waitForLiveResult,
+        baselineLatestId: waitForLiveResult ? table.live?.latestId ?? 0 : null,
+        baselineResultCount: waitForLiveResult ? table.stats.recentResults.length : undefined,
+        availableBalance: availableBankroll,
+      });
+
+      if (!result.ok) {
+        setBetError(result.error);
+        playSfx('error');
+        return;
+      }
+
+      setHighConfirmOpen(false);
+      playSfx('betConfirm');
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
   const handleConfirmBet = async () => {
     if (!table || !onPlaceBet) return;
+    if (submittingRef.current || submitting || isManualSettling) return;
     if (betAmount <= 0) {
       setBetError('베팅 금액을 입력해 주세요.');
       playSfx('error');
       return;
     }
-
-    const result = await onPlaceBet({
-      tableId: table.id,
-      tableName: table.name,
-      side: selectedSide,
-      amount: betAmount,
-      source: 'manual',
-      waitForLiveResult,
-      baselineLatestId: waitForLiveResult ? table.live?.latestId ?? 0 : null,
-      baselineResultCount: waitForLiveResult ? table.stats.recentResults.length : undefined,
-      availableBalance: availableBankroll,
-    });
-
-    if (!result.ok) {
-      setBetError(result.error);
+    if (betAmount > availableBankroll) {
+      setBetError(`가상머니가 부족합니다. (가능 ${formatMoney(availableBankroll)})`);
       playSfx('error');
       return;
     }
-
-    setBetError(null);
-    playSfx('betConfirm');
+    if (needsHighConfirm && !highConfirmOpen) {
+      setHighConfirmOpen(true);
+      playSfx('ui');
+      return;
+    }
+    await placeManualBet();
   };
 
   const sideShortLabel = (side: BetSide) => {
@@ -329,7 +379,6 @@ export default function RightPanel({
 
   const opinionLabel = getOpinionText(table.ai.finalOpinion, beginnerMode);
   const isRisk = table.status === 'risk_blocked';
-  const afterBetBalance = Math.max(0, availableBankroll - betAmount);
   const cfg = sessionConfig;
   const nextAutoBet = cfg
     ? nextBetAmount(cfg.initialBet, Math.min(martinStage, cfg.maxMartin), cfg.maxBet)
@@ -477,35 +526,74 @@ export default function RightPanel({
 
           {panelMode === 'manual' ? (
             <>
-              {/* AI recommendation — compact on mobile */}
-              <div className="rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden">
-                <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-zinc-400">다음 게임 추천 · 참고용</span>
-                  <span className="text-[10px] text-zinc-500">{table.ai.consensus}</span>
-                </div>
-                <div className="px-3 py-3 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className={`text-lg font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
-                      {opinionLabel}
-                    </p>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">
-                      {isPassive
-                        ? '지금은 관망 추천입니다'
-                        : `추천 금액 ${(table.ai.recommendedAmount || 0).toLocaleString()}원`}
-                    </p>
+              {/* 빠른 베팅 토글 (모바일) */}
+              {!isDesktop && (
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2">
+                  <div>
+                    <p className="text-[12px] font-bold text-zinc-200">빠른 베팅</p>
+                    <p className="text-[10px] text-zinc-500">사이드·칩만 표시 · 탭 한 번에 확정</p>
                   </div>
-                  {recommendedSide && !isRisk && (
-                    <button
-                      type="button"
-                      onClick={applyRecommendedBet}
-                      disabled={isManualSettling}
-                      className="shrink-0 min-h-[44px] px-3 py-2 rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-300 text-xs font-bold hover:bg-blue-600/30 disabled:opacity-40 touch-manipulation"
-                    >
-                      추천대로
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playSfx('ui');
+                      setQuickBet((v) => !v);
+                      if (quickBet) setShowAiRec(true);
+                    }}
+                    className={`min-h-[40px] px-3 rounded-lg text-xs font-bold border touch-manipulation ${
+                      quickBet
+                        ? 'bg-blue-600 border-blue-400 text-white'
+                        : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                    }`}
+                  >
+                    {quickBet ? 'ON' : 'OFF'}
+                  </button>
                 </div>
-              </div>
+              )}
+
+              {/* AI recommendation — 빠른 베팅에선 접힘 */}
+              {(!quickBet || isDesktop || showAiRec) && (
+                <div className="rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-zinc-400">다음 게임 추천 · 참고용</span>
+                    <span className="text-[10px] text-zinc-500">{table.ai.consensus}</span>
+                  </div>
+                  <div className="px-3 py-3 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className={`text-lg font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
+                        {opinionLabel}
+                      </p>
+                      <p className="text-[11px] text-zinc-500 mt-0.5">
+                        {isPassive
+                          ? '지금은 관망 추천입니다'
+                          : `추천 금액 ${(table.ai.recommendedAmount || 0).toLocaleString()}원`}
+                      </p>
+                    </div>
+                    {recommendedSide && !isRisk && (
+                      <button
+                        type="button"
+                        onClick={applyRecommendedBet}
+                        disabled={isManualSettling || submitting}
+                        className="shrink-0 min-h-[44px] px-3 py-2 rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-300 text-xs font-bold hover:bg-blue-600/30 disabled:opacity-40 touch-manipulation"
+                      >
+                        추천대로
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {quickBet && !isDesktop && !showAiRec && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSfx('ui');
+                    setShowAiRec(true);
+                  }}
+                  className="text-[11px] text-zinc-500 hover:text-zinc-300 text-center w-full min-h-[36px] touch-manipulation"
+                >
+                  AI 추천 보기
+                </button>
+              )}
 
               {isManualSettling && manualPending && (
                 <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-3 text-center">
@@ -527,44 +615,24 @@ export default function RightPanel({
                 </div>
               )}
 
-              {lastBetResult && lastBetResult.tableId === table.id && !isManualSettling && (
-                <div
-                  className={`rounded-xl border px-3 py-2.5 ${
-                    lastBetResult.won === true
-                      ? 'border-emerald-500/30 bg-emerald-500/10'
-                      : lastBetResult.won === false
-                        ? 'border-rose-500/30 bg-rose-500/10'
-                        : 'border-zinc-700 bg-zinc-900'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p
-                        className={`text-xs font-bold mb-0.5 ${
-                          lastBetResult.won === true
-                            ? 'text-emerald-300'
-                            : lastBetResult.won === false
-                              ? 'text-rose-300'
-                              : 'text-zinc-300'
-                        }`}
-                      >
-                        {lastBetResult.amount > 0 ? '베팅 결과' : '건너뛰기'}
-                      </p>
-                      <p className="text-[11px] text-zinc-300 leading-relaxed">{lastBetResult.message}</p>
-                      {lastBetResult.amount > 0 && (
-                        <p className="text-[11px] font-mono mt-1 text-zinc-400">
-                          손익 {formatMoney(lastBetResult.pnlDelta, true)}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      className="text-[10px] text-zinc-500 hover:text-zinc-300 min-h-[44px] px-2 touch-manipulation"
-                      onClick={() => onClearBetResult?.()}
-                    >
-                      닫기
-                    </button>
-                  </div>
+              {/* 직접 / 오토 결과 각각 표시 */}
+              {!isManualSettling && (
+                <div className="flex flex-col gap-2">
+                  {lastManualResult && lastManualResult.tableId === table.id && (
+                    <BetResultCard
+                      result={lastManualResult}
+                      label="직접 베팅 결과"
+                      onClose={() => onClearBetResult?.('manual')}
+                    />
+                  )}
+                  {lastAutoResult && (
+                    <BetResultCard
+                      result={lastAutoResult}
+                      label="오토베팅 결과"
+                      onClose={() => onClearBetResult?.('auto')}
+                      dim={lastAutoResult.tableId !== table.id}
+                    />
+                  )}
                 </div>
               )}
 
@@ -710,8 +778,18 @@ export default function RightPanel({
                       </div>
                       <div className="text-[11px] text-zinc-500 flex justify-between mt-0.5">
                         <span>베팅 후</span>
-                        <span className="font-mono text-zinc-300">{formatMoney(afterBetBalance)}</span>
+                        <span className={`font-mono ${afterBetBalance < betAmount ? 'text-amber-300' : 'text-zinc-300'}`}>
+                          {formatMoney(afterBetBalance)}
+                        </span>
                       </div>
+                      {balanceWarn && (
+                        <p className="mt-2 text-[11px] text-amber-300 text-center">{balanceWarn}</p>
+                      )}
+                      {needsHighConfirm && (
+                        <p className="mt-1 text-[10px] text-rose-300/90 text-center">
+                          고액 베팅 — 확정 시 한 번 더 확인합니다
+                        </p>
+                      )}
                     </div>
 
                     {/* Desktop actions (mobile uses sticky bar) */}
@@ -740,11 +818,11 @@ export default function RightPanel({
                           </button>
                           <button
                             type="button"
-                            onClick={handleConfirmBet}
+                            onClick={() => void handleConfirmBet()}
                             className="py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
-                            disabled={betAmount <= 0}
+                            disabled={betAmount <= 0 || submitting || isManualSettling}
                           >
-                            베팅 확정
+                            {submitting ? '접수 중…' : '베팅 확정'}
                           </button>
                         </>
                       )}
@@ -1065,7 +1143,8 @@ export default function RightPanel({
             </div>
           )}
 
-          {/* Roadmap — 모바일에서는 접힌 채 (베팅 우선) */}
+          {/* Roadmap — 빠른 베팅에선 숨김, 아니면 접힌 채 */}
+          {(!quickBet || isDesktop) && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
             <button
               type="button"
@@ -1089,8 +1168,11 @@ export default function RightPanel({
               </div>
             )}
           </div>
+          )}
 
-          {/* Advanced — collapsed */}
+          {/* Advanced — collapsed / 빠른 베팅에선 숨김 */}
+          {(!quickBet || isDesktop) && (
+          <>
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
             <button
               type="button"
@@ -1152,6 +1234,8 @@ export default function RightPanel({
           <div className="text-[10px] text-zinc-600 leading-tight px-0.5 pb-2">
             AI는 참고용이며 최종 판단은 사용자에게 있습니다.
           </div>
+          </>
+          )}
         </div>
         </div>
 
@@ -1191,11 +1275,11 @@ export default function RightPanel({
                   </button>
                   <button
                     type="button"
-                    onClick={handleConfirmBet}
-                    disabled={betAmount <= 0 || isManualSettling}
+                    onClick={() => void handleConfirmBet()}
+                    disabled={betAmount <= 0 || isManualSettling || submitting}
                     className="min-h-[52px] py-3.5 bg-blue-600 active:bg-blue-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-600/25 disabled:opacity-45 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none touch-manipulation"
                   >
-                    베팅 확정
+                    {submitting ? '접수 중…' : needsHighConfirm ? '확인 후 확정' : '베팅 확정'}
                   </button>
                 </div>
               </div>
@@ -1207,9 +1291,22 @@ export default function RightPanel({
 
   if (isDesktop) {
     return (
-      <div className="hidden xl:flex z-50 w-80 2xl:w-[420px] h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex-col shrink-0">
-        {panelInner}
-      </div>
+      <>
+        {highConfirmOpen && (
+          <HighBetConfirmModal
+            side={selectedSide}
+            amount={betAmount}
+            balanceWarn={balanceWarn}
+            submitting={submitting}
+            onCancel={() => setHighConfirmOpen(false)}
+            onConfirm={() => void placeManualBet()}
+            sideLabel={sideShortLabel(selectedSide)}
+          />
+        )}
+        <div className="hidden xl:flex z-50 w-80 2xl:w-[420px] h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex-col shrink-0">
+          {panelInner}
+        </div>
+      </>
     );
   }
 
@@ -1219,7 +1316,139 @@ export default function RightPanel({
       <div className="fixed inset-x-0 bottom-0 z-[70] w-full max-h-[min(92dvh,900px)] rounded-t-2xl border-t border-x border-zinc-800 bg-zinc-950 shadow-2xl flex flex-col">
         {panelInner}
       </div>
+      {highConfirmOpen && (
+        <HighBetConfirmModal
+          side={selectedSide}
+          amount={betAmount}
+          balanceWarn={balanceWarn}
+          submitting={submitting}
+          onCancel={() => setHighConfirmOpen(false)}
+          onConfirm={() => void placeManualBet()}
+          sideLabel={sideShortLabel(selectedSide)}
+        />
+      )}
     </>,
+    document.body,
+  );
+}
+
+function BetResultCard({
+  result,
+  label,
+  onClose,
+  dim = false,
+}: {
+  result: LastBetResult;
+  label: string;
+  onClose: () => void;
+  dim?: boolean;
+}) {
+  const tone =
+    result.won === true
+      ? 'border-emerald-500/30 bg-emerald-500/10'
+      : result.won === false
+        ? 'border-rose-500/30 bg-rose-500/10'
+        : 'border-zinc-700 bg-zinc-900';
+  const titleTone =
+    result.won === true
+      ? 'text-emerald-300'
+      : result.won === false
+        ? 'text-rose-300'
+        : 'text-zinc-300';
+  const isAuto = result.source === 'auto' || result.appliedRule === '오토베팅';
+
+  return (
+    <div className={`rounded-xl border px-3 py-2.5 ${tone} ${dim ? 'opacity-80' : ''}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span
+              className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                isAuto
+                  ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                  : 'text-blue-300 border-blue-500/40 bg-blue-500/10'
+              }`}
+            >
+              {isAuto ? '오토' : '직접'}
+            </span>
+            <p className={`text-xs font-bold ${titleTone}`}>
+              {result.amount > 0 ? label : '건너뛰기'}
+            </p>
+          </div>
+          <p className="text-[11px] text-zinc-300 leading-relaxed">{result.message}</p>
+          {result.amount > 0 && (
+            <p className="text-[11px] font-mono mt-1 text-zinc-400">
+              {result.tableName} · 손익 {formatMoney(result.pnlDelta, true)}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          className="text-[10px] text-zinc-500 hover:text-zinc-300 min-h-[44px] px-2 touch-manipulation shrink-0"
+          onClick={onClose}
+        >
+          닫기
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HighBetConfirmModal({
+  sideLabel,
+  amount,
+  balanceWarn,
+  submitting,
+  onCancel,
+  onConfirm,
+}: {
+  side: BetSide;
+  sideLabel: string;
+  amount: number;
+  balanceWarn: string | null;
+  submitting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div
+        className="w-full max-w-sm rounded-2xl border border-rose-500/40 bg-zinc-950 shadow-2xl p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="text-[11px] font-bold tracking-wide text-rose-300 uppercase mb-1">고액 베팅 확인</p>
+        <h3 className="text-lg font-bold text-white mb-2">이 금액으로 베팅할까요?</h3>
+        <p className="text-sm text-zinc-300 text-center py-3 rounded-xl bg-zinc-900 border border-zinc-800">
+          <span className="font-bold">{sideLabel}</span>
+          <span className="text-zinc-600 mx-2">·</span>
+          <span className="font-mono font-bold text-amber-300">{amount.toLocaleString()}원</span>
+        </p>
+        {balanceWarn && (
+          <p className="mt-2 text-[12px] text-amber-300 text-center">{balanceWarn}</p>
+        )}
+        <p className="mt-2 text-[11px] text-zinc-500 text-center leading-relaxed">
+          실수로 큰 금액을 거는 것을 막기 위한 확인입니다.
+        </p>
+        <div className="grid grid-cols-2 gap-2 mt-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={submitting}
+            className="min-h-[48px] rounded-xl bg-zinc-800 text-zinc-200 text-sm font-bold touch-manipulation disabled:opacity-50"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={submitting}
+            className="min-h-[48px] rounded-xl bg-rose-500 text-white text-sm font-bold touch-manipulation disabled:opacity-50"
+          >
+            {submitting ? '접수 중…' : '그래도 베팅'}
+          </button>
+        </div>
+      </div>
+    </div>,
     document.body,
   );
 }

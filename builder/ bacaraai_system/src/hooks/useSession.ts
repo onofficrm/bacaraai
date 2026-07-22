@@ -43,6 +43,8 @@ export type LastBetResult = {
   pnlDelta: number;
   message: string;
   at: number;
+  /** 직접 / 오토 구분 */
+  source?: BetSource;
   /** 게임 기록용 */
   appliedRule?: string;
   martinStage?: number;
@@ -81,7 +83,10 @@ export type SessionState = {
   martinStage: number;
   /** 오토·직접 각각 1개까지 동시 대기 가능 */
   pendingBets: PendingBet[];
+  /** 축하 연출·하위 호환용 (최근 결과, 승리 우선) */
   lastBetResult: LastBetResult | null;
+  lastManualResult: LastBetResult | null;
+  lastAutoResult: LastBetResult | null;
   skippedCount: number;
 };
 
@@ -117,6 +122,8 @@ const DEFAULT_STATE: SessionState = {
   martinStage: 1,
   pendingBets: [],
   lastBetResult: null,
+  lastManualResult: null,
+  lastAutoResult: null,
   skippedCount: 0,
 };
 
@@ -146,6 +153,8 @@ function readStored(): SessionState {
       elapsedMs: Number(parsed.elapsedMs) || 0,
       pendingBets: [],
       lastBetResult: parsed.lastBetResult ?? null,
+      lastManualResult: parsed.lastManualResult ?? null,
+      lastAutoResult: parsed.lastAutoResult ?? null,
       skippedCount: Number(parsed.skippedCount) || 0,
     };
   } catch {
@@ -343,15 +352,17 @@ export default function useSession() {
   // setState 밖에서 게임 기록 저장 (updater 내부 side-effect 로 유실되던 문제 방지)
   const recordedBetIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const r = state.lastBetResult;
-    if (!r?.id) return;
-    if (recordedBetIdsRef.current.has(r.id)) return;
-    recordedBetIdsRef.current.add(r.id);
-    recordBetResult(r, {
-      martinStage: r.martinStage ?? state.martinStage,
-      appliedRule: r.appliedRule || '직접/오토 베팅',
-    });
-  }, [state.lastBetResult, state.martinStage]);
+    const candidates = [state.lastManualResult, state.lastAutoResult, state.lastBetResult];
+    for (const r of candidates) {
+      if (!r?.id) continue;
+      if (recordedBetIdsRef.current.has(r.id)) continue;
+      recordedBetIdsRef.current.add(r.id);
+      recordBetResult(r, {
+        martinStage: r.martinStage ?? state.martinStage,
+        appliedRule: r.appliedRule || '직접/오토 베팅',
+      });
+    }
+  }, [state.lastManualResult, state.lastAutoResult, state.lastBetResult, state.martinStage]);
 
   const elapsedMs = useMemo(() => {
     if (state.status === 'running' && state.startedAt) {
@@ -385,6 +396,8 @@ export default function useSession() {
       martinStage: 1,
       pendingBets: [],
       lastBetResult: null,
+      lastManualResult: null,
+      lastAutoResult: null,
       skippedCount: 0,
     });
   }, []);
@@ -424,6 +437,8 @@ export default function useSession() {
       martinStage: 1,
       pendingBets: [],
       lastBetResult: null,
+      lastManualResult: null,
+      lastAutoResult: null,
       skippedCount: 0,
     }));
   }, []);
@@ -472,6 +487,7 @@ export default function useSession() {
       pnlDelta: settled.pnlDelta,
       message: settled.message,
       at: Date.now(),
+      source: pending.source,
       appliedRule: pending.source === 'auto' ? '오토베팅' : '직접 베팅',
       martinStage: curr.martinStage,
     };
@@ -505,6 +521,8 @@ export default function useSession() {
       martinStage: nextStage,
       pendingBets: curr.pendingBets.filter((b) => b.id !== pending.id),
       lastBetResult: preferResult,
+      lastManualResult: pending.source === 'manual' ? result : curr.lastManualResult,
+      lastAutoResult: pending.source === 'auto' ? result : curr.lastAutoResult,
     };
   }, []);
 
@@ -631,6 +649,7 @@ export default function useSession() {
             pnlDelta: 0,
             message: '다음 게임 결과가 없어 베팅을 취소했습니다 (시드 반환)',
             at: Date.now(),
+            source: pending.source,
             appliedRule: '자동 취소',
             martinStage: curr.martinStage,
           };
@@ -638,6 +657,10 @@ export default function useSession() {
             ...curr,
             pendingBets: curr.pendingBets.filter((b) => b.id !== pending.id),
             lastBetResult,
+            lastManualResult:
+              pending.source === 'manual' ? lastBetResult : curr.lastManualResult,
+            lastAutoResult:
+              pending.source === 'auto' ? lastBetResult : curr.lastAutoResult,
           };
         });
       }, 180_000);
@@ -680,6 +703,7 @@ export default function useSession() {
       pnlDelta: 0,
       message: `베팅 취소 · ${formatMoney(pending.amount)} 반환`,
       at: Date.now(),
+      source: pending.source,
       appliedRule: '사용자 취소',
       martinStage: stateRef.current.martinStage,
     };
@@ -689,6 +713,10 @@ export default function useSession() {
         ...curr,
         pendingBets: curr.pendingBets.filter((b) => b.id !== pending.id),
         lastBetResult,
+        lastManualResult:
+          pending.source === 'manual' ? lastBetResult : curr.lastManualResult,
+        lastAutoResult:
+          pending.source === 'auto' ? lastBetResult : curr.lastAutoResult,
       };
     });
 
@@ -770,8 +798,31 @@ export default function useSession() {
     });
   }, []);
 
-  const clearLastBetResult = useCallback(() => {
-    setState((prev) => ({ ...prev, lastBetResult: null }));
+  const clearLastBetResult = useCallback((source?: BetSource) => {
+    setState((prev) => {
+      if (source === 'manual') {
+        return {
+          ...prev,
+          lastManualResult: null,
+          lastBetResult:
+            prev.lastBetResult?.source === 'manual' ? prev.lastAutoResult : prev.lastBetResult,
+        };
+      }
+      if (source === 'auto') {
+        return {
+          ...prev,
+          lastAutoResult: null,
+          lastBetResult:
+            prev.lastBetResult?.source === 'auto' ? prev.lastManualResult : prev.lastBetResult,
+        };
+      }
+      return {
+        ...prev,
+        lastBetResult: null,
+        lastManualResult: null,
+        lastAutoResult: null,
+      };
+    });
   }, []);
 
   const isActive = state.status === 'running' || state.status === 'paused';
