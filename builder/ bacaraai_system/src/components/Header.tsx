@@ -153,17 +153,19 @@ export default function Header({
     : relativeUpdateLabel(liveStatus?.latestDetectedAt);
 
   return (
-    <header className="relative z-[200] h-[68px] bg-zinc-950 border-b border-zinc-800 flex items-center justify-between px-6 text-zinc-300 shrink-0">
-      {/* Left */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 text-amber-500">
-          <Activity size={24} className="animate-pulse" />
-          <h1 className="font-bold text-lg tracking-tight text-white hidden sm:block">바카라 AI 도우미</h1>
+    <header className="relative z-[200] min-h-[68px] h-auto py-2 bg-zinc-950 border-b border-zinc-800 flex items-center gap-3 px-3 sm:px-6 text-zinc-300 shrink-0">
+      {/* Left — 줄어들어도 한 글자씩 세로 줄바꿈되지 않도록 */}
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
+        <div className="flex items-center gap-2 text-amber-500 shrink-0">
+          <Activity size={22} className="animate-pulse shrink-0" />
+          <h1 className="font-bold text-base lg:text-lg tracking-tight text-white hidden md:block whitespace-nowrap">
+            바카라 AI 도우미
+          </h1>
         </div>
-        
+
         {activeViewLabel && (
-          <div className="hidden md:flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-lg text-sm font-medium">
-            <span className="text-zinc-500">현재 페이지:</span>
+          <div className="hidden lg:flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0">
+            <span className="text-zinc-500">현재:</span>
             <span className="text-zinc-200">{activeViewLabel}</span>
           </div>
         )}
@@ -176,7 +178,7 @@ export default function Header({
             playSfx('ui');
             onSessionModeChange?.(value);
           }}
-          className={`bg-zinc-800 border border-zinc-700 px-3 py-1.5 rounded-lg text-xs font-bold outline-none cursor-pointer hover:bg-zinc-700 transition-colors ${
+          className={`shrink-0 max-w-[9.5rem] sm:max-w-none bg-zinc-800 border border-zinc-700 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold outline-none cursor-pointer hover:bg-zinc-700 transition-colors ${
             sessionMode === 'shadow'
               ? 'text-indigo-400'
               : sessionMode === 'live'
@@ -192,106 +194,108 @@ export default function Header({
       </div>
 
       {/* Center - System Status */}
-      <div className="hidden xl:flex items-center gap-6 text-sm bg-zinc-900/50 border border-zinc-800/50 px-4 py-1.5 rounded-full">
-        <div className="flex items-center gap-1.5 bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded text-xs font-bold border border-amber-500/30">
-          <Activity size={12} />
-          데모 데이터 사용 중
-        </div>
+      <div className="hidden xl:flex flex-1 min-w-0 items-center justify-center">
+        <div className="flex items-center gap-3 2xl:gap-5 text-sm bg-zinc-900/50 border border-zinc-800/50 px-3 2xl:px-4 py-1.5 rounded-full max-w-full overflow-x-auto custom-scrollbar whitespace-nowrap">
+          <div className="flex items-center gap-1.5 bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded text-xs font-bold border border-amber-500/30 shrink-0">
+            <Activity size={12} className="shrink-0" />
+            데모 데이터 사용 중
+          </div>
 
-        {isActive ? (
-          <>
-            <div className="flex items-center gap-2">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  sessionStatus === 'running' ? 'bg-blue-500 animate-pulse' : 'bg-amber-400'
-                }`}
-              />
-              <span
-                className={`font-bold ${
-                  sessionStatus === 'running' ? 'text-blue-400' : 'text-amber-400'
-                }`}
-              >
-                {sessionStatus === 'running'
-                  ? `${modeLabel(sessionMode)} 진행 중`
-                  : '오토베팅 일시정지'}
-              </span>
-            </div>
-            <div className="h-4 w-[1px] bg-zinc-800" />
-            <div className="flex items-center gap-2">
-              <span className="text-zinc-500">진행 시간</span>
-              <span className="font-mono font-medium text-zinc-200">
-                {formatElapsed(sessionElapsedMs)}
-              </span>
-            </div>
-            <div className="h-4 w-[1px] bg-zinc-800" />
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-zinc-500">마지막 업데이트:</span>
-              <span className="text-emerald-400">{updateLabel}</span>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="flex items-center gap-2" title={liveStatus?.error || undefined}>
-              <span className={`w-2 h-2 rounded-full ${liveDot}`} />
-              <span
-                className={`font-bold text-xs sm:text-sm ${
-                  liveStatus?.connected && !liveStatus.error
-                    ? 'text-emerald-400'
-                    : liveStatus?.error
-                      ? 'text-rose-400'
-                      : 'text-zinc-400'
-                }`}
-              >
-                {liveLabel}
-              </span>
-            </div>
-            <div className="h-4 w-[1px] bg-zinc-800" />
-            <div className="flex items-center gap-2 text-xs whitespace-nowrap">
-              <span className="text-zinc-500">오늘</span>
-              {today.count === 0 ? (
-                <span className="text-zinc-400">아직 베팅 없음</span>
-              ) : (
-                <span className="font-medium">
-                  <span className="text-emerald-400">승 {today.wins}</span>
-                  <span className="text-zinc-600 mx-1">·</span>
-                  <span className="text-rose-400">패 {today.losses}</span>
-                  <span className="text-zinc-600 mx-1">·</span>
-                  <span
-                    className={`font-mono font-bold ${
-                      today.pnl > 0
-                        ? 'text-emerald-400'
-                        : today.pnl < 0
-                          ? 'text-rose-400'
-                          : 'text-zinc-300'
-                    }`}
-                  >
-                    {formatMoney(today.pnl, true)}
-                  </span>
+          {isActive ? (
+            <>
+              <div className="flex items-center gap-2 shrink-0">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    sessionStatus === 'running' ? 'bg-blue-500 animate-pulse' : 'bg-amber-400'
+                  }`}
+                />
+                <span
+                  className={`font-bold ${
+                    sessionStatus === 'running' ? 'text-blue-400' : 'text-amber-400'
+                  }`}
+                >
+                  {sessionStatus === 'running'
+                    ? `${modeLabel(sessionMode)} 진행 중`
+                    : '오토베팅 일시정지'}
                 </span>
-              )}
-            </div>
-            <div className="h-4 w-[1px] bg-zinc-800" />
-            <div className="flex items-center gap-2 text-xs whitespace-nowrap">
-              <span className="text-zinc-500">결과 갱신:</span>
-              <span className={liveStatus?.connected ? 'text-emerald-400' : 'text-zinc-500'}>
-                {updateLabel}
-              </span>
-              {aiRecommendCount > 0 && (
-                <>
-                  <span className="text-zinc-700">·</span>
-                  <span className="text-sky-400 font-bold">AI 추천 {aiRecommendCount}</span>
-                </>
-              )}
-            </div>
-          </>
-        )}
+              </div>
+              <div className="h-4 w-[1px] bg-zinc-800 shrink-0" />
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-zinc-500">진행 시간</span>
+                <span className="font-mono font-medium text-zinc-200">
+                  {formatElapsed(sessionElapsedMs)}
+                </span>
+              </div>
+              <div className="h-4 w-[1px] bg-zinc-800 shrink-0" />
+              <div className="flex items-center gap-2 text-xs shrink-0">
+                <span className="text-zinc-500">마지막 업데이트:</span>
+                <span className="text-emerald-400">{updateLabel}</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 shrink-0" title={liveStatus?.error || undefined}>
+                <span className={`w-2 h-2 rounded-full shrink-0 ${liveDot}`} />
+                <span
+                  className={`font-bold text-xs sm:text-sm ${
+                    liveStatus?.connected && !liveStatus.error
+                      ? 'text-emerald-400'
+                      : liveStatus?.error
+                        ? 'text-rose-400'
+                        : 'text-zinc-400'
+                  }`}
+                >
+                  {liveLabel}
+                </span>
+              </div>
+              <div className="h-4 w-[1px] bg-zinc-800 shrink-0" />
+              <div className="flex items-center gap-2 text-xs shrink-0">
+                <span className="text-zinc-500">오늘</span>
+                {today.count === 0 ? (
+                  <span className="text-zinc-400">아직 베팅 없음</span>
+                ) : (
+                  <span className="font-medium">
+                    <span className="text-emerald-400">승 {today.wins}</span>
+                    <span className="text-zinc-600 mx-1">·</span>
+                    <span className="text-rose-400">패 {today.losses}</span>
+                    <span className="text-zinc-600 mx-1">·</span>
+                    <span
+                      className={`font-mono font-bold ${
+                        today.pnl > 0
+                          ? 'text-emerald-400'
+                          : today.pnl < 0
+                            ? 'text-rose-400'
+                            : 'text-zinc-300'
+                      }`}
+                    >
+                      {formatMoney(today.pnl, true)}
+                    </span>
+                  </span>
+                )}
+              </div>
+              <div className="h-4 w-[1px] bg-zinc-800 shrink-0" />
+              <div className="flex items-center gap-2 text-xs shrink-0">
+                <span className="text-zinc-500">결과 갱신:</span>
+                <span className={liveStatus?.connected ? 'text-emerald-400' : 'text-zinc-500'}>
+                  {updateLabel}
+                </span>
+                {aiRecommendCount > 0 && (
+                  <>
+                    <span className="text-zinc-700">·</span>
+                    <span className="text-sky-400 font-bold">AI 추천 {aiRecommendCount}</span>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Right */}
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs sm:text-sm font-bold">
-          <Wallet size={14} />
-          <span className="hidden xs:inline">가상머니</span>
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
+        <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs sm:text-sm font-bold whitespace-nowrap">
+          <Wallet size={14} className="shrink-0" />
+          <span className="hidden sm:inline">가상머니</span>
           {beginnerMode && <HelpTooltip termId="virtual-money" />}
           <span className="font-mono">{wallet.loading ? '...' : moneyText}</span>
         </div>
