@@ -1,9 +1,17 @@
-import { Menu, X, ShieldAlert } from 'lucide-react';
+import { Menu, X, ShieldAlert, ArrowRight } from 'lucide-react';
 import { useState } from 'react';
 import { PLATFORM_LINKS } from '../constants';
+import {
+  usePlatformAuth,
+  usePlatformEntryHref,
+  usePlatformEntryLabel,
+} from '../hooks/usePlatformAuth';
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { loggedIn, mbNick, mbId, loading } = usePlatformAuth();
+  const entryHref = usePlatformEntryHref();
+  const entryLabel = usePlatformEntryLabel('로그인', '플랫폼 입장');
 
   const navLinks = [
     { name: '시스템 소개', href: '#hero' },
@@ -14,11 +22,12 @@ export default function Header() {
     { name: 'FAQ', href: '#faq' },
   ];
 
+  const memberLabel = mbNick || mbId;
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
           <div className="flex items-center flex-shrink-0">
             <a href="#" className="flex items-center gap-2 group">
               <div className="p-1.5 bg-zinc-800 rounded-lg group-hover:bg-zinc-700 transition-colors">
@@ -30,7 +39,6 @@ export default function Header() {
             </a>
           </div>
 
-          {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
               <a
@@ -43,7 +51,6 @@ export default function Header() {
             ))}
           </nav>
 
-          {/* Desktop Actions */}
           <div className="hidden md:flex items-center gap-4">
             <a
               href={PLATFORM_LINKS.telegram}
@@ -51,15 +58,18 @@ export default function Header() {
             >
               텔레그램 문의
             </a>
+            {!loading && loggedIn && memberLabel && (
+              <span className="text-sm text-zinc-500 truncate max-w-[8rem]">{memberLabel}</span>
+            )}
             <a
-              href={PLATFORM_LINKS.login}
-              className="px-4 py-2 text-sm font-medium text-zinc-950 bg-amber-500 hover:bg-amber-400 rounded-lg transition-colors"
+              href={entryHref}
+              className="px-4 py-2 text-sm font-medium text-zinc-950 bg-amber-500 hover:bg-amber-400 rounded-lg transition-colors inline-flex items-center gap-1.5"
             >
-              로그인
+              {entryLabel}
+              {loggedIn && <ArrowRight className="w-3.5 h-3.5" />}
             </a>
           </div>
 
-          {/* Mobile Menu Button */}
           <div className="flex md:hidden">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -75,7 +85,6 @@ export default function Header() {
         </div>
       </div>
 
-      {/* Mobile Nav */}
       {isMobileMenuOpen && (
         <div className="md:hidden bg-zinc-900 border-b border-zinc-800 absolute w-full">
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
@@ -97,10 +106,10 @@ export default function Header() {
                 텔레그램 문의
               </a>
               <a
-                href={PLATFORM_LINKS.login}
+                href={entryHref}
                 className="block w-full text-center px-4 py-2 text-base font-medium text-zinc-950 bg-amber-500 hover:bg-amber-400 rounded-lg"
               >
-                로그인
+                {entryLabel}
               </a>
             </div>
           </div>

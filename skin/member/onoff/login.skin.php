@@ -25,8 +25,8 @@ onoff_platform_member_styles($member_skin_url);
             
             <div id="login_info">
                 <div class="login_if_auto chk_box">
-                    <input type="checkbox" name="auto_login" id="login_auto_login" class="selec_chk">
-                    <label for="login_auto_login"><span></span> 자동로그인</label>  
+                    <input type="checkbox" name="auto_login" value="1" id="login_auto_login" class="selec_chk" checked>
+                    <label for="login_auto_login"><span></span> 자동로그인 (31일)</label>  
                 </div>
                 <div class="login_if_lpl">
                     <a href="<?php echo G5_BBS_URL ?>/password_lost.php">아이디/비밀번호 찾기</a>  

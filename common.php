@@ -225,15 +225,17 @@ if (isset($SESSION_CACHE_LIMITER))
 else
     @session_cache_limiter("no-cache, must-revalidate");
 
-ini_set("session.cache_expire", 180); // 세션 캐쉬 보관시간 (분)
-ini_set("session.gc_maxlifetime", 10800); // session data의 garbage collection 존재 기간을 지정 (초)
+ini_set("session.cache_expire", 1440); // 세션 캐쉬 보관시간 (분) — 24시간
+ini_set("session.gc_maxlifetime", 86400); // session data GC (초) — 24시간 (기존 3시간)
 ini_set("session.gc_probability", 1); // session.gc_probability는 session.gc_divisor와 연계하여 gc(쓰레기 수거) 루틴의 시작 확률을 관리합니다. 기본값은 1입니다. 자세한 내용은 session.gc_divisor를 참고하십시오.
 ini_set("session.gc_divisor", 100); // session.gc_divisor는 session.gc_probability와 결합하여 각 세션 초기화 시에 gc(쓰레기 수거) 프로세스를 시작할 확률을 정의합니다. 확률은 gc_probability/gc_divisor를 사용하여 계산합니다. 즉, 1/100은 각 요청시에 GC 프로세스를 시작할 확률이 1%입니다. session.gc_divisor의 기본값은 100입니다.
 
+// 브라우저를 닫아도 일정 시간(24시간) 세션 쿠키 유지 — 자동로그인과 함께 재입장 지원
+$session_cookie_lifetime = 86400;
 if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] != 'off') {
-    session_set_cookie_params(0, '/', null, true, true);
+    session_set_cookie_params($session_cookie_lifetime, '/', null, true, true);
 } else {
-    session_set_cookie_params(0, '/', null, false, true);
+    session_set_cookie_params($session_cookie_lifetime, '/', null, false, true);
 }
 
 ini_set("session.cookie_domain", G5_COOKIE_DOMAIN);

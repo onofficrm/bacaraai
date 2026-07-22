@@ -16,6 +16,8 @@ export default function LoginForm({
   return (
     <form action={PLATFORM_LINKS.loginCheck} method="post" className="space-y-6">
       <input type="hidden" name="url" value={PLATFORM_LINKS.system} />
+      {/* 서버에서도 강제하지만, 폼에서도 기본 유지 체크 */}
+      <input type="hidden" name="auto_login" value="1" />
 
       <div className="space-y-2">
         <label htmlFor="mb_id" className="text-sm font-medium text-zinc-300 ml-1">
@@ -58,17 +60,7 @@ export default function LoginForm({
       </div>
 
       <div className="flex items-center justify-between">
-        <label className="flex items-center gap-2 cursor-pointer group">
-          <input
-            type="checkbox"
-            name="auto_login"
-            value="1"
-            className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-amber-500 focus:ring-amber-500/50 focus:ring-offset-zinc-900"
-          />
-          <span className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors">
-            로그인 상태 유지
-          </span>
-        </label>
+        <p className="text-sm text-zinc-500">로그인 후 약 31일간 유지됩니다</p>
 
         <a
           href={PLATFORM_LINKS.passwordLost}

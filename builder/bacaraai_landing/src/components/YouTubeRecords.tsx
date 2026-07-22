@@ -1,8 +1,14 @@
 import { Play, ExternalLink, MonitorPlay, Youtube } from 'lucide-react';
 import { PLATFORM_LINKS } from '../constants';
 import { motion } from 'motion/react';
+import {
+  usePlatformEntryHref,
+  usePlatformEntryLabel,
+} from '../hooks/usePlatformAuth';
 
 export default function YouTubeRecords() {
+  const entryHref = usePlatformEntryHref();
+  const entryLabel = usePlatformEntryLabel('플랫폼 화면 보기', '플랫폼 입장');
   const recentVideos = [
     {
       title: '8개 테이블을 AI가 동시에 분석한 실전 기록',
@@ -105,9 +111,9 @@ export default function YouTubeRecords() {
               <Youtube className="w-4 h-4 text-red-500" />
               유튜브에서 보기
             </a>
-            <a href={PLATFORM_LINKS.login} className="inline-flex justify-center items-center gap-2 px-6 py-3 rounded-xl bg-zinc-950 hover:bg-zinc-900 text-zinc-300 font-medium border border-zinc-800 transition-colors w-full sm:w-auto">
+            <a href={entryHref} className="inline-flex justify-center items-center gap-2 px-6 py-3 rounded-xl bg-zinc-950 hover:bg-zinc-900 text-zinc-300 font-medium border border-zinc-800 transition-colors w-full sm:w-auto">
               <MonitorPlay className="w-4 h-4" />
-              플랫폼 화면 보기
+              {entryLabel}
             </a>
           </div>
         </div>

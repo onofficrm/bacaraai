@@ -2,8 +2,15 @@ import { ArrowRight, MessageSquare, Play } from 'lucide-react';
 import { PLATFORM_LINKS } from '../constants';
 import DashboardMockup from './DashboardMockup';
 import { motion } from 'motion/react';
+import {
+  usePlatformEntryHref,
+  usePlatformEntryLabel,
+} from '../hooks/usePlatformAuth';
 
 export default function Hero() {
+  const entryHref = usePlatformEntryHref();
+  const entryLabel = usePlatformEntryLabel('플랫폼 로그인', '플랫폼 입장');
+
   return (
     <section id="hero" className="relative pt-24 pb-20 lg:pt-32 lg:pb-32 overflow-hidden">
       {/* Background Glow */}
@@ -46,10 +53,10 @@ export default function Hero() {
 
             <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-4">
               <a
-                href={PLATFORM_LINKS.login}
+                href={entryHref}
                 className="inline-flex justify-center items-center gap-2 px-6 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold transition-all hover:scale-105 active:scale-95"
               >
-                플랫폼 로그인
+                {entryLabel}
                 <ArrowRight className="w-4 h-4" />
               </a>
               <a

@@ -1,9 +1,13 @@
-import { ShieldAlert, Monitor, Bot, Settings, Wallet } from 'lucide-react';
+import { ShieldAlert, Monitor, Bot, Settings, Wallet, ArrowRight } from 'lucide-react';
 import LoginForm from '../components/LoginForm';
 import DashboardMockup from '../components/DashboardMockup';
 import { PLATFORM_LINKS } from '../constants';
+import { usePlatformAuth } from '../hooks/usePlatformAuth';
 
 export default function LoginPage() {
+  const { loggedIn, loading, mbNick, mbId } = usePlatformAuth();
+  const name = mbNick || mbId;
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex font-sans">
       <div className="hidden lg:flex w-[55%] flex-col p-12 border-r border-zinc-900 relative overflow-hidden bg-zinc-950">
@@ -97,18 +101,51 @@ export default function LoginPage() {
         </div>
 
         <div className="w-full max-w-md mx-auto relative z-10">
-          <div className="mb-10 text-center lg:text-left">
-            <h2 className="text-2xl font-bold text-white mb-2">플랫폼 로그인</h2>
-            <p className="text-zinc-400 text-sm">
-              로그인 후 AI 분석 시스템으로 이동합니다. 계정은 관리자 발급만 가능하며,{' '}
-              <a href={PLATFORM_LINKS.telegram} className="text-amber-500 hover:text-amber-400">
-                텔레그램 문의
+          {!loading && loggedIn ? (
+            <>
+              <div className="mb-10 text-center lg:text-left">
+                <h2 className="text-2xl font-bold text-white mb-2">이미 로그인됨</h2>
+                <p className="text-zinc-400 text-sm">
+                  {name ? (
+                    <>
+                      <span className="text-white font-medium">{name}</span> 님의 세션이 유지 중입니다.
+                      바로 플랫폼으로 이동하세요.
+                    </>
+                  ) : (
+                    '세션이 유지 중입니다. 바로 플랫폼으로 이동하세요.'
+                  )}
+                </p>
+              </div>
+              <a
+                href={PLATFORM_LINKS.system}
+                className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-4 rounded-xl transition-all"
+              >
+                플랫폼 입장
+                <ArrowRight className="w-5 h-5" />
               </a>
-              로 요청해 주세요.
-            </p>
-          </div>
+              <a
+                href={PLATFORM_LINKS.logout}
+                className="mt-4 block text-center text-sm text-zinc-500 hover:text-zinc-300"
+              >
+                로그아웃
+              </a>
+            </>
+          ) : (
+            <>
+              <div className="mb-10 text-center lg:text-left">
+                <h2 className="text-2xl font-bold text-white mb-2">플랫폼 로그인</h2>
+                <p className="text-zinc-400 text-sm">
+                  로그인 후 AI 분석 시스템으로 이동합니다. 계정은 관리자 발급만 가능하며,{' '}
+                  <a href={PLATFORM_LINKS.telegram} className="text-amber-500 hover:text-amber-400">
+                    텔레그램 문의
+                  </a>
+                  로 요청해 주세요.
+                </p>
+              </div>
 
-          <LoginForm submitLabel="로그인" showTelegram={true} />
+              <LoginForm submitLabel="로그인" showTelegram={true} />
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -2,8 +2,12 @@ import { MessageSquare, ArrowRight } from 'lucide-react';
 import { motion } from 'motion/react';
 import LoginForm from './LoginForm';
 import { PLATFORM_LINKS } from '../constants';
+import { usePlatformAuth } from '../hooks/usePlatformAuth';
 
 export default function LoginSection() {
+  const { loggedIn, loading, mbNick, mbId } = usePlatformAuth();
+  const name = mbNick || mbId;
+
   return (
     <section className="py-24 bg-zinc-950 border-t border-zinc-900 relative">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-2xl h-64 bg-amber-500/5 blur-[100px] pointer-events-none"></div>
@@ -11,10 +15,20 @@ export default function LoginSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="text-center mb-16">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-            이미 계정이 있다면 바로 <span className="text-amber-500">로그인</span>하세요.
+            {!loading && loggedIn ? (
+              <>
+                이미 로그인되어 있습니다. <span className="text-amber-500">바로 입장</span>하세요.
+              </>
+            ) : (
+              <>
+                이미 계정이 있다면 바로 <span className="text-amber-500">로그인</span>하세요.
+              </>
+            )}
           </h2>
           <p className="text-lg text-zinc-400">
-            바카라 AI 도우미 플랫폼은 로그인 후 이용할 수 있습니다.
+            {!loading && loggedIn
+              ? '재로그인 없이 플랫폼으로 이동할 수 있습니다.'
+              : '바카라 AI 도우미 플랫폼은 로그인 후 이용할 수 있습니다.'}
           </p>
         </div>
 
@@ -25,7 +39,34 @@ export default function LoginSection() {
             viewport={{ once: true }}
             className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800 rounded-3xl p-8 md:p-10 shadow-2xl"
           >
-            <LoginForm />
+            {!loading && loggedIn ? (
+              <div className="space-y-6 text-center">
+                <p className="text-zinc-300">
+                  {name ? (
+                    <>
+                      <span className="text-white font-bold">{name}</span> 님, 환영합니다.
+                    </>
+                  ) : (
+                    '로그인 세션이 유지 중입니다.'
+                  )}
+                </p>
+                <a
+                  href={PLATFORM_LINKS.system}
+                  className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-4 rounded-xl transition-all"
+                >
+                  플랫폼 입장
+                  <ArrowRight className="w-5 h-5" />
+                </a>
+                <a
+                  href={PLATFORM_LINKS.logout}
+                  className="block text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  로그아웃
+                </a>
+              </div>
+            ) : (
+              <LoginForm />
+            )}
           </motion.div>
 
           <motion.div
