@@ -224,9 +224,12 @@ export function nextBetAmount(initialBet: number, stage: number, maxBet: number)
 
 /** 마틴 또는 사용자 지정 단계 금액 */
 export function resolveBetAmount(config: SessionConfig, stage: number): number {
-  if (config.amountMode === 'custom' && config.customSteps?.length) {
-    const idx = Math.max(0, Math.min(stage - 1, config.customSteps.length - 1));
-    const amt = config.customSteps[idx] ?? config.initialBet;
+  const steps = config.customSteps;
+  const useCustom =
+    config.amountMode === 'custom' && Array.isArray(steps) && steps.length > 0;
+  if (useCustom) {
+    const idx = Math.max(0, Math.min(stage - 1, steps.length - 1, config.maxMartin - 1));
+    const amt = steps[idx] ?? config.initialBet;
     return Math.min(Math.max(0, amt), config.maxBet);
   }
   return nextBetAmount(config.initialBet, stage, config.maxBet);

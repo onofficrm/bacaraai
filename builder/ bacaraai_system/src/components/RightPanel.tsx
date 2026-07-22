@@ -12,7 +12,7 @@ import {
   DEFAULT_SESSION_CONFIG,
   formatMoney,
   modeLabel,
-  nextBetAmount,
+  resolveBetAmount,
   strategyLabel,
   type BetSide,
   type LastBetResult,
@@ -402,9 +402,17 @@ export default function RightPanel({
   const opinionLabel = getOpinionText(table.ai.finalOpinion, beginnerMode);
   const isRisk = table.status === 'risk_blocked';
   const cfg = sessionConfig;
-  const nextAutoBet = cfg
-    ? nextBetAmount(cfg.initialBet, Math.min(martinStage, cfg.maxMartin), cfg.maxBet)
-    : suggestedBet;
+  const stageNow = cfg ? Math.min(Math.max(1, martinStage), cfg.maxMartin) : martinStage;
+  const nextAutoBet = cfg ? resolveBetAmount(cfg, stageNow) : suggestedBet;
+  const amountModeLabel =
+    cfg?.amountMode === 'custom' ? '단계별 직접' : '마틴(2배)';
+  const customStepPreview =
+    cfg?.amountMode === 'custom' && cfg.customSteps?.length
+      ? cfg.customSteps
+          .slice(0, cfg.maxMartin)
+          .map((amt, i) => `${i + 1}단 ${formatMoney(amt)}`)
+          .join(' · ')
+      : null;
 
   // 모바일·태블릿: 닫혀 있으면 레이아웃에 참여하지 않음
   if (!isDesktop && !isOpen) return null;
@@ -988,14 +996,23 @@ export default function RightPanel({
                       )}
                       <AutoRow
                         label="금액"
-                        value={
-                          cfg?.amountMode === 'custom' ? '단계별 직접' : '마틴(2배)'
-                        }
+                        value={amountModeLabel}
                       />
                       <AutoRow
-                        label="기본 금액"
-                        value={cfg ? formatMoney(cfg.initialBet) : formatMoney(10000)}
+                        label={cfg?.amountMode === 'custom' ? '1단 금액' : '기본 금액'}
+                        value={
+                          cfg?.amountMode === 'custom' && cfg.customSteps?.[0]
+                            ? formatMoney(cfg.customSteps[0])
+                            : cfg
+                              ? formatMoney(cfg.initialBet)
+                              : formatMoney(10000)
+                        }
                       />
+                      {customStepPreview && (
+                        <div className="px-3 py-2 text-[10px] text-zinc-500 leading-relaxed">
+                          {customStepPreview}
+                        </div>
+                      )}
                       <AutoRow
                         label="감시 테이블"
                         value={cfg ? `${cfg.maxTables}개` : '8개'}
@@ -1054,13 +1071,36 @@ export default function RightPanel({
                         />
                       )}
                       <AutoRow
+                        label="금액 방식"
+                        value={amountModeLabel}
+                      />
+                      <AutoRow
                         label="다음 금액"
                         value={formatMoney(nextAutoBet)}
+                        valueClass="text-amber-200 font-bold"
                       />
                       <AutoRow
                         label="금액 단계"
-                        value={cfg ? `${Math.min(martinStage, cfg.maxMartin)}/${cfg.maxMartin}` : String(martinStage)}
+                        value={cfg ? `${stageNow}/${cfg.maxMartin}` : String(martinStage)}
                       />
+                      {cfg?.amountMode === 'custom' && cfg.customSteps?.length > 0 && (
+                        <div className="px-3 py-2 text-[10px] text-zinc-500 leading-relaxed">
+                          설정:{' '}
+                          {cfg.customSteps
+                            .slice(0, cfg.maxMartin)
+                            .map((amt, i) => (
+                              <span
+                                key={i}
+                                className={
+                                  i + 1 === stageNow ? 'text-amber-300 font-bold' : undefined
+                                }
+                              >
+                                {i > 0 ? ' · ' : ''}
+                                {i + 1}단 {formatMoney(amt)}
+                              </span>
+                            ))}
+                        </div>
+                      )}
                       <AutoRow
                         label="누적 손익"
                         value={formatMoney(sessionPnl, true)}
