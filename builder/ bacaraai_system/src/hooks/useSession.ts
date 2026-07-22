@@ -95,7 +95,7 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
   initialBet: 10_000,
   winCut: 1_000_000,
   lossCut: -2_000_000,
-  maxMartin: 8,
+  maxMartin: 6,
   maxBet: 2_000_000,
   maxTables: 8,
   maxTime: 90,

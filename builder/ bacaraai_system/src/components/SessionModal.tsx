@@ -24,6 +24,28 @@ interface SessionModalProps {
 }
 
 const CHIP_PRESETS = [1000, 5000, 10000, 50000, 100000, 500000];
+const MIN_CUSTOM_STEPS = 1;
+const DEFAULT_CUSTOM_STEPS = 6;
+const MAX_CUSTOM_STEPS = 20;
+
+function buildCustomSteps(
+  prev: SessionConfig,
+  length: number,
+): number[] {
+  const n = Math.max(MIN_CUSTOM_STEPS, Math.min(MAX_CUSTOM_STEPS, length));
+  return Array.from({ length: n }, (_, i) => {
+    if (prev.customSteps[i] != null) {
+      return Math.min(Math.max(0, prev.customSteps[i]!), prev.maxBet);
+    }
+    if (i > 0) {
+      const prevAmt = prev.customSteps[i - 1];
+      if (prevAmt != null && prevAmt > 0) {
+        return Math.min(prevAmt * 2, prev.maxBet);
+      }
+    }
+    return nextBetAmount(prev.initialBet, i + 1, prev.maxBet);
+  });
+}
 
 export default function SessionModal({
   isOpen,
@@ -50,13 +72,13 @@ export default function SessionModal({
     const targetSeed = config.seed + config.winCut;
     const stopSeed = config.seed + config.lossCut;
     const martinNeed = martinRequiredCapital(config.initialBet, config.maxMartin);
-    const canDefend =
-      config.amountMode === 'custom'
-        ? config.seed >= (config.customSteps.reduce((a, b) => a + b, 0) || martinNeed)
-        : config.seed >= martinNeed;
+    const customNeed = config.customSteps.reduce((a, b) => a + b, 0);
+    const needCapital =
+      config.amountMode === 'custom' && customNeed > 0 ? customNeed : martinNeed;
+    const canDefend = config.seed >= needCapital;
     const patternOk =
       config.strategy !== 'pattern' || patternTotalGames(config.patternSegments || []) >= 2;
-    return { targetSeed, stopSeed, martinNeed, canDefend, patternOk };
+    return { targetSeed, stopSeed, martinNeed, needCapital, canDefend, patternOk };
   }, [config]);
 
   if (!isOpen) return null;
@@ -80,15 +102,19 @@ export default function SessionModal({
 
   const setAmountMode = (amountMode: AmountProgressMode) => {
     playSfx('ui');
+    if (amountMode !== 'custom') {
+      setConfig((prev) => ({ ...prev, amountMode }));
+      return;
+    }
     setConfig((prev) => {
-      if (amountMode === 'custom' && (!prev.customSteps.length || prev.customSteps.length < prev.maxMartin)) {
-        const steps = Array.from({ length: prev.maxMartin }, (_, i) =>
-          prev.customSteps[i] ?? nextBetAmount(prev.initialBet, i + 1, prev.maxBet),
-        );
-        return { ...prev, amountMode, customSteps: steps };
-      }
-      return { ...prev, amountMode };
+      const len =
+        prev.customSteps.length > 0
+          ? Math.min(MAX_CUSTOM_STEPS, Math.max(prev.customSteps.length, prev.maxMartin))
+          : DEFAULT_CUSTOM_STEPS;
+      const steps = buildCustomSteps({ ...prev, maxMartin: len }, len);
+      return { ...prev, amountMode, maxMartin: len, customSteps: steps };
     });
+    setEditStage(1);
   };
 
   const setBetSide = (side: BetSide) => {
@@ -96,13 +122,59 @@ export default function SessionModal({
     setConfig((prev) => ({ ...prev, patternBetSide: side }));
   };
 
-  const applyChipToStage = (amount: number) => {
+  const setStepCount = (count: number) => {
+    const n = Math.max(MIN_CUSTOM_STEPS, Math.min(MAX_CUSTOM_STEPS, count));
+    setConfig((prev) => ({
+      ...prev,
+      maxMartin: n,
+      customSteps: buildCustomSteps(prev, n),
+      amountMode: 'custom',
+    }));
+    setEditStage((s) => Math.min(s, n));
+  };
+
+  const setStepAmount = (stage: number, amount: number) => {
+    setConfig((prev) => {
+      const steps = buildCustomSteps(prev, prev.maxMartin);
+      steps[stage - 1] = Math.min(Math.max(0, amount), prev.maxBet);
+      return { ...prev, customSteps: steps, amountMode: 'custom' };
+    });
+  };
+
+  const addChipToStage = (chip: number) => {
     playSfx('chip');
     setConfig((prev) => {
+      const steps = buildCustomSteps(prev, prev.maxMartin);
+      const cur = steps[editStage - 1] ?? 0;
+      steps[editStage - 1] = Math.min(cur + chip, prev.maxBet);
+      return { ...prev, customSteps: steps, amountMode: 'custom' };
+    });
+  };
+
+  const clearStageAmount = () => {
+    playSfx('ui');
+    setStepAmount(editStage, 0);
+  };
+
+  const doubleFromPrev = () => {
+    playSfx('chip');
+    setConfig((prev) => {
+      const steps = buildCustomSteps(prev, prev.maxMartin);
+      const base =
+        editStage <= 1
+          ? prev.initialBet
+          : steps[editStage - 2] || prev.initialBet;
+      steps[editStage - 1] = Math.min(base * 2, prev.maxBet);
+      return { ...prev, customSteps: steps, amountMode: 'custom' };
+    });
+  };
+
+  const fillMartinLadder = () => {
+    playSfx('ui');
+    setConfig((prev) => {
       const steps = Array.from({ length: prev.maxMartin }, (_, i) =>
-        prev.customSteps[i] ?? nextBetAmount(prev.initialBet, i + 1, prev.maxBet),
+        nextBetAmount(prev.initialBet, i + 1, prev.maxBet),
       );
-      steps[editStage - 1] = Math.min(amount, prev.maxBet);
       return { ...prev, customSteps: steps, amountMode: 'custom' };
     });
   };
@@ -245,10 +317,16 @@ export default function SessionModal({
 
             {config.amountMode === 'custom' && (
               <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 flex flex-col gap-3">
-                <p className="text-[10px] text-zinc-500">
-                  단계를 고른 뒤, 아래 금액 버튼을 눌러 넣으세요.
-                </p>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] text-zinc-500">
+                    단계마다 금액을 직접 입력하거나, 선택한 단계에 칩을 더하세요.
+                  </p>
+                  <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                    {config.maxMartin}/{MAX_CUSTOM_STEPS}단
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-1.5 max-h-[220px] overflow-y-auto custom-scrollbar pr-0.5">
                   {Array.from({ length: config.maxMartin }, (_, i) => {
                     const stage = i + 1;
                     const amt =
@@ -256,35 +334,121 @@ export default function SessionModal({
                       nextBetAmount(config.initialBet, stage, config.maxBet);
                     const active = editStage === stage;
                     return (
-                      <button
+                      <div
                         key={stage}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         onClick={() => {
                           playSfx('ui');
                           setEditStage(stage);
                         }}
-                        className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-bold ${
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setEditStage(stage);
+                          }
+                        }}
+                        className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition-colors cursor-pointer ${
                           active
-                            ? 'border-amber-400 bg-amber-500/20 text-amber-200'
-                            : 'border-zinc-700 text-zinc-400'
+                            ? 'border-amber-400 bg-amber-500/15'
+                            : 'border-zinc-800 bg-zinc-900/60 hover:border-zinc-600'
                         }`}
                       >
-                        {stage}단 {formatMoney(amt)}
-                      </button>
+                        <span
+                          className={`w-10 shrink-0 text-[11px] font-bold ${
+                            active ? 'text-amber-200' : 'text-zinc-500'
+                          }`}
+                        >
+                          {stage}단
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatMoneyInput(amt)}
+                          onFocus={() => setEditStage(stage)}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            setEditStage(stage);
+                            setStepAmount(stage, parseMoneyInput(e.target.value));
+                          }}
+                          className={`flex-1 min-w-0 bg-transparent border-0 outline-none font-mono text-sm ${
+                            active ? 'text-amber-100' : 'text-zinc-200'
+                          }`}
+                          aria-label={`${stage}단 금액`}
+                        />
+                        <span className="text-[10px] text-zinc-600 shrink-0">원</span>
+                      </div>
                     );
                   })}
                 </div>
+
                 <div className="flex flex-wrap gap-1.5">
-                  {CHIP_PRESETS.map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => applyChipToStage(v)}
-                      className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-200 hover:border-amber-500"
-                    >
-                      {formatMoney(v)}
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    disabled={config.maxMartin >= MAX_CUSTOM_STEPS}
+                    onClick={() => {
+                      playSfx('ui');
+                      setStepCount(config.maxMartin + 1);
+                      setEditStage(config.maxMartin + 1);
+                    }}
+                    className="px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-xs font-bold text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    + 단계 추가
+                  </button>
+                  <button
+                    type="button"
+                    disabled={config.maxMartin <= MIN_CUSTOM_STEPS}
+                    onClick={() => {
+                      playSfx('ui');
+                      setStepCount(config.maxMartin - 1);
+                    }}
+                    className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    마지막 단 삭제
+                  </button>
+                  <button
+                    type="button"
+                    onClick={fillMartinLadder}
+                    className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 text-xs font-bold text-zinc-400 hover:text-zinc-200"
+                  >
+                    2배 채우기
+                  </button>
+                </div>
+
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900/80 p-2.5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-bold text-zinc-300">
+                      {editStage}단에 더하기
+                    </p>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={doubleFromPrev}
+                        className="px-2 py-1 rounded border border-zinc-700 text-[10px] font-bold text-zinc-300 hover:border-amber-500"
+                      >
+                        {editStage <= 1 ? '초기×2' : '이전×2'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearStageAmount}
+                        className="px-2 py-1 rounded border border-zinc-700 text-[10px] font-bold text-zinc-400 hover:border-rose-500 hover:text-rose-300"
+                      >
+                        지우기
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CHIP_PRESETS.map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => addChipToStage(v)}
+                        className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-950 text-xs font-bold text-zinc-200 hover:border-amber-500 touch-manipulation"
+                      >
+                        +{formatMoney(v)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -323,13 +487,12 @@ export default function SessionModal({
                 min={1}
                 max={20}
                 onChange={(v) => {
-                  setConfig((prev) => {
-                    if (prev.amountMode !== 'custom') return { ...prev, maxMartin: v };
-                    const steps = Array.from({ length: v }, (_, i) =>
-                      prev.customSteps[i] ?? nextBetAmount(prev.initialBet, i + 1, prev.maxBet),
-                    );
-                    return { ...prev, maxMartin: v, customSteps: steps };
-                  });
+                  playSfx('ui');
+                  if (config.amountMode === 'custom') {
+                    setStepCount(v);
+                  } else {
+                    setNum('maxMartin', v);
+                  }
                 }}
               />
               <MoneyInput
@@ -429,7 +592,7 @@ export default function SessionModal({
                   summary.canDefend ? 'text-amber-400' : 'text-rose-400'
                 }`}
               >
-                {new Intl.NumberFormat('ko-KR').format(summary.martinNeed)}
+                {new Intl.NumberFormat('ko-KR').format(summary.needCapital)}
                 <span
                   className={`text-sm font-sans ml-1 ${
                     summary.canDefend ? 'text-amber-500/70' : 'text-rose-400/70'
