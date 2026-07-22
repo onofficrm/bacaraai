@@ -10,17 +10,22 @@ import {
   nextBetAmount,
   parseMoneyInput,
   strategyLabel,
-  type BetSide,
   type SessionMode,
 } from '../hooks/useSession';
-import PatternSequenceBuilder from './PatternSequenceBuilder';
-import { formatPattern, normalizePatternSegments, patternSideLabel, patternTotalGames } from '../utils/patternMatch';
+import PatternCasesEditor from './PatternCasesEditor';
+import {
+  formatAllPatternCases,
+  normalizePatternCases,
+  patternCasesReady,
+} from '../utils/patternMatch';
+import type { TableData } from '../types';
 
 interface SessionModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialConfig?: SessionConfig;
   onStart: (mode: SessionMode, config: SessionConfig) => void;
+  tables?: TableData[];
 }
 
 const CHIP_PRESETS = [1000, 5000, 10000, 50000, 100000, 500000];
@@ -52,6 +57,7 @@ export default function SessionModal({
   onClose,
   initialConfig = DEFAULT_SESSION_CONFIG,
   onStart,
+  tables = [],
 }: SessionModalProps) {
   const [config, setConfig] = useState<SessionConfig>(initialConfig);
   const [editStage, setEditStage] = useState(1);
@@ -59,13 +65,13 @@ export default function SessionModal({
   useEffect(() => {
     if (!isOpen) return;
     const merged = { ...DEFAULT_SESSION_CONFIG, ...initialConfig };
-    const patternSegments =
-      merged.patternSegments && merged.patternSegments.length > 0
-        ? merged.patternSegments
-        : Array.isArray(merged.patternSegments) && merged.patternSegments.length === 0
-          ? []
-          : normalizePatternSegments(merged);
-    setConfig({ ...merged, patternSegments });
+    const normalized = normalizePatternCases(merged);
+    setConfig({
+      ...merged,
+      ...normalized,
+      patternTableScope: merged.patternTableScope === 'selected' ? 'selected' : 'all',
+      patternTableIds: Array.isArray(merged.patternTableIds) ? merged.patternTableIds : [],
+    });
     setEditStage(1);
     // 모달을 열 때만 초기화 — 편집 중 initialConfig 참조 변경으로 되돌리지 않음
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sync on open only
@@ -80,14 +86,18 @@ export default function SessionModal({
       config.amountMode === 'custom' && customNeed > 0 ? customNeed : martinNeed;
     const canDefend = config.seed >= needCapital;
     const patternOk =
-      config.strategy !== 'pattern' || patternTotalGames(config.patternSegments || []) >= 2;
-    return { targetSeed, stopSeed, martinNeed, needCapital, canDefend, patternOk };
+      config.strategy !== 'pattern' || patternCasesReady(config.patternCases || []);
+    const tableOk =
+      config.strategy !== 'pattern' ||
+      config.patternTableScope !== 'selected' ||
+      (config.patternTableIds && config.patternTableIds.length > 0);
+    return { targetSeed, stopSeed, martinNeed, needCapital, canDefend, patternOk, tableOk };
   }, [config]);
 
   if (!isOpen) return null;
 
   const start = (mode: SessionMode) => {
-    if (mode === 'live' && !summary.patternOk) return;
+    if (mode === 'live' && (!summary.patternOk || !summary.tableOk)) return;
     playSfx('sessionStart');
     if (mode === 'shadow') window.setTimeout(() => playSfx('shuffle'), 280);
     onStart(mode, config);
@@ -118,11 +128,6 @@ export default function SessionModal({
       return { ...prev, amountMode, maxMartin: len, customSteps: steps };
     });
     setEditStage(1);
-  };
-
-  const setBetSide = (side: BetSide) => {
-    playSfx('ui');
-    setConfig((prev) => ({ ...prev, patternBetSide: side }));
   };
 
   const setStepCount = (count: number) => {
@@ -245,42 +250,11 @@ export default function SessionModal({
             </div>
 
             {config.strategy === 'pattern' && (
-              <div className="flex flex-col gap-3">
-                <PatternSequenceBuilder
-                  segments={config.patternSegments || []}
-                  onChange={(patternSegments) =>
-                    setConfig((prev) => ({ ...prev, patternSegments }))
-                  }
-                />
-
-                <div>
-                  <p className="text-xs font-bold text-zinc-400 mb-2">
-                    패턴이 나온 다음 게임에서 베팅할 곳
-                  </p>
-                  <div className="flex gap-2">
-                    {(
-                      [
-                        { id: 'PLAYER' as const, label: 'Player', cls: 'bg-blue-600 border-blue-400' },
-                        { id: 'TIE' as const, label: 'Tie', cls: 'bg-emerald-500 border-emerald-400' },
-                        { id: 'BANKER' as const, label: 'Banker', cls: 'bg-red-500 border-red-400' },
-                      ] as const
-                    ).map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setBetSide(opt.id)}
-                        className={`flex-1 min-h-[44px] rounded-xl border-2 text-sm font-bold transition-colors ${
-                          config.patternBetSide === opt.id
-                            ? `${opt.cls} text-white`
-                            : 'bg-zinc-950 border-zinc-700 text-zinc-400'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <PatternCasesEditor
+                config={config}
+                tables={tables}
+                onChange={(partial) => setConfig((prev) => ({ ...prev, ...partial }))}
+              />
             )}
 
             {config.strategy === 'ai' && (
@@ -546,13 +520,17 @@ export default function SessionModal({
             {config.strategy === 'pattern' && (
               <>
                 <SummaryRow
-                  label="패턴"
-                  value={formatPattern(config.patternSegments || [])}
+                  label="패턴 경우"
+                  value={formatAllPatternCases(config.patternCases || [])}
                   valueColor="text-zinc-200"
                 />
                 <SummaryRow
-                  label="베팅"
-                  value={patternSideLabel(config.patternBetSide)}
+                  label="적용 테이블"
+                  value={
+                    config.patternTableScope === 'selected'
+                      ? `선택 ${config.patternTableIds?.length || 0}개`
+                      : '전체'
+                  }
                   valueColor="text-zinc-200"
                 />
               </>
@@ -604,8 +582,13 @@ export default function SessionModal({
                   원
                 </span>
               </div>
-              {!summary.patternOk && (
-                <p className="text-xs mt-2 text-rose-300">패턴은 최소 2게임 이상 만들어 주세요.</p>
+              {!summary.patternOk && config.strategy === 'pattern' && (
+                <p className="text-xs mt-2 text-rose-300">
+                  켜 둔 경우 중 최소 1개는 패턴 2게임 이상이어야 합니다.
+                </p>
+              )}
+              {!summary.tableOk && config.strategy === 'pattern' && (
+                <p className="text-xs mt-2 text-rose-300">특정 테이블을 1개 이상 선택해 주세요.</p>
               )}
             </div>
           </div>
@@ -628,7 +611,7 @@ export default function SessionModal({
             <button
               type="button"
               onClick={() => start('live')}
-              disabled={!summary.canDefend || !summary.patternOk}
+              disabled={!summary.canDefend || !summary.patternOk || !summary.tableOk}
               className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
             >
               {liveLabel}

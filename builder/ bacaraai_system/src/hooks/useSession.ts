@@ -6,7 +6,7 @@ import {
   walletPlaceBet,
   walletSettleBet,
 } from '../api/walletBet';
-import { normalizePatternSegments } from '../utils/patternMatch';
+import { normalizePatternCases, defaultPatternCases } from '../utils/patternMatch';
 import { recordBetResult } from '../utils/betHistory';
 
 export type SessionMode = 'observe' | 'shadow' | 'live';
@@ -119,10 +119,12 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
   maxTime: 90,
   strategy: 'pattern',
   patternSegments: [
-    { side: 'P', count: 4, atLeast: true },
-    { side: 'B', count: 1, atLeast: false },
+    { side: 'B', count: 2, atLeast: false },
   ],
-  patternBetSide: 'BANKER',
+  patternBetSide: 'PLAYER',
+  patternCases: defaultPatternCases(),
+  patternTableScope: 'all',
+  patternTableIds: [],
   amountMode: 'martin',
   customSteps: [],
 };
@@ -147,21 +149,24 @@ const DEFAULT_STATE: SessionState = {
 
 function normalizeConfig(partial?: Partial<SessionConfig>): SessionConfig {
   const merged = { ...DEFAULT_SESSION_CONFIG, ...(partial || {}) };
-  const explicitSegments =
-    partial != null && Object.prototype.hasOwnProperty.call(partial, 'patternSegments');
-  const patternSegments = normalizePatternSegments({
-    patternSegments: explicitSegments ? partial!.patternSegments : merged.patternSegments,
-    patternSequence: partial?.patternSequence ?? merged.patternSequence,
-  });
+  const normalized = normalizePatternCases(partial ?? merged);
+  const scope =
+    partial?.patternTableScope === 'selected' || merged.patternTableScope === 'selected'
+      ? 'selected'
+      : 'all';
+  const ids = Array.isArray(partial?.patternTableIds)
+    ? partial!.patternTableIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : Array.isArray(merged.patternTableIds)
+      ? merged.patternTableIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : [];
+
   return {
     ...merged,
-    // 전체 삭제([])는 유지. 필드가 없을 때만 기본 패턴으로 채움
-    patternSegments:
-      patternSegments.length > 0
-        ? patternSegments
-        : explicitSegments
-          ? []
-          : DEFAULT_SESSION_CONFIG.patternSegments,
+    patternCases: normalized.patternCases,
+    patternSegments: normalized.patternSegments,
+    patternBetSide: normalized.patternBetSide,
+    patternTableScope: scope,
+    patternTableIds: scope === 'selected' ? ids : [],
   };
 }
 

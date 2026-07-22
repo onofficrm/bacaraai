@@ -122,6 +122,8 @@ export interface Notification {
 export type AutoBetStrategy = 'ai' | 'pattern';
 /** 금액 진행 방식 */
 export type AmountProgressMode = 'martin' | 'custom';
+/** 패턴 적용 테이블 범위 */
+export type PatternTableScope = 'all' | 'selected';
 
 /** 패턴 한 구간 (예: Player 4개 이상) */
 export interface PatternSegment {
@@ -129,6 +131,18 @@ export interface PatternSegment {
   count: number;
   /** true 면 최소 count 연속 (더 길어도 통과) */
   atLeast: boolean;
+}
+
+/** 패턴 경우 하나 (여러 경우를 동시에 적용 가능) */
+export interface PatternCase {
+  id: string;
+  /** 표시용 이름 (예: 경우1) */
+  label: string;
+  /** 끄면 매칭에서 제외 */
+  enabled: boolean;
+  patternSegments: PatternSegment[];
+  /** 패턴 일치 후 베팅할 사이드 */
+  patternBetSide: 'PLAYER' | 'BANKER' | 'TIE';
 }
 
 export interface SessionConfig {
@@ -146,10 +160,20 @@ export interface SessionConfig {
    * @deprecated 구버전 호환용. 새 코드는 patternSegments 사용
    */
   patternSequence?: GameResult[];
-  /** 사용자 패턴 구간 (이상 포함) */
+  /**
+   * @deprecated patternCases[0] 과 동기화 유지 (구버전 호환)
+   */
   patternSegments: PatternSegment[];
-  /** 패턴 일치 후 베팅할 사이드 */
+  /**
+   * @deprecated patternCases[0] 과 동기화 유지
+   */
   patternBetSide: 'PLAYER' | 'BANKER' | 'TIE';
+  /** 동시에 적용할 패턴 경우들 */
+  patternCases: PatternCase[];
+  /** 패턴 적용 테이블: 전체 / 선택 */
+  patternTableScope: PatternTableScope;
+  /** patternTableScope=selected 일 때 적용할 테이블 id */
+  patternTableIds: string[];
   /** 마틴(2배) 또는 단계별 직접 금액 */
   amountMode: AmountProgressMode;
   /** amountMode=custom 일 때 단계별 금액 (index 0 = 1단계) */

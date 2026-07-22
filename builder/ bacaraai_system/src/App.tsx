@@ -31,7 +31,11 @@ import useLiveTable from './hooks/useLiveTable';
 import { getBettingRemainingSecForTable } from './hooks/useBettingWindow';
 import useWallet from './hooks/useWallet';
 import { installAudioUnlock, playSfx } from './audio/sfxEngine';
-import { matchesPattern, normalizePatternSegments, patternSignalKey } from './utils/patternMatch';
+import {
+  findMatchingPatternCase,
+  normalizePatternCases,
+  patternSignalKey,
+} from './utils/patternMatch';
 
 const VIEW_LABELS: Record<ViewType, string> = {
   multitable: '라이브 테이블',
@@ -73,9 +77,11 @@ export default function App() {
   const [isAutoReordered, setIsAutoReordered] = useState(false);
   const autoBetSignalRef = useRef<string | null>(null);
   /** 패턴 진입 후 마틴 진행 중인 테이블 (승이 나면 해제) */
-  const patternRunRef = useRef<{ tableId: string; side: 'PLAYER' | 'BANKER' | 'TIE' } | null>(
-    null,
-  );
+  const patternRunRef = useRef<{
+    tableId: string;
+    side: 'PLAYER' | 'BANKER' | 'TIE';
+    caseId?: string;
+  } | null>(null);
   const handledBetResultIdRef = useRef<string | null>(null);
   /** 취소한 베팅과 같은 회차에서 오토베팅이 즉시 재진입하지 않도록 차단 */
   const cancelledAutoUntilRef = useRef<{
@@ -187,13 +193,23 @@ export default function App() {
     // 라이브 모드에서는 실제 연동 테이블만 감시 — MOCK 테이블은 랜덤 정산(시뮬레이션)되므로 제외
     const isLiveFeedTable = (t: TableData) =>
       t.live != null || t.id === 't1' || t.gameCode === 'MD2729';
-    const watchTables = tables.filter(isLiveFeedTable).slice(0, watchCount);
+    let watchTables = tables.filter(isLiveFeedTable).slice(0, watchCount);
+
+    // 패턴 전략: 전체 / 특정 테이블 필터
+    if (strategy === 'pattern' && session.config.patternTableScope === 'selected') {
+      const allow = new Set(session.config.patternTableIds || []);
+      if (allow.size === 0) return;
+      watchTables = watchTables.filter((t) => allow.has(t.id));
+      if (watchTables.length === 0) return;
+    }
 
     type Candidate = {
       table: TableData;
       side: 'PLAYER' | 'BANKER' | 'TIE';
       signal: string;
       fromPatternEntry: boolean;
+      caseId?: string;
+      caseLabel?: string;
     };
 
     let candidate: Candidate | null = null;
@@ -215,8 +231,7 @@ export default function App() {
     };
 
     if (strategy === 'pattern') {
-      const pattern = normalizePatternSegments(session.config);
-      const betSide = session.config.patternBetSide || 'PLAYER';
+      const { patternCases } = normalizePatternCases(session.config);
 
       // 이미 패턴으로 진입한 테이블 → 마틴 이어가기 (같은 사이드)
       if (patternRunRef.current) {
@@ -235,6 +250,7 @@ export default function App() {
               side: run.side,
               signal,
               fromPatternEntry: false,
+              caseId: run.caseId,
             };
           }
         } else if (!t || t.status === 'risk_blocked') {
@@ -242,20 +258,24 @@ export default function App() {
         }
       }
 
-      // 신규 진입: 패턴 일치 테이블 탐색
-      if (!candidate && !patternRunRef.current && pattern.length >= 1) {
+      // 신규 진입: 켜 둔 경우들 중 매칭되는 첫 경우
+      if (!candidate && !patternRunRef.current) {
         for (const t of watchTables) {
           if (t.status === 'risk_blocked') continue;
           if (isCancelledRound(t)) continue;
           if (getBettingRemainingSecForTable(t) <= 0) continue;
-          if (!matchesPattern(t.stats.recentResults || [], pattern)) continue;
-          const signal = `${t.id}:${roundKeyOf(t)}:pattern:${patternSignalKey(pattern)}:${betSide}`;
+          const matched = findMatchingPatternCase(t.stats.recentResults || [], patternCases);
+          if (!matched) continue;
+          const betSide = matched.patternBetSide;
+          const signal = `${t.id}:${roundKeyOf(t)}:pattern:${matched.id}:${patternSignalKey(matched.patternSegments)}:${betSide}`;
           if (autoBetSignalRef.current === signal) continue;
           candidate = {
             table: t,
             side: betSide,
             signal,
             fromPatternEntry: true,
+            caseId: matched.id,
+            caseLabel: matched.label,
           };
           break;
         }
@@ -317,7 +337,9 @@ export default function App() {
           finalOpinion: target.ai.finalOpinion,
           ruleLabel:
             strategy === 'pattern' || candidate.fromPatternEntry
-              ? '오토 · 패턴'
+              ? candidate.caseLabel
+                ? `오토 · ${candidate.caseLabel}`
+                : '오토 · 패턴'
               : '오토 · AI',
         },
       })
@@ -326,7 +348,11 @@ export default function App() {
           autoBetSignalRef.current = null;
         } else {
           if (candidate.fromPatternEntry || strategy === 'pattern') {
-            patternRunRef.current = { tableId: target.id, side: candidate.side };
+            patternRunRef.current = {
+              tableId: target.id,
+              side: candidate.side,
+              caseId: candidate.caseId,
+            };
           }
           playSfx('betConfirm');
         }
@@ -681,6 +707,7 @@ export default function App() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         initialConfig={session.config}
+        tables={tables}
         onStart={(mode, config) => {
           sessionStartedAtRef.current = Date.now();
           session.startSession(mode, config);

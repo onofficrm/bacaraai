@@ -23,8 +23,8 @@ import {
   type SessionMode,
   type SessionStatus,
 } from '../hooks/useSession';
-import { formatPattern, patternSideLabel } from '../utils/patternMatch';
-import PatternSequenceBuilder from './PatternSequenceBuilder';
+import PatternCasesEditor from './PatternCasesEditor';
+import { formatAllPatternCases } from '../utils/patternMatch';
 
 type PanelMode = 'manual' | 'auto';
 
@@ -1000,42 +1000,12 @@ export default function RightPanel({
                           </div>
 
                           {draft.strategy === 'pattern' && (
-                            <>
-                              <PatternSequenceBuilder
-                                segments={draft.patternSegments || []}
-                                onChange={(patternSegments) => patch({ patternSegments })}
-                              />
-                              <div>
-                                <p className="text-[11px] font-bold text-zinc-400 mb-1.5">
-                                  패턴 다음 베팅할 곳
-                                </p>
-                                <div className="flex gap-1.5">
-                                  {(
-                                    [
-                                      { id: 'PLAYER' as const, label: 'Player', on: 'bg-blue-600 border-blue-400 text-white' },
-                                      { id: 'TIE' as const, label: 'Tie', on: 'bg-emerald-500 border-emerald-400 text-white' },
-                                      { id: 'BANKER' as const, label: 'Banker', on: 'bg-red-500 border-red-400 text-white' },
-                                    ] as const
-                                  ).map((opt) => (
-                                    <button
-                                      key={opt.id}
-                                      type="button"
-                                      onClick={() => {
-                                        playSfx('ui');
-                                        patch({ patternBetSide: opt.id });
-                                      }}
-                                      className={`flex-1 py-2 rounded-lg border text-xs font-bold ${
-                                        draft.patternBetSide === opt.id
-                                          ? opt.on
-                                          : 'bg-zinc-950 border-zinc-700 text-zinc-400'
-                                      }`}
-                                    >
-                                      {opt.label}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            </>
+                            <PatternCasesEditor
+                              config={draft}
+                              tables={tables}
+                              compact
+                              onChange={(partial) => patch(partial)}
+                            />
                           )}
 
                           {draft.strategy === 'ai' && (
@@ -1056,12 +1026,16 @@ export default function RightPanel({
                       {cfg?.strategy === 'pattern' && (
                         <>
                           <AutoRow
-                            label="패턴"
-                            value={formatPattern(cfg.patternSegments || [])}
+                            label="패턴 경우"
+                            value={formatAllPatternCases(cfg.patternCases || [])}
                           />
                           <AutoRow
-                            label="베팅"
-                            value={patternSideLabel(cfg.patternBetSide || 'PLAYER')}
+                            label="적용 테이블"
+                            value={
+                              cfg.patternTableScope === 'selected'
+                                ? `선택 ${cfg.patternTableIds?.length || 0}개`
+                                : '전체'
+                            }
                           />
                         </>
                       )}
@@ -1146,10 +1120,20 @@ export default function RightPanel({
                         value={cfg ? strategyLabel(cfg.strategy) : 'AI 추천대로'}
                       />
                       {cfg?.strategy === 'pattern' && (
-                        <AutoRow
-                          label="패턴"
-                          value={formatPattern(cfg.patternSegments || [])}
-                        />
+                        <>
+                          <AutoRow
+                            label="패턴 경우"
+                            value={formatAllPatternCases(cfg.patternCases || [])}
+                          />
+                          <AutoRow
+                            label="적용 테이블"
+                            value={
+                              cfg.patternTableScope === 'selected'
+                                ? `선택 ${cfg.patternTableIds?.length || 0}개`
+                                : '전체'
+                            }
+                          />
+                        </>
                       )}
                       <AutoRow
                         label="금액 방식"

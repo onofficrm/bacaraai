@@ -1,4 +1,4 @@
-import type { GameResult, PatternSegment } from '../types';
+import type { GameResult, PatternCase, PatternSegment, SessionConfig } from '../types';
 import type { BetSide } from '../hooks/useSession';
 
 /** 연속 같은 결과를 구간으로 묶기 (이상은 false) */
@@ -63,7 +63,6 @@ export function matchesPattern(
         if (i < 0 || hist[i] !== seg.side) return false;
         i -= 1;
       }
-      // 정확 매칭: 그 앞에 같은 사이드가 더 있으면 안 됨
       if (i >= 0 && hist[i] === seg.side) return false;
     }
   }
@@ -71,11 +70,12 @@ export function matchesPattern(
 }
 
 export function formatPattern(segments: PatternSegment[] | GameResult[]): string {
-  const segs: PatternSegment[] = Array.isArray(segments) && segments.length > 0
-    ? typeof segments[0] === 'string'
-      ? beadsToSegments(segments as GameResult[])
-      : (segments as PatternSegment[])
-    : [];
+  const segs: PatternSegment[] =
+    Array.isArray(segments) && segments.length > 0
+      ? typeof segments[0] === 'string'
+        ? beadsToSegments(segments as GameResult[])
+        : (segments as PatternSegment[])
+      : [];
   if (!segs.length) return '(없음)';
   return segs
     .map((seg) => {
@@ -128,4 +128,147 @@ export function betSideToGameResult(side: BetSide): GameResult {
   if (side === 'BANKER') return 'B';
   if (side === 'TIE') return 'T';
   return 'P';
+}
+
+export function createPatternCaseId(): string {
+  return `pc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function createEmptyPatternCase(index: number): PatternCase {
+  return {
+    id: createPatternCaseId(),
+    label: `경우${index}`,
+    enabled: true,
+    patternSegments: [],
+    patternBetSide: 'PLAYER',
+  };
+}
+
+/** 기본 예시 경우들 (BB→P, PP→P, BBBB+→P→B) */
+export function defaultPatternCases(): PatternCase[] {
+  return [
+    {
+      id: 'pc_default_bb_p',
+      label: '경우1',
+      enabled: true,
+      patternSegments: [{ side: 'B', count: 2, atLeast: false }],
+      patternBetSide: 'PLAYER',
+    },
+    {
+      id: 'pc_default_pp_p',
+      label: '경우2',
+      enabled: true,
+      patternSegments: [{ side: 'P', count: 2, atLeast: false }],
+      patternBetSide: 'PLAYER',
+    },
+    {
+      id: 'pc_default_bbbb_p_b',
+      label: '경우3',
+      enabled: true,
+      patternSegments: [
+        { side: 'B', count: 4, atLeast: true },
+        { side: 'P', count: 1, atLeast: false },
+      ],
+      patternBetSide: 'BANKER',
+    },
+  ];
+}
+
+function sanitizeCase(raw: Partial<PatternCase> | null | undefined, index: number): PatternCase {
+  const segments = normalizePatternSegments({
+    patternSegments: raw?.patternSegments,
+  });
+  const side = raw?.patternBetSide;
+  return {
+    id: typeof raw?.id === 'string' && raw.id ? raw.id : createPatternCaseId(),
+    label:
+      typeof raw?.label === 'string' && raw.label.trim()
+        ? raw.label.trim().slice(0, 24)
+        : `경우${index}`,
+    enabled: raw?.enabled !== false,
+    patternSegments: segments,
+    patternBetSide:
+      side === 'BANKER' || side === 'TIE' || side === 'PLAYER' ? side : 'PLAYER',
+  };
+}
+
+/**
+ * patternCases 정규화 + 구버전(patternSegments) 마이그레이션.
+ * 반환의 patternSegments/patternBetSide 는 첫 활성(또는 첫) 경우와 동기화.
+ */
+export function normalizePatternCases(
+  config: Partial<SessionConfig> | null | undefined,
+): {
+  patternCases: PatternCase[];
+  patternSegments: PatternSegment[];
+  patternBetSide: 'PLAYER' | 'BANKER' | 'TIE';
+} {
+  const rawCases = Array.isArray(config?.patternCases) ? config!.patternCases : null;
+
+  let patternCases: PatternCase[];
+  if (rawCases && rawCases.length > 0) {
+    patternCases = rawCases.map((c, i) => sanitizeCase(c, i + 1));
+  } else {
+    const legacy = normalizePatternSegments({
+      patternSegments: config?.patternSegments,
+      patternSequence: config?.patternSequence,
+    });
+    if (legacy.length > 0) {
+      patternCases = [
+        sanitizeCase(
+          {
+            id: 'pc_migrated',
+            label: '경우1',
+            enabled: true,
+            patternSegments: legacy,
+            patternBetSide: config?.patternBetSide || 'PLAYER',
+          },
+          1,
+        ),
+      ];
+    } else if (rawCases && rawCases.length === 0) {
+      patternCases = [];
+    } else {
+      patternCases = defaultPatternCases();
+    }
+  }
+
+  const primary =
+    patternCases.find((c) => c.enabled && c.patternSegments.length > 0) ||
+    patternCases[0] ||
+    null;
+
+  return {
+    patternCases,
+    patternSegments: primary?.patternSegments || [],
+    patternBetSide: primary?.patternBetSide || 'PLAYER',
+  };
+}
+
+/** 켜진 경우 중 패턴이 2게임 이상인 것이 하나라도 있으면 OK */
+export function patternCasesReady(cases: PatternCase[]): boolean {
+  return cases.some((c) => c.enabled && patternTotalGames(c.patternSegments) >= 2);
+}
+
+/** 히스토리에 맞는 첫 번째 활성 경우 (우선순위 = 목록 순서) */
+export function findMatchingPatternCase(
+  recentResults: GameResult[],
+  cases: PatternCase[],
+): PatternCase | null {
+  for (const c of cases) {
+    if (!c.enabled) continue;
+    if (patternTotalGames(c.patternSegments) < 1) continue;
+    if (matchesPattern(recentResults, c.patternSegments)) return c;
+  }
+  return null;
+}
+
+export function formatPatternCaseSummary(c: PatternCase): string {
+  return `${c.label}: ${formatPattern(c.patternSegments)} → ${patternSideLabel(c.patternBetSide)}`;
+}
+
+export function formatAllPatternCases(cases: PatternCase[]): string {
+  const active = cases.filter((c) => c.enabled && c.patternSegments.length > 0);
+  if (!active.length) return '(없음)';
+  return active.map((c) => formatPatternCaseSummary(c)).join(' · ');
 }
