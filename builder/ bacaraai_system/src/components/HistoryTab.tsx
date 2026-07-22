@@ -1,16 +1,26 @@
-import { getResultColor, getResultLabel } from '../utils/colors';
 import { Search, Download, Eye } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { GameHistoryEntry } from '../types';
 import HistoryDetailModal from './HistoryDetailModal';
 import { getTodayBetStats, inferBetSource } from '../utils/betHistory';
+import { getResultColor, getResultLabel } from '../utils/colors';
 
 type SourceFilter = 'all' | 'manual' | 'auto';
 
-export default function HistoryTab({ history }: { history: GameHistoryEntry[] }) {
+export default function HistoryTab({
+  history,
+  initialSourceFilter = 'all',
+}: {
+  history: GameHistoryEntry[];
+  initialSourceFilter?: SourceFilter;
+}) {
   const [selectedEntry, setSelectedEntry] = useState<GameHistoryEntry | null>(null);
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>(initialSourceFilter);
   const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    setSourceFilter(initialSourceFilter);
+  }, [initialSourceFilter]);
 
   const today = useMemo(() => getTodayBetStats(history), [history]);
 

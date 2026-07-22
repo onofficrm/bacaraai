@@ -354,7 +354,7 @@ export default function useSession() {
   );
   const [now, setNow] = useState(() => Date.now());
   const settleTimers = useRef<Map<string, number>>(new Map());
-  const onCutRef = useRef<((type: 'wincut' | 'losscut') => void) | null>(null);
+  const onCutRef = useRef<((type: 'wincut' | 'losscut', pnl: number) => void) | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -482,7 +482,7 @@ export default function useSession() {
     }));
   }, []);
 
-  const setCutHandler = useCallback((handler: ((type: 'wincut' | 'losscut') => void) | null) => {
+  const setCutHandler = useCallback((handler: ((type: 'wincut' | 'losscut', pnl: number) => void) | null) => {
     onCutRef.current = handler;
   }, []);
 
@@ -538,8 +538,8 @@ export default function useSession() {
     });
 
     window.setTimeout(() => {
-      if (nextPnl >= curr.config.winCut) onCutRef.current?.('wincut');
-      else if (nextPnl <= curr.config.lossCut) onCutRef.current?.('losscut');
+      if (nextPnl >= curr.config.winCut) onCutRef.current?.('wincut', nextPnl);
+      else if (nextPnl <= curr.config.lossCut) onCutRef.current?.('losscut', nextPnl);
     }, 0);
 
     const preferResult =

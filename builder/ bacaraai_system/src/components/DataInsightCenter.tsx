@@ -6,7 +6,11 @@ import { clearBetHistory, loadBetHistory, mergeBetHistory } from '../utils/betHi
 import { fetchWalletBetHistory } from '../api/walletBet';
 import type { GameHistoryEntry } from '../types';
 
-export default function DataInsightCenter() {
+export default function DataInsightCenter({
+  initialSourceFilter = 'all',
+}: {
+  initialSourceFilter?: 'all' | 'manual' | 'auto';
+}) {
   const [activeTab, setActiveTab] = useState<'status' | 'analysis' | 'search' | 'similar' | 'rules' | 'quality' | 'history'>('history');
   const [history, setHistory] = useState<GameHistoryEntry[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -111,7 +115,7 @@ export default function DataInsightCenter() {
       {/* Content */}
       <div className="p-6 lg:p-8 flex flex-col gap-6">
         {activeTab === 'history' ? (
-          <HistoryTab history={history} />
+          <HistoryTab history={history} initialSourceFilter={initialSourceFilter} />
         ) : activeTab === 'status' ? (
           <DataStatusTab />
         ) : activeTab === 'analysis' ? (

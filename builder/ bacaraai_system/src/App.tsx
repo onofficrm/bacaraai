@@ -58,6 +58,9 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [stopSessionType, setStopSessionType] = useState<'wincut' | 'losscut' | 'error' | null>(null);
+  const [stopSessionPnl, setStopSessionPnl] = useState(0);
+  const [insightSourceFilter, setInsightSourceFilter] = useState<'all' | 'manual' | 'auto'>('all');
+  const sessionStartedAtRef = useRef<number | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [zoomedTableId, setZoomedTableId] = useState<string | null>(null);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
@@ -84,10 +87,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    session.setCutHandler((type) => {
+    session.setCutHandler((type, pnl) => {
       playSfx(type === 'wincut' ? 'win' : 'loss');
       session.pauseSession();
-      setStopSessionType(type);
+      // 정산 기록이 localStorage에 반영된 뒤 모달 표시
+      window.setTimeout(() => {
+        setStopSessionPnl(pnl);
+        setStopSessionType(type);
+      }, 120);
     });
     return () => session.setCutHandler(null);
   }, [session.setCutHandler, session.pauseSession]);
@@ -594,7 +601,7 @@ export default function App() {
             <div className="p-4 lg:px-6 pt-4 lg:pt-6">
               <ScreenHelpBanner screen="insight" beginnerMode={beginnerMode} />
             </div>
-            <DataInsightCenter />
+            <DataInsightCenter initialSourceFilter={insightSourceFilter} />
           </div>
         ) : activeView === 'settings' ? (
           <SettingsView 
@@ -640,6 +647,7 @@ export default function App() {
         onClose={() => setIsModalOpen(false)}
         initialConfig={session.config}
         onStart={(mode, config) => {
+          sessionStartedAtRef.current = Date.now();
           session.startSession(mode, config);
         }}
       />
@@ -647,9 +655,18 @@ export default function App() {
       <TableZoomModal table={zoomedTable} onClose={() => setZoomedTableId(null)} />
       <StopSessionModal
         type={stopSessionType}
-        onClose={() => {
+        sessionPnl={stopSessionPnl}
+        sessionStartedAt={sessionStartedAtRef.current}
+        onViewHistory={() => {
           setStopSessionType(null);
           session.stopSession();
+          setInsightSourceFilter('auto');
+          setActiveView('insight');
+        }}
+        onEndSession={() => {
+          setStopSessionType(null);
+          session.stopSession();
+          sessionStartedAtRef.current = null;
         }}
       />
       <WinCelebration
