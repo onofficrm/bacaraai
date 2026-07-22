@@ -129,13 +129,21 @@ const DEFAULT_STATE: SessionState = {
 
 function normalizeConfig(partial?: Partial<SessionConfig>): SessionConfig {
   const merged = { ...DEFAULT_SESSION_CONFIG, ...(partial || {}) };
-  const patternSegments = normalizePatternSegments(merged);
+  const explicitSegments =
+    partial != null && Object.prototype.hasOwnProperty.call(partial, 'patternSegments');
+  const patternSegments = normalizePatternSegments({
+    patternSegments: explicitSegments ? partial!.patternSegments : merged.patternSegments,
+    patternSequence: partial?.patternSequence ?? merged.patternSequence,
+  });
   return {
     ...merged,
+    // 전체 삭제([])는 유지. 필드가 없을 때만 기본 패턴으로 채움
     patternSegments:
       patternSegments.length > 0
         ? patternSegments
-        : DEFAULT_SESSION_CONFIG.patternSegments,
+        : explicitSegments
+          ? []
+          : DEFAULT_SESSION_CONFIG.patternSegments,
   };
 }
 

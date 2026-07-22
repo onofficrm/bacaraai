@@ -57,16 +57,19 @@ export default function SessionModal({
   const [editStage, setEditStage] = useState(1);
 
   useEffect(() => {
-    if (isOpen) {
-      const merged = { ...DEFAULT_SESSION_CONFIG, ...initialConfig };
-      const patternSegments =
-        merged.patternSegments?.length
-          ? merged.patternSegments
+    if (!isOpen) return;
+    const merged = { ...DEFAULT_SESSION_CONFIG, ...initialConfig };
+    const patternSegments =
+      merged.patternSegments && merged.patternSegments.length > 0
+        ? merged.patternSegments
+        : Array.isArray(merged.patternSegments) && merged.patternSegments.length === 0
+          ? []
           : normalizePatternSegments(merged);
-      setConfig({ ...merged, patternSegments });
-      setEditStage(1);
-    }
-  }, [isOpen, initialConfig]);
+    setConfig({ ...merged, patternSegments });
+    setEditStage(1);
+    // 모달을 열 때만 초기화 — 편집 중 initialConfig 참조 변경으로 되돌리지 않음
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync on open only
+  }, [isOpen]);
 
   const summary = useMemo(() => {
     const targetSeed = config.seed + config.winCut;

@@ -72,7 +72,7 @@ export default function PatternSequenceBuilder({ segments, onChange, disabled }:
   };
 
   const clear = () => {
-    if (disabled || !segments.length) return;
+    if (disabled) return;
     playSfx('ui');
     onChange([]);
   };
