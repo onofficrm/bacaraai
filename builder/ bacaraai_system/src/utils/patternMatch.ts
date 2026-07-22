@@ -179,6 +179,11 @@ function sanitizeCase(raw: Partial<PatternCase> | null | undefined, index: numbe
     patternSegments: raw?.patternSegments,
   });
   const side = raw?.patternBetSide;
+  const amountMode =
+    raw?.amountMode === 'custom' || raw?.amountMode === 'martin' ? raw.amountMode : undefined;
+  const customSteps = Array.isArray(raw?.customSteps)
+    ? raw!.customSteps.map((n) => Math.max(0, Math.floor(Number(n) || 0)))
+    : undefined;
   return {
     id: typeof raw?.id === 'string' && raw.id ? raw.id : createPatternCaseId(),
     label:
@@ -189,6 +194,14 @@ function sanitizeCase(raw: Partial<PatternCase> | null | undefined, index: numbe
     patternSegments: segments,
     patternBetSide:
       side === 'BANKER' || side === 'TIE' || side === 'PLAYER' ? side : 'PLAYER',
+    ...(amountMode ? { amountMode } : {}),
+    ...(typeof raw?.initialBet === 'number' && raw.initialBet > 0
+      ? { initialBet: Math.floor(raw.initialBet) }
+      : {}),
+    ...(typeof raw?.maxMartin === 'number' && raw.maxMartin >= 1
+      ? { maxMartin: Math.min(20, Math.floor(raw.maxMartin)) }
+      : {}),
+    ...(customSteps ? { customSteps } : {}),
   };
 }
 

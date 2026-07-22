@@ -36,6 +36,11 @@ import {
   normalizePatternCases,
   patternSignalKey,
 } from './utils/patternMatch';
+import {
+  getCaseMartinStage,
+  resolveAmountPlan,
+  resolveBetAmountFromPlan,
+} from './hooks/useSession';
 
 const VIEW_LABELS: Record<ViewType, string> = {
   multitable: '라이브 테이블',
@@ -315,13 +320,27 @@ export default function App() {
       autoBetSignalRef.current = null;
       return;
     }
+
+    const caseId = candidate.caseId || null;
+    const plan = resolveAmountPlan(session.config, caseId);
+    const stageRaw =
+      session.config.patternAmountScope === 'per_case' && caseId
+        ? getCaseMartinStage(session.caseMartinStages, caseId, session.martinStage)
+        : session.martinStage;
+    const stage = Math.min(Math.max(1, stageRaw), plan.maxMartin);
+    if (stageRaw > plan.maxMartin) return;
+    const betAmount = resolveBetAmountFromPlan(plan, stage);
+    if (betAmount <= 0) return;
+    if (wallet.loggedIn && betAmount > wallet.balance) return;
+
     void session
       .placeBet({
         tableId: target.id,
         tableName: target.name,
         side: candidate.side,
-        amount,
+        amount: betAmount,
         source: 'auto',
+        patternCaseId: caseId,
         waitForLiveResult: true,
         baselineLatestId: target.live?.latestId ?? 0,
         baselineResultCount: target.stats.recentResults.length,
@@ -363,6 +382,7 @@ export default function App() {
     session.pendingBets,
     session.suggestedBet,
     session.martinStage,
+    session.caseMartinStages,
     session.lastBetResult,
     session.lastAutoResult,
     autoResumeTick,

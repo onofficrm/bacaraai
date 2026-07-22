@@ -1000,12 +1000,58 @@ export default function RightPanel({
                           </div>
 
                           {draft.strategy === 'pattern' && (
-                            <PatternCasesEditor
-                              config={draft}
-                              tables={tables}
-                              compact
-                              onChange={(partial) => patch(partial)}
-                            />
+                            <>
+                              <div>
+                                <p className="text-[11px] font-bold text-zinc-400 mb-1.5">금액 적용</p>
+                                <div className="grid grid-cols-2 gap-1.5 mb-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      playSfx('ui');
+                                      patch({ patternAmountScope: 'shared' });
+                                    }}
+                                    className={`py-2 rounded-lg border text-[11px] font-bold ${
+                                      draft.patternAmountScope !== 'per_case'
+                                        ? 'bg-sky-500/20 border-sky-400 text-sky-100'
+                                        : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                                    }`}
+                                  >
+                                    모든 경우 공통
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      playSfx('ui');
+                                      const cases = (draft.patternCases || []).map((c) => ({
+                                        ...c,
+                                        amountMode: c.amountMode ?? draft.amountMode,
+                                        initialBet: c.initialBet ?? draft.initialBet,
+                                        maxMartin: c.maxMartin ?? draft.maxMartin,
+                                        customSteps:
+                                          c.customSteps ?? [...(draft.customSteps || [])],
+                                      }));
+                                      patch({
+                                        patternAmountScope: 'per_case',
+                                        patternCases: cases,
+                                      });
+                                    }}
+                                    className={`py-2 rounded-lg border text-[11px] font-bold ${
+                                      draft.patternAmountScope === 'per_case'
+                                        ? 'bg-sky-500/20 border-sky-400 text-sky-100'
+                                        : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                                    }`}
+                                  >
+                                    경우마다 따로
+                                  </button>
+                                </div>
+                              </div>
+                              <PatternCasesEditor
+                                config={draft}
+                                tables={tables}
+                                compact
+                                onChange={(partial) => patch(partial)}
+                              />
+                            </>
                           )}
 
                           {draft.strategy === 'ai' && (
@@ -1041,7 +1087,11 @@ export default function RightPanel({
                       )}
                       <AutoRow
                         label="금액"
-                        value={amountModeLabel}
+                        value={
+                          cfg?.strategy === 'pattern' && cfg.patternAmountScope === 'per_case'
+                            ? '경우마다 따로'
+                            : amountModeLabel
+                        }
                       />
                       <AutoRow
                         label={cfg?.amountMode === 'custom' ? '1단 금액' : '기본 금액'}
@@ -1137,7 +1187,11 @@ export default function RightPanel({
                       )}
                       <AutoRow
                         label="금액 방식"
-                        value={amountModeLabel}
+                        value={
+                          cfg?.strategy === 'pattern' && cfg.patternAmountScope === 'per_case'
+                            ? '경우마다 따로'
+                            : amountModeLabel
+                        }
                       />
                       <AutoRow
                         label="다음 금액"

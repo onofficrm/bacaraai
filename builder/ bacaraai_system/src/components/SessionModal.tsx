@@ -267,6 +267,66 @@ export default function SessionModal({
           {/* Amount progress */}
           <div className="mb-6">
             <p className="text-xs font-bold text-zinc-400 mb-2">② 금액은 어떻게 올릴까요?</p>
+
+            {config.strategy === 'pattern' && (
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSfx('ui');
+                    setConfig((prev) => ({ ...prev, patternAmountScope: 'shared' }));
+                  }}
+                  className={`py-2.5 rounded-xl border-2 text-xs font-bold ${
+                    config.patternAmountScope !== 'per_case'
+                      ? 'bg-sky-500/20 border-sky-400 text-sky-100'
+                      : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                  }`}
+                >
+                  모든 경우 공통
+                  <span className="block text-[10px] font-medium opacity-80 mt-0.5">
+                    한 설정으로 전부 적용
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSfx('ui');
+                    setConfig((prev) => {
+                      const cases = (prev.patternCases || []).map((c) => ({
+                        ...c,
+                        amountMode: c.amountMode ?? prev.amountMode,
+                        initialBet: c.initialBet ?? prev.initialBet,
+                        maxMartin: c.maxMartin ?? prev.maxMartin,
+                        customSteps: c.customSteps ?? [...(prev.customSteps || [])],
+                      }));
+                      return {
+                        ...prev,
+                        patternAmountScope: 'per_case',
+                        patternCases: cases,
+                      };
+                    });
+                  }}
+                  className={`py-2.5 rounded-xl border-2 text-xs font-bold ${
+                    config.patternAmountScope === 'per_case'
+                      ? 'bg-sky-500/20 border-sky-400 text-sky-100'
+                      : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                  }`}
+                >
+                  경우마다 따로
+                  <span className="block text-[10px] font-medium opacity-80 mt-0.5">
+                    각 경우에 금액 설정
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {config.strategy === 'pattern' && config.patternAmountScope === 'per_case' ? (
+              <p className="text-[11px] text-zinc-500 leading-relaxed rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+                위 <strong className="text-zinc-300">패턴 경우</strong>를 펼치면 경우마다 마틴/단계별
+                금액을 따로 설정할 수 있습니다.
+              </p>
+            ) : (
+              <>
             <div className="grid grid-cols-2 gap-2 mb-3">
               <button
                 type="button"
@@ -429,6 +489,8 @@ export default function SessionModal({
                 </div>
               </div>
             )}
+              </>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -537,7 +599,13 @@ export default function SessionModal({
             )}
             <SummaryRow
               label="금액"
-              value={config.amountMode === 'custom' ? '단계별 직접' : '마틴 2배'}
+              value={
+                config.strategy === 'pattern' && config.patternAmountScope === 'per_case'
+                  ? '경우마다 따로'
+                  : config.amountMode === 'custom'
+                    ? '단계별 직접'
+                    : '마틴 2배'
+              }
             />
             <SummaryRow
               label="목표 시드"

@@ -124,6 +124,8 @@ export type AutoBetStrategy = 'ai' | 'pattern';
 export type AmountProgressMode = 'martin' | 'custom';
 /** 패턴 적용 테이블 범위 */
 export type PatternTableScope = 'all' | 'selected';
+/** 패턴 금액: 모든 경우 공통 / 경우마다 */
+export type PatternAmountScope = 'shared' | 'per_case';
 
 /** 패턴 한 구간 (예: Player 4개 이상) */
 export interface PatternSegment {
@@ -143,6 +145,11 @@ export interface PatternCase {
   patternSegments: PatternSegment[];
   /** 패턴 일치 후 베팅할 사이드 */
   patternBetSide: 'PLAYER' | 'BANKER' | 'TIE';
+  /** patternAmountScope=per_case 일 때 경우별 금액 (없으면 공통값 사용) */
+  amountMode?: AmountProgressMode;
+  initialBet?: number;
+  maxMartin?: number;
+  customSteps?: number[];
 }
 
 export interface SessionConfig {
@@ -174,7 +181,9 @@ export interface SessionConfig {
   patternTableScope: PatternTableScope;
   /** patternTableScope=selected 일 때 적용할 테이블 id */
   patternTableIds: string[];
-  /** 마틴(2배) 또는 단계별 직접 금액 */
+  /** 패턴 금액: 공통 / 경우별 */
+  patternAmountScope: PatternAmountScope;
+  /** 마틴(2배) 또는 단계별 직접 금액 (공통) */
   amountMode: AmountProgressMode;
   /** amountMode=custom 일 때 단계별 금액 (index 0 = 1단계) */
   customSteps: number[];

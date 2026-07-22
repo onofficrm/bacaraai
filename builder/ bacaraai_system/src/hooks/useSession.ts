@@ -38,6 +38,8 @@ export type PendingBet = {
   placedAt: number;
   /** 직접 베팅 / 오토베팅 구분 — 동시에 각각 진행·표시 가능 */
   source: BetSource;
+  /** 패턴 경우별 금액·마틴 추적용 */
+  patternCaseId?: string | null;
   /** 라이브 테이블: 베팅 시점의 마지막 결과 id (이후 더 큰 id 가 오면 정산) */
   baselineLatestId?: number | null;
   /** 베팅 시점 결과 개수 (id 보조 신호) */
@@ -83,6 +85,8 @@ export type PlaceBetInput = {
   source?: BetSource;
   /** 게임 기록용 스냅샷 */
   historyMeta?: BetHistoryMeta;
+  /** 패턴 경우별 금액 추적 */
+  patternCaseId?: string | null;
 };
 
 export type PlaceBetResult =
@@ -99,6 +103,8 @@ export type SessionState = {
   elapsedMs: number;
   pnl: number;
   martinStage: number;
+  /** 패턴 경우별 마틴 단계 (patternAmountScope=per_case) */
+  caseMartinStages: Record<string, number>;
   /** 오토·직접 각각 1개까지 동시 대기 가능 */
   pendingBets: PendingBet[];
   /** 축하 연출·하위 호환용 (최근 결과, 승리 우선) */
@@ -125,6 +131,7 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
   patternCases: defaultPatternCases(),
   patternTableScope: 'all',
   patternTableIds: [],
+  patternAmountScope: 'shared',
   amountMode: 'martin',
   customSteps: [],
 };
@@ -140,6 +147,7 @@ const DEFAULT_STATE: SessionState = {
   elapsedMs: 0,
   pnl: 0,
   martinStage: 1,
+  caseMartinStages: {},
   pendingBets: [],
   lastBetResult: null,
   lastManualResult: null,
@@ -159,6 +167,10 @@ function normalizeConfig(partial?: Partial<SessionConfig>): SessionConfig {
     : Array.isArray(merged.patternTableIds)
       ? merged.patternTableIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
       : [];
+  const amountScope =
+    partial?.patternAmountScope === 'per_case' || merged.patternAmountScope === 'per_case'
+      ? 'per_case'
+      : 'shared';
 
   return {
     ...merged,
@@ -167,6 +179,7 @@ function normalizeConfig(partial?: Partial<SessionConfig>): SessionConfig {
     patternBetSide: normalized.patternBetSide,
     patternTableScope: scope,
     patternTableIds: scope === 'selected' ? ids : [],
+    patternAmountScope: amountScope,
   };
 }
 
@@ -228,16 +241,65 @@ export function nextBetAmount(initialBet: number, stage: number, maxBet: number)
 }
 
 /** 마틴 또는 사용자 지정 단계 금액 */
-export function resolveBetAmount(config: SessionConfig, stage: number): number {
-  const steps = config.customSteps;
-  const useCustom =
-    config.amountMode === 'custom' && Array.isArray(steps) && steps.length > 0;
+export type AmountPlan = {
+  amountMode: SessionConfig['amountMode'];
+  initialBet: number;
+  maxMartin: number;
+  maxBet: number;
+  customSteps: number[];
+};
+
+export function resolveAmountPlan(
+  config: SessionConfig,
+  caseId?: string | null,
+): AmountPlan {
+  const shared: AmountPlan = {
+    amountMode: config.amountMode,
+    initialBet: config.initialBet,
+    maxMartin: config.maxMartin,
+    maxBet: config.maxBet,
+    customSteps: Array.isArray(config.customSteps) ? config.customSteps : [],
+  };
+  if (config.patternAmountScope !== 'per_case' || !caseId) return shared;
+  const c = (config.patternCases || []).find((x) => x.id === caseId);
+  if (!c) return shared;
+  return {
+    amountMode: c.amountMode ?? config.amountMode,
+    initialBet: typeof c.initialBet === 'number' ? c.initialBet : config.initialBet,
+    maxMartin: typeof c.maxMartin === 'number' ? c.maxMartin : config.maxMartin,
+    maxBet: config.maxBet,
+    customSteps: Array.isArray(c.customSteps) ? c.customSteps : [],
+  };
+}
+
+export function resolveBetAmountFromPlan(plan: AmountPlan, stage: number): number {
+  const steps = plan.customSteps;
+  const useCustom = plan.amountMode === 'custom' && Array.isArray(steps) && steps.length > 0;
   if (useCustom) {
-    const idx = Math.max(0, Math.min(stage - 1, steps.length - 1, config.maxMartin - 1));
-    const amt = steps[idx] ?? config.initialBet;
-    return Math.min(Math.max(0, amt), config.maxBet);
+    const idx = Math.max(0, Math.min(stage - 1, steps.length - 1, plan.maxMartin - 1));
+    const amt = steps[idx] ?? plan.initialBet;
+    return Math.min(Math.max(0, amt), plan.maxBet);
   }
-  return nextBetAmount(config.initialBet, stage, config.maxBet);
+  return nextBetAmount(plan.initialBet, stage, plan.maxBet);
+}
+
+/** 마틴 또는 사용자 지정 단계 금액 (공통 설정 기준, 경우 id 선택 가능) */
+export function resolveBetAmount(
+  config: SessionConfig,
+  stage: number,
+  caseId?: string | null,
+): number {
+  return resolveBetAmountFromPlan(resolveAmountPlan(config, caseId), stage);
+}
+
+export function getCaseMartinStage(
+  caseMartinStages: Record<string, number> | undefined,
+  caseId: string | null | undefined,
+  fallback = 1,
+): number {
+  if (!caseId) return fallback;
+  const n = caseMartinStages?.[caseId];
+  return typeof n === 'number' && n >= 1 ? n : fallback;
 }
 
 export function strategyLabel(strategy: SessionConfig['strategy'] | undefined): string {
@@ -428,6 +490,7 @@ export default function useSession() {
       elapsedMs: 0,
       pnl: 0,
       martinStage: 1,
+      caseMartinStages: {},
       pendingBets: [],
       lastBetResult: null,
       lastManualResult: null,
@@ -469,6 +532,7 @@ export default function useSession() {
       elapsedMs: 0,
       pnl: 0,
       martinStage: 1,
+      caseMartinStages: {},
       pendingBets: [],
       lastBetResult: null,
       lastManualResult: null,
@@ -502,12 +566,28 @@ export default function useSession() {
     const settled = settlePnl(pending.side, pending.amount, outcome);
     const nextPnl = curr.pnl + settled.pnlDelta;
     let nextStage = curr.martinStage;
+    let nextCaseStages = { ...(curr.caseMartinStages || {}) };
+
     // 마틴 단계는 오토베팅 정산에만 반영
     if (pending.source === 'auto') {
-      if (settled.won === true) nextStage = 1;
+      const caseId = pending.patternCaseId || null;
+      const usePerCase =
+        curr.config.patternAmountScope === 'per_case' && Boolean(caseId);
+      const plan = resolveAmountPlan(curr.config, usePerCase ? caseId : null);
+      const curStage = usePerCase
+        ? getCaseMartinStage(curr.caseMartinStages, caseId, curr.martinStage)
+        : curr.martinStage;
+
+      let stageAfter = curStage;
+      if (settled.won === true) stageAfter = 1;
       else if (settled.won === false) {
-        nextStage = Math.min(curr.config.maxMartin + 1, curr.martinStage + 1);
+        stageAfter = Math.min(plan.maxMartin + 1, curStage + 1);
       }
+
+      if (usePerCase && caseId) {
+        nextCaseStages[caseId] = stageAfter;
+      }
+      nextStage = stageAfter;
     }
 
     const ruleLabel =
@@ -550,12 +630,13 @@ export default function useSession() {
       else if (nextPnl <= curr.config.lossCut) onCutRef.current?.('losscut', nextPnl);
     }, 0);
 
-    const preferResult = result; // 최신 정산을 그대로 반영 (승/패 모두)
+    const preferResult = result;
 
     return {
       ...curr,
       pnl: nextPnl,
       martinStage: nextStage,
+      caseMartinStages: nextCaseStages,
       pendingBets: curr.pendingBets.filter((b) => b.id !== pending.id),
       lastBetResult: preferResult,
       lastManualResult: pending.source === 'manual' ? result : curr.lastManualResult,
@@ -606,11 +687,19 @@ export default function useSession() {
       return { ok: false, error: `가상머니가 부족합니다. (가능 ${formatMoney(available)})` };
     }
 
-    if (resolvedSource === 'auto' && prev.martinStage > prev.config.maxMartin) {
-      return {
-        ok: false,
-        error: '최대 마틴 단계에 도달했습니다. 오토베팅을 재설정하세요.',
-      };
+    if (resolvedSource === 'auto') {
+      const plan = resolveAmountPlan(prev.config, input.patternCaseId);
+      const stage = getCaseMartinStage(
+        prev.caseMartinStages,
+        input.patternCaseId,
+        prev.martinStage,
+      );
+      if (stage > plan.maxMartin) {
+        return {
+          ok: false,
+          error: '최대 마틴 단계에 도달했습니다. 오토베팅을 재설정하세요.',
+        };
+      }
     }
 
     const walletRes = await walletPlaceBet({
@@ -654,6 +743,7 @@ export default function useSession() {
       amount,
       placedAt: Date.now(),
       source: resolvedSource,
+      patternCaseId: input.patternCaseId || null,
       baselineLatestId: useLiveSettle ? (baselineLatestId ?? 0) : null,
       baselineResultCount:
         typeof input.baselineResultCount === 'number' ? input.baselineResultCount : 0,

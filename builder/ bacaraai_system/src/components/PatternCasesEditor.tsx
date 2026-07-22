@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import type { PatternCase, PatternTableScope, SessionConfig, TableData } from '../types';
 import { playSfx } from '../audio/sfxEngine';
 import PatternSequenceBuilder from './PatternSequenceBuilder';
+import AmountPlanEditor from './AmountPlanEditor';
 import {
   createEmptyPatternCase,
   formatPattern,
@@ -32,6 +33,16 @@ function syncLegacy(cases: PatternCase[]): Pick<
   };
 }
 
+function caseAmountPlan(c: PatternCase, config: SessionConfig) {
+  return {
+    amountMode: c.amountMode ?? config.amountMode,
+    initialBet: c.initialBet ?? config.initialBet,
+    maxMartin: c.maxMartin ?? config.maxMartin,
+    maxBet: config.maxBet,
+    customSteps: c.customSteps ?? (config.customSteps || []),
+  };
+}
+
 export default function PatternCasesEditor({
   config,
   onChange,
@@ -43,6 +54,7 @@ export default function PatternCasesEditor({
       ? config.patternCases
       : normalizePatternCases(config).patternCases;
   const [openId, setOpenId] = useState<string | null>(cases[0]?.id ?? null);
+  const perCaseAmount = config.patternAmountScope === 'per_case';
 
   const patchCases = (nextCases: PatternCase[]) => {
     onChange(syncLegacy(nextCases));
@@ -55,7 +67,17 @@ export default function PatternCasesEditor({
   const addCase = () => {
     if (cases.length >= MAX_CASES) return;
     playSfx('ui');
-    const next = createEmptyPatternCase(cases.length + 1);
+    const next: PatternCase = {
+      ...createEmptyPatternCase(cases.length + 1),
+      ...(perCaseAmount
+        ? {
+            amountMode: config.amountMode,
+            initialBet: config.initialBet,
+            maxMartin: config.maxMartin,
+            customSteps: [...(config.customSteps || [])],
+          }
+        : {}),
+    };
     patchCases([...cases, next]);
     setOpenId(next.id);
   };
@@ -111,6 +133,7 @@ export default function PatternCasesEditor({
         {cases.map((c, idx) => {
           const open = openId === c.id;
           const games = patternTotalGames(c.patternSegments);
+          const amt = caseAmountPlan(c, config);
           return (
             <div
               key={c.id}
@@ -149,6 +172,9 @@ export default function PatternCasesEditor({
                   <p className="text-[10px] text-zinc-500 truncate">
                     {formatPattern(c.patternSegments)} → {patternSideLabel(c.patternBetSide)}
                     {games > 0 ? ` · ${games}게임` : ''}
+                    {perCaseAmount
+                      ? ` · ${amt.amountMode === 'custom' ? '단계별' : '마틴'} ${amt.initialBet.toLocaleString()}원`
+                      : ''}
                   </p>
                 </button>
                 <button
@@ -158,7 +184,6 @@ export default function PatternCasesEditor({
                     setOpenId(open ? null : c.id);
                   }}
                   className="p-1.5 text-zinc-500 hover:text-zinc-300"
-                  aria-label={open ? '접기' : '펼치기'}
                 >
                   {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                 </button>
@@ -167,7 +192,6 @@ export default function PatternCasesEditor({
                   disabled={cases.length <= 1}
                   onClick={() => removeCase(c.id)}
                   className="p-1.5 text-zinc-600 hover:text-rose-400 disabled:opacity-30"
-                  aria-label="경우 삭제"
                 >
                   <Trash2 size={15} />
                 </button>
@@ -183,7 +207,6 @@ export default function PatternCasesEditor({
                       maxLength={24}
                       onChange={(e) => updateCase(c.id, { label: e.target.value })}
                       className="mt-1 w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-2 text-sm text-zinc-100 outline-none focus:border-amber-500/50"
-                      placeholder={`경우${idx + 1}`}
                     />
                   </div>
 
@@ -234,6 +257,24 @@ export default function PatternCasesEditor({
                       ))}
                     </div>
                   </div>
+
+                  {perCaseAmount && (
+                    <div className="rounded-xl border border-sky-500/25 bg-sky-500/5 p-2.5">
+                      <p className="text-[11px] font-bold text-sky-200 mb-2">이 경우 금액 설정</p>
+                      <AmountPlanEditor
+                        compact
+                        value={amt}
+                        onChange={(next) =>
+                          updateCase(c.id, {
+                            amountMode: next.amountMode,
+                            initialBet: next.initialBet,
+                            maxMartin: next.maxMartin,
+                            customSteps: next.customSteps,
+                          })
+                        }
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -297,9 +338,7 @@ export default function PatternCasesEditor({
               })
             )}
             {tables.length > 0 && selectedIds.size === 0 && (
-              <p className="text-[10px] text-rose-300/90 mt-1">
-                테이블을 1개 이상 선택해 주세요.
-              </p>
+              <p className="text-[10px] text-rose-300/90 mt-1">테이블을 1개 이상 선택해 주세요.</p>
             )}
           </div>
         )}
