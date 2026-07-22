@@ -631,6 +631,14 @@ export default function useSession() {
       typeof input.baselineLatestId === 'number' ? input.baselineLatestId : null;
     const useLiveSettle = waitForLiveResult || baselineLatestId !== null;
 
+    // 오토베팅은 반드시 라이브 결과로만 정산 — 랜덤 시뮬레이션 금지
+    if (resolvedSource === 'auto' && !useLiveSettle) {
+      return {
+        ok: false,
+        error: '오토베팅은 라이브 테이블에서만 가능합니다.',
+      };
+    }
+
     const defaultRule =
       resolvedSource === 'auto' ? '오토베팅' : '직접 베팅';
     const pending: PendingBet = {

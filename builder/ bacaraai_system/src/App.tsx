@@ -184,7 +184,10 @@ export default function App() {
 
     const strategy = session.config.strategy || 'ai';
     const watchCount = Math.max(1, Math.min(8, session.config.maxTables || 8));
-    const watchTables = tables.slice(0, watchCount);
+    // 라이브 모드에서는 실제 연동 테이블만 감시 — MOCK 테이블은 랜덤 정산(시뮬레이션)되므로 제외
+    const isLiveFeedTable = (t: TableData) =>
+      t.live != null || t.id === 't1' || t.gameCode === 'MD2729';
+    const watchTables = tables.filter(isLiveFeedTable).slice(0, watchCount);
 
     type Candidate = {
       table: TableData;
@@ -286,7 +289,12 @@ export default function App() {
     const target = candidate.table;
     autoBetSignalRef.current = candidate.signal;
     const waitForLive =
-      target.id === 't1' || target.gameCode === 'MD2729' || target.live != null;
+      target.live != null || target.id === 't1' || target.gameCode === 'MD2729';
+    // 라이브 결과가 없는 테이블에는 오토베팅하지 않음 (시뮬레이션 방지)
+    if (!waitForLive) {
+      autoBetSignalRef.current = null;
+      return;
+    }
     void session
       .placeBet({
         tableId: target.id,
@@ -294,9 +302,9 @@ export default function App() {
         side: candidate.side,
         amount,
         source: 'auto',
-        waitForLiveResult: waitForLive,
-        baselineLatestId: waitForLive ? target.live?.latestId ?? 0 : null,
-        baselineResultCount: waitForLive ? target.stats.recentResults.length : undefined,
+        waitForLiveResult: true,
+        baselineLatestId: target.live?.latestId ?? 0,
+        baselineResultCount: target.stats.recentResults.length,
         availableBalance: availableBankroll,
         historyMeta: {
           gameCode: target.gameCode,
