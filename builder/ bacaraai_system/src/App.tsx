@@ -60,6 +60,7 @@ export default function App() {
   const [stopSessionType, setStopSessionType] = useState<'wincut' | 'losscut' | 'error' | null>(null);
   const [stopSessionPnl, setStopSessionPnl] = useState(0);
   const [insightSourceFilter, setInsightSourceFilter] = useState<'all' | 'manual' | 'auto'>('all');
+  const [autoResumeTick, setAutoResumeTick] = useState(0);
   const sessionStartedAtRef = useRef<number | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [zoomedTableId, setZoomedTableId] = useState<string | null>(null);
@@ -151,13 +152,26 @@ export default function App() {
     // 직접 베팅 대기 중이어도 오토는 따로 진행 가능
     if (session.pendingBets.some((b) => b.source === 'auto')) return;
 
+    // 오토 승리 축하 연출 중에는 다음 베팅을 잠시 보류
+    const lastAuto = session.lastAutoResult;
+    if (
+      lastAuto?.won === true &&
+      lastAuto.amount > 0
+    ) {
+      const waitMs = 4800 - (Date.now() - lastAuto.at);
+      if (waitMs > 0) {
+        const t = window.setTimeout(() => setAutoResumeTick((n) => n + 1), waitMs + 30);
+        return () => window.clearTimeout(t);
+      }
+    }
+
     // 패턴 런: 해당 런의 승이 확정되면 다시 패턴 대기
-    const last = session.lastBetResult;
+    const last = session.lastAutoResult || session.lastBetResult;
     if (last && last.id !== handledBetResultIdRef.current) {
       handledBetResultIdRef.current = last.id;
       if (
         last.won === true &&
-        last.appliedRule === '오토베팅' &&
+        last.source === 'auto' &&
         patternRunRef.current?.tableId === last.tableId
       ) {
         patternRunRef.current = null;
@@ -305,6 +319,8 @@ export default function App() {
     session.suggestedBet,
     session.martinStage,
     session.lastBetResult,
+    session.lastAutoResult,
+    autoResumeTick,
     session.config,
     session.placeBet,
     tables,
@@ -670,8 +686,21 @@ export default function App() {
         }}
       />
       <WinCelebration
-        result={session.lastBetResult}
-        onDismiss={session.clearLastBetResult}
+        result={(() => {
+          const wins = [session.lastAutoResult, session.lastManualResult, session.lastBetResult].filter(
+            (r): r is NonNullable<typeof r> => Boolean(r && r.won === true && r.amount > 0),
+          );
+          if (!wins.length) return null;
+          return wins.reduce((a, b) => (a.at >= b.at ? a : b));
+        })()}
+        onDismiss={() => {
+          const latest = [session.lastAutoResult, session.lastManualResult].find(
+            (r) => r && r.won === true && r.amount > 0,
+          );
+          if (latest?.source === 'auto') session.clearLastBetResult('auto');
+          else if (latest?.source === 'manual') session.clearLastBetResult('manual');
+          else session.clearLastBetResult();
+        }}
       />
       
       <OnboardingModal 

@@ -36,16 +36,16 @@ function pickImage(seed: number) {
   return WIN_IMAGES[Math.abs(seed) % WIN_IMAGES.length];
 }
 
-/** 승리 시 랜덤 강렬 글램 이미지 + 축하 연출 */
+/** 승리 시 랜덤 강렬 글램 이미지 + 축하 연출 (직접·오토 공통) */
 export default function WinCelebration({ result, onDismiss }: Props) {
   const [held, setHeld] = useState<LastBetResult | null>(null);
-  const shownIdsRef = useRef<Set<string>>(new Set());
   const [imgReady, setImgReady] = useState(false);
+  const playingIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!result || result.won !== true || result.amount <= 0) return;
-    if (shownIdsRef.current.has(result.id)) return;
-    shownIdsRef.current.add(result.id);
+    if (playingIdRef.current === result.id) return;
+    playingIdRef.current = result.id;
     setHeld(result);
     setImgReady(false);
     playSfx('win');
@@ -53,6 +53,7 @@ export default function WinCelebration({ result, onDismiss }: Props) {
 
   const open = Boolean(held);
   const display = held;
+  const isAuto = display?.source === 'auto' || /오토/.test(display?.appliedRule || '');
 
   const line = useMemo(() => {
     if (!display) return WIN_LINES[0];
@@ -68,6 +69,7 @@ export default function WinCelebration({ result, onDismiss }: Props) {
     if (!open || !display) return;
     const autoClose = window.setTimeout(() => {
       setHeld(null);
+      playingIdRef.current = null;
       onDismiss();
     }, 5200);
     return () => window.clearTimeout(autoClose);
@@ -75,6 +77,7 @@ export default function WinCelebration({ result, onDismiss }: Props) {
 
   const dismiss = () => {
     setHeld(null);
+    playingIdRef.current = null;
     onDismiss();
   };
 
@@ -166,10 +169,10 @@ export default function WinCelebration({ result, onDismiss }: Props) {
                 transition={{ delay: 0.15 }}
               >
                 <span className="text-[10px] font-black tracking-[0.28em] text-rose-100 uppercase px-2.5 py-1 rounded-md bg-rose-600/80 border border-rose-300/40 shadow-lg shadow-rose-500/30">
-                  HOT WIN
+                  {isAuto ? 'AUTO WIN' : 'HOT WIN'}
                 </span>
                 <span className="text-[10px] font-bold text-amber-200/90 px-2 py-1 rounded-md bg-black/50 border border-amber-400/30">
-                  ★ LUCKY
+                  {isAuto ? '오토 적중' : '★ LUCKY'}
                 </span>
               </motion.div>
 
@@ -196,6 +199,7 @@ export default function WinCelebration({ result, onDismiss }: Props) {
 
             <div className="px-4 pt-3 pb-4 text-center bg-zinc-950">
               <p className="text-[12px] text-zinc-400">
+                {isAuto ? '오토 · ' : '직접 · '}
                 {display.tableName} ·{' '}
                 {display.side === 'BANKER'
                   ? 'Banker'

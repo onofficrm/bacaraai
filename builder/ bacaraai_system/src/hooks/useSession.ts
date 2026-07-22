@@ -545,12 +545,7 @@ export default function useSession() {
       else if (nextPnl <= curr.config.lossCut) onCutRef.current?.('losscut', nextPnl);
     }, 0);
 
-    const preferResult =
-      result.won === true
-        ? result
-        : curr.lastBetResult?.won === true
-          ? curr.lastBetResult
-          : result;
+    const preferResult = result; // 최신 정산을 그대로 반영 (승/패 모두)
 
     return {
       ...curr,
