@@ -48,7 +48,7 @@ export default function TableZoomModal({ table, onClose }: TableZoomModalProps) 
                 </h3>
                 {/* Expanded Roadmap using the same component for now, but in a larger container */}
                 <div className="transform scale-110 origin-top-left mb-4 w-[90%]">
-                  <Roadmap data={table.roadmap} />
+                  <Roadmap data={table.roadmap} size="lg" />
                 </div>
                 
                 <div className="grid grid-cols-4 gap-4 mt-6 p-4 bg-zinc-950 rounded-lg border border-zinc-800/50">

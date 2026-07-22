@@ -27,7 +27,7 @@ export default function TableCard({
   const isBetting = table.status === 'betting' || table.status === 'rule_triggered' || table.status === 'waiting_user';
   const isPassive = ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion);
   
-  let cardClass = "bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors group rounded-xl p-4 flex flex-col gap-3 relative overflow-hidden cursor-pointer ";
+  let cardClass = "bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-colors group rounded-xl p-3 sm:p-4 flex flex-col gap-3 relative cursor-pointer ";
   if (isSelected) {
     cardClass += " ring-2 ring-amber-500 border-amber-500/60 shadow-lg shadow-amber-900/20 ";
   }
@@ -40,7 +40,7 @@ export default function TableCard({
   return (
     <div className={cardClass} onClick={() => onSelect?.(table.id)}>
       {table.status === 'risk_blocked' && (
-        <div className="absolute inset-0 bg-red-950/20 backdrop-blur-[1px] z-10 flex items-center justify-center">
+        <div className="absolute inset-0 rounded-xl overflow-hidden bg-red-950/20 backdrop-blur-[1px] z-10 flex items-center justify-center">
           <div className="bg-zinc-900 border border-red-900 text-red-400 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 shadow-lg">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
             위험 한도 차단됨
