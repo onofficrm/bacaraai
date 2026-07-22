@@ -28,6 +28,7 @@ import TableToolbar, { SortOption, FilterOption } from './components/TableToolba
 import useBeginnerMode from './hooks/useBeginnerMode';
 import useSession from './hooks/useSession';
 import useLiveTable from './hooks/useLiveTable';
+import { getBettingRemainingSecForTable } from './hooks/useBettingWindow';
 import useWallet from './hooks/useWallet';
 import { installAudioUnlock, playSfx } from './audio/sfxEngine';
 import { matchesPattern, normalizePatternSegments, patternSignalKey } from './utils/patternMatch';
@@ -152,6 +153,9 @@ export default function App() {
     // 직접 베팅 대기 중이어도 오토는 따로 진행 가능
     if (session.pendingBets.some((b) => b.source === 'auto')) return;
 
+    // 베팅 가능 시간(결과 후 30초)이 끝난 테이블은 오토도 스킵
+    // (후보 선택 시 다시 검사)
+
     // 오토 승리 축하 연출 중에는 다음 베팅을 잠시 보류
     const lastAuto = session.lastAutoResult;
     if (
@@ -215,7 +219,12 @@ export default function App() {
       if (patternRunRef.current) {
         const run = patternRunRef.current;
         const t = watchTables.find((x) => x.id === run.tableId);
-        if (t && t.status !== 'risk_blocked' && !isCancelledRound(t)) {
+        if (
+          t &&
+          t.status !== 'risk_blocked' &&
+          !isCancelledRound(t) &&
+          getBettingRemainingSecForTable(t) > 0
+        ) {
           const signal = `${t.id}:${roundKeyOf(t)}:run:${run.side}:${session.martinStage}`;
           if (autoBetSignalRef.current !== signal) {
             candidate = {
@@ -235,6 +244,7 @@ export default function App() {
         for (const t of watchTables) {
           if (t.status === 'risk_blocked') continue;
           if (isCancelledRound(t)) continue;
+          if (getBettingRemainingSecForTable(t) <= 0) continue;
           if (!matchesPattern(t.stats.recentResults || [], pattern)) continue;
           const signal = `${t.id}:${roundKeyOf(t)}:pattern:${patternSignalKey(pattern)}:${betSide}`;
           if (autoBetSignalRef.current === signal) continue;
@@ -251,6 +261,7 @@ export default function App() {
       for (const t of watchTables) {
         if (t.status === 'risk_blocked') continue;
         if (isCancelledRound(t)) continue;
+        if (getBettingRemainingSecForTable(t) <= 0) continue;
         const opinion = t.ai.finalOpinion;
         if (opinion !== 'PLAYER' && opinion !== 'BANKER') continue;
         const signal = `${t.id}:${roundKeyOf(t)}:ai:${opinion}`;

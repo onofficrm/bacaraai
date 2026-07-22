@@ -8,6 +8,8 @@ import Roadmap from './Roadmap';
 import EmptyRightPanel from './EmptyRightPanel';
 import { playSfx } from '../audio/sfxEngine';
 import useIsDesktopXl from '../hooks/useIsDesktopXl';
+import useBettingWindow, { getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
+import BettingCountdown from './BettingCountdown';
 import {
   DEFAULT_SESSION_CONFIG,
   formatMoney,
@@ -121,6 +123,7 @@ export default function RightPanel({
   const [submitting, setSubmitting] = useState(false);
   const [highConfirmOpen, setHighConfirmOpen] = useState(false);
   const isDesktop = useIsDesktopXl();
+  const bettingWindow = useBettingWindow(table);
   const submittingRef = React.useRef(false);
 
   const recommendedSide: BetSide | null =
@@ -167,21 +170,6 @@ export default function RightPanel({
     if (resultForSfx.won === false) playSfx('loss');
     else playSfx('tick');
   }, [resultForSfx?.id]);
-
-  const handleCancelBet = async (betId?: string) => {
-    if (cancelling) return;
-    playSfx('ui');
-    setCancelling(true);
-    setBetError(null);
-    try {
-      const result = await onCancelBet?.(betId);
-      if (result && !result.ok) {
-        setBetError(result.error || '베팅 취소에 실패했습니다.');
-      }
-    } finally {
-      setCancelling(false);
-    }
-  };
 
   const isPassive = table
     ? ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion)
@@ -268,6 +256,15 @@ export default function RightPanel({
   const placeManualBet = async () => {
     if (!table || !onPlaceBet) return;
     if (submittingRef.current || isManualSettling) return;
+    if (!bettingWindow.canPlaceBet) {
+      setBetError(
+        bettingWindow.hasResult
+          ? '베팅 가능 시간이 끝났습니다. 다음 결과를 기다리세요.'
+          : '결과가 표시된 뒤 30초 안에만 베팅할 수 있습니다.',
+      );
+      playSfx('error');
+      return;
+    }
     submittingRef.current = true;
     setSubmitting(true);
     setBetError(null);
@@ -312,6 +309,15 @@ export default function RightPanel({
   const handleConfirmBet = async () => {
     if (!table || !onPlaceBet) return;
     if (submittingRef.current || submitting || isManualSettling) return;
+    if (!bettingWindow.canPlaceBet) {
+      setBetError(
+        bettingWindow.hasResult
+          ? '베팅 가능 시간이 끝났습니다. 다음 결과를 기다리세요.'
+          : '결과가 표시된 뒤 30초 안에만 베팅할 수 있습니다.',
+      );
+      playSfx('error');
+      return;
+    }
     if (betAmount <= 0) {
       setBetError('베팅 금액을 입력해 주세요.');
       playSfx('error');
@@ -328,6 +334,37 @@ export default function RightPanel({
       return;
     }
     await placeManualBet();
+  };
+
+  const canCancelPendingBet = (bet: PendingBet | null | undefined) => {
+    if (!bet) return bettingWindow.canCancelBet;
+    if (table && bet.tableId === table.id) return bettingWindow.canCancelBet;
+    const t = tables.find((x) => x.id === bet.tableId);
+    if (!t) return false;
+    return getBettingRemainingSecForTable(t) > 0;
+  };
+
+  const handleCancelBet = async (betId?: string) => {
+    if (cancelling) return;
+    const targetBet = betId
+      ? pendingBets.find((b) => b.id === betId) ?? null
+      : manualPending ?? autoPending;
+    if (!canCancelPendingBet(targetBet)) {
+      setBetError('베팅 가능 시간이 끝나 취소할 수 없습니다. 다음 결과를 기다립니다.');
+      playSfx('error');
+      return;
+    }
+    playSfx('ui');
+    setCancelling(true);
+    setBetError(null);
+    try {
+      const result = await onCancelBet?.(betId);
+      if (result && !result.ok) {
+        setBetError(result.error || '베팅 취소에 실패했습니다.');
+      }
+    } finally {
+      setCancelling(false);
+    }
   };
 
   const sideShortLabel = (side: BetSide) => {
@@ -542,11 +579,16 @@ export default function RightPanel({
                     </div>
                     <button
                       type="button"
-                      disabled={cancelling}
+                      disabled={cancelling || !canCancelPendingBet(bet)}
                       onClick={() => void handleCancelBet(bet.id)}
                       className="shrink-0 min-h-[44px] px-3 text-[12px] font-bold text-rose-300 hover:text-rose-200 disabled:opacity-50 touch-manipulation"
+                      title={
+                        canCancelPendingBet(bet)
+                          ? '베팅 취소'
+                          : '시간 마감 · 취소 불가'
+                      }
                     >
-                      취소
+                      {canCancelPendingBet(bet) ? '취소' : '취소 불가'}
                     </button>
                   </li>
                 ))}
@@ -603,7 +645,9 @@ export default function RightPanel({
                       <button
                         type="button"
                         onClick={applyRecommendedBet}
-                        disabled={isManualSettling || submitting}
+                        disabled={
+                          isManualSettling || submitting || !bettingWindow.canPlaceBet
+                        }
                         className="shrink-0 min-h-[44px] px-3 py-2 rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-300 text-xs font-bold hover:bg-blue-600/30 disabled:opacity-40 touch-manipulation"
                       >
                         추천대로
@@ -632,18 +676,32 @@ export default function RightPanel({
                     {sideShortLabel(manualPending.side)} · {formatMoney(manualPending.amount)}
                   </p>
                   <p className="text-[11px] text-zinc-500 mt-1 mb-3">
-                    다음 게임 결과를 기다리고 있습니다.
+                    {bettingWindow.canCancelBet
+                      ? '다음 게임 결과를 기다리는 중 · 남은 시간 안에만 취소 가능'
+                      : '베팅 마감 · 취소할 수 없습니다. 다음 결과를 기다립니다.'}
                   </p>
                   <button
                     type="button"
-                    disabled={cancelling}
+                    disabled={cancelling || !bettingWindow.canCancelBet}
                     onClick={() => void handleCancelBet(manualPending.id)}
-                    className="w-full min-h-[48px] py-3 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors disabled:opacity-50 touch-manipulation"
+                    className="w-full min-h-[48px] py-3 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
                   >
-                    {cancelling ? '취소 중…' : '직접 베팅 취소 (금액 반환)'}
+                    {cancelling
+                      ? '취소 중…'
+                      : bettingWindow.canCancelBet
+                        ? '직접 베팅 취소 (금액 반환)'
+                        : '취소 불가 (시간 마감)'}
                   </button>
                 </div>
               )}
+
+              <BettingCountdown
+                remainingSec={bettingWindow.remainingSec}
+                progress={bettingWindow.progress}
+                hasResult={bettingWindow.hasResult}
+                canPlaceBet={bettingWindow.canPlaceBet}
+                pending={isManualSettling}
+              />
 
               {/* 직접 / 오토 결과 각각 표시 */}
               {!isManualSettling && (
@@ -694,7 +752,7 @@ export default function RightPanel({
                             <button
                               key={opt.id}
                               type="button"
-                              disabled={isManualSettling}
+                              disabled={isManualSettling || !bettingWindow.canPlaceBet}
                               onClick={() => {
                                 playSfx('ui');
                                 setSelectedSide(opt.id);
@@ -754,7 +812,7 @@ export default function RightPanel({
                             key={chip.label}
                             type="button"
                             onClick={() => addChip(chip)}
-                            disabled={isManualSettling}
+                            disabled={isManualSettling || !bettingWindow.canPlaceBet}
                             className={`aspect-square min-h-[48px] rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-95 disabled:opacity-40 ${chip.color}`}
                           >
                             <span className="text-[11px] sm:text-xs font-bold leading-none">{chip.label}</span>
@@ -769,7 +827,7 @@ export default function RightPanel({
                               key={chip.label}
                               type="button"
                               onClick={() => addChip(chip)}
-                              disabled={isManualSettling}
+                              disabled={isManualSettling || !bettingWindow.canPlaceBet}
                               className={`min-h-[48px] rounded-xl border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-95 disabled:opacity-40 ${chip.color}`}
                             >
                               <span className="text-xs font-bold">{chip.label}</span>
@@ -827,11 +885,15 @@ export default function RightPanel({
                       {isManualSettling && manualPending ? (
                         <button
                           type="button"
-                          disabled={cancelling}
+                          disabled={cancelling || !bettingWindow.canCancelBet}
                           onClick={() => void handleCancelBet(manualPending.id)}
-                          className="col-span-2 py-3 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors disabled:opacity-50"
+                          className="col-span-2 py-3 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          {cancelling ? '취소 중…' : '직접 베팅 취소 (금액 반환)'}
+                          {cancelling
+                            ? '취소 중…'
+                            : bettingWindow.canCancelBet
+                              ? '직접 베팅 취소 (금액 반환)'
+                              : '취소 불가 (시간 마감)'}
                         </button>
                       ) : (
                         <>
@@ -850,9 +912,18 @@ export default function RightPanel({
                             type="button"
                             onClick={() => void handleConfirmBet()}
                             className="py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
-                            disabled={betAmount <= 0 || submitting || isManualSettling}
+                            disabled={
+                              betAmount <= 0 ||
+                              submitting ||
+                              isManualSettling ||
+                              !bettingWindow.canPlaceBet
+                            }
                           >
-                            {submitting ? '접수 중…' : '베팅 확정'}
+                            {submitting
+                              ? '접수 중…'
+                              : !bettingWindow.canPlaceBet
+                                ? '시간 마감'
+                                : '베팅 확정'}
                           </button>
                         </>
                       )}
@@ -1058,6 +1129,16 @@ export default function RightPanel({
                       </p>
                     </div>
 
+                    {table && (
+                      <BettingCountdown
+                        remainingSec={bettingWindow.remainingSec}
+                        progress={bettingWindow.progress}
+                        hasResult={bettingWindow.hasResult}
+                        canPlaceBet={bettingWindow.canPlaceBet}
+                        pending={isAutoSettling}
+                      />
+                    )}
+
                     <div className="rounded-lg bg-zinc-950 border border-zinc-800 divide-y divide-zinc-800 text-[12px]">
                       <AutoRow label="모드" value={modeLabel(sessionMode)} />
                       <AutoRow
@@ -1141,11 +1222,15 @@ export default function RightPanel({
                         )}
                         <button
                           type="button"
-                          disabled={cancelling}
+                          disabled={cancelling || !canCancelPendingBet(autoPending)}
                           onClick={() => void handleCancelBet(autoPending.id)}
                           className="w-full py-2 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-xs font-bold hover:bg-rose-500/25 disabled:opacity-50"
                         >
-                          {cancelling ? '취소 중…' : '오토 베팅 취소 (금액 반환)'}
+                          {cancelling
+                            ? '취소 중…'
+                            : canCancelPendingBet(autoPending)
+                              ? '오토 베팅 취소 (금액 반환)'
+                              : '취소 불가 (시간 마감)'}
                         </button>
                       </div>
                     )}
@@ -1307,11 +1392,15 @@ export default function RightPanel({
             {isManualSettling && manualPending ? (
               <button
                 type="button"
-                disabled={cancelling}
+                disabled={cancelling || !bettingWindow.canCancelBet}
                 onClick={() => void handleCancelBet(manualPending.id)}
-                className="w-full min-h-[52px] py-3.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold disabled:opacity-50 touch-manipulation"
+                className="w-full min-h-[52px] py-3.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
               >
-                {cancelling ? '취소 중…' : '베팅 취소 · 금액 반환'}
+                {cancelling
+                  ? '취소 중…'
+                  : bettingWindow.canCancelBet
+                    ? '베팅 취소 · 금액 반환'
+                    : '취소 불가 (시간 마감)'}
               </button>
             ) : (
               <div className="flex flex-col gap-2">
@@ -1319,8 +1408,12 @@ export default function RightPanel({
                   <span className={`font-bold ${sideColor(selectedSide)}`}>{sideShortLabel(selectedSide)}</span>
                   <span className="text-zinc-600 mx-1">·</span>
                   <span className="font-mono font-bold text-zinc-100">{betAmount.toLocaleString()}원</span>
-                  {waitForLiveResult && (
-                    <span className="text-sky-400/80 ml-1.5">다음 결과 정산</span>
+                  {bettingWindow.canPlaceBet ? (
+                    <span className="text-sky-400/90 ml-1.5 font-mono font-bold">
+                      {bettingWindow.remainingSec}초
+                    </span>
+                  ) : (
+                    <span className="text-zinc-500 ml-1.5">마감</span>
                   )}
                 </p>
                 <div className="grid grid-cols-[1fr_1.6fr] gap-2">
@@ -1338,10 +1431,21 @@ export default function RightPanel({
                   <button
                     type="button"
                     onClick={() => void handleConfirmBet()}
-                    disabled={betAmount <= 0 || isManualSettling || submitting}
+                    disabled={
+                      betAmount <= 0 ||
+                      isManualSettling ||
+                      submitting ||
+                      !bettingWindow.canPlaceBet
+                    }
                     className="min-h-[52px] py-3.5 bg-blue-600 active:bg-blue-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-600/25 disabled:opacity-45 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none touch-manipulation"
                   >
-                    {submitting ? '접수 중…' : needsHighConfirm ? '확인 후 확정' : '베팅 확정'}
+                    {submitting
+                      ? '접수 중…'
+                      : !bettingWindow.canPlaceBet
+                        ? '시간 마감'
+                        : needsHighConfirm
+                          ? '확인 후 확정'
+                          : '베팅 확정'}
                   </button>
                 </div>
               </div>
