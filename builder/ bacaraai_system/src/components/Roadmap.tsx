@@ -1,4 +1,10 @@
-import { useLayoutEffect, useRef } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent,
+} from 'react';
 import { GameResult } from '../types';
 
 interface RoadmapProps {
@@ -14,6 +20,7 @@ interface BigRoadCell {
 }
 
 const TRAILING_EMPTY_COLS = 3;
+const DRAG_THRESHOLD_PX = 4;
 
 function processBigRoad(data: GameResult[][]): BigRoadCell[][] {
   const flat: { res: GameResult; isNewest: boolean }[] = [];
@@ -69,6 +76,12 @@ function processBigRoad(data: GameResult[][]): BigRoadCell[][] {
   return columns;
 }
 
+function roadmapSignature(data: GameResult[][]): string {
+  if (!data.length) return '0';
+  const lastCol = data[data.length - 1] || [];
+  return `${data.length}:${lastCol.join('')}:${lastCol.length}`;
+}
+
 const SIZE = {
   sm: { cell: 22, stroke: 2.25, minCols: 12 },
   md: { cell: 26, stroke: 2.5, minCols: 12 },
@@ -77,9 +90,19 @@ const SIZE = {
 
 export default function Roadmap({ data, size = 'md' }: RoadmapProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startScroll: number;
+    moved: boolean;
+  } | null>(null);
+  const didDragRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
+
   const processedColumns = processBigRoad(data);
   const { cell, stroke, minCols } = SIZE[size];
   const rows = 6;
+  const dataSignature = roadmapSignature(data);
 
   const trailingEmpty = Array.from({ length: TRAILING_EMPTY_COLS }, () => [] as BigRoadCell[]);
   const withTrailing = [...processedColumns, ...trailingEmpty];
@@ -92,6 +115,7 @@ export default function Roadmap({ data, size = 'md' }: RoadmapProps) {
 
   const gridWidth = totalCols * cell + (totalCols - 1); // 1px gaps
 
+  // 새 결과가 들어올 때만 맨 오른쪽으로 (폴링으로 같은 데이터면 유지)
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -99,15 +123,74 @@ export default function Roadmap({ data, size = 'md' }: RoadmapProps) {
       el.scrollLeft = el.scrollWidth;
     };
     scrollToEnd();
-    // 레이아웃/폰트 반영 후 한 번 더
     const raf = window.requestAnimationFrame(scrollToEnd);
     return () => window.cancelAnimationFrame(raf);
-  }, [data, size, totalCols, processedColumns.length]);
+  }, [dataSignature, size]);
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    didDragRef.current = false;
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startScroll: el.scrollLeft,
+      moved: false,
+    };
+    el.setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const el = scrollRef.current;
+    if (!drag || !el || drag.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - drag.startX;
+    if (!drag.moved && Math.abs(dx) >= DRAG_THRESHOLD_PX) {
+      drag.moved = true;
+      didDragRef.current = true;
+    }
+    if (!drag.moved) return;
+
+    el.scrollLeft = drag.startScroll - dx;
+    e.preventDefault();
+  };
+
+  const endDrag = (e: PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const el = scrollRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    if (el?.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+    dragRef.current = null;
+    setDragging(false);
+  };
+
+  const onClickCapture = (e: MouseEvent<HTMLDivElement>) => {
+    // 드래그로 스크롤한 경우 상위 카드 선택 클릭 막기
+    if (didDragRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      didDragRef.current = false;
+    }
+  };
 
   return (
     <div
       ref={scrollRef}
-      className="bg-white rounded-lg border border-zinc-200 overflow-x-auto custom-scrollbar touch-pan-x"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onClickCapture={onClickCapture}
+      className={`bg-white rounded-lg border border-zinc-200 overflow-x-auto custom-scrollbar touch-pan-x select-none ${
+        dragging ? 'cursor-grabbing' : 'cursor-grab'
+      }`}
+      style={{ touchAction: 'pan-x' }}
+      title="드래그하여 좌우로 이동"
     >
       {/* 좌우 여백으로 원이 테두리에 잘리지 않게 */}
       <div className="p-2 sm:p-2.5 min-w-0">
@@ -130,7 +213,7 @@ export default function Roadmap({ data, size = 'md' }: RoadmapProps) {
                 return (
                   <div
                     key={`${colIdx}-${rowIdx}`}
-                    className="bg-white flex items-center justify-center relative overflow-visible"
+                    className="bg-white flex items-center justify-center relative overflow-visible pointer-events-none"
                     style={{ width: '100%', height: cell }}
                   >
                     {cellData && (
