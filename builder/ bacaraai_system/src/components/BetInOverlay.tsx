@@ -1,23 +1,69 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { amountToStack, CHIP_TONES } from './ChipBetStage';
+import { CHIP_TONES, type StackChip } from './ChipBetStage';
 import { playSfx } from '../audio/sfxEngine';
 import { useFxIntensity } from '../hooks/useFxIntensity';
 import type { TableBetBanner } from '../utils/autoTableEvent';
 
-const DROP_MS = 95;
-const MAX_CHIPS = 5;
+const DROP_MS = 58;
+const MAX_VISUAL_CHIPS = 14;
+const DENOMS = [1_000_000, 500_000, 100_000, 50_000, 10_000, 5_000, 1_000] as const;
+
+/** 금액 규모에 따라 쌓일 칩 장수 (1백만 → 12장) */
+function betInChipCount(amount: number): number {
+  const n = Math.max(0, Math.floor(amount));
+  if (n >= 5_000_000) return MAX_VISUAL_CHIPS;
+  if (n >= 2_000_000) return 13;
+  if (n >= 1_000_000) return 12;
+  if (n >= 500_000) return 10;
+  if (n >= 200_000) return 8;
+  if (n >= 100_000) return 7;
+  if (n >= 50_000) return 6;
+  if (n >= 20_000) return 5;
+  if (n >= 10_000) return 4;
+  if (n >= 5_000) return 3;
+  return 2;
+}
+
+/**
+ * 베팅 오버레이용 시각 스택.
+ * 큰 단위 1장으로 끝내지 않고, 금액 규모만큼 여러 장을 높이 쌓음.
+ */
+function amountToBetInStack(amount: number): StackChip[] {
+  const n = Math.max(0, Math.floor(amount));
+  const count = betInChipCount(n);
+  if (n <= 0) {
+    return Array.from({ length: 2 }, (_, i) => ({ id: `f${i}`, value: 10_000 }));
+  }
+
+  const ideal = Math.max(1_000, Math.round(n / count));
+  const unit = [...DENOMS].sort((a, b) => Math.abs(a - ideal) - Math.abs(b - ideal))[0];
+
+  // 근처 단위를 섞어 색이 다른 칩이 쌓이게
+  const palette = DENOMS.filter(
+    (d) => d <= Math.max(unit * 2, unit) && d >= Math.min(unit, 10_000),
+  );
+  const use = palette.length > 0 ? palette : [unit];
+
+  return Array.from({ length: count }, (_, i) => {
+    // 아래쪽(먼저 쌓임)일수록 큰 칩 비중 ↑
+    const value = use[Math.min(i % use.length, use.length - 1)];
+    return { id: `bet_${i}_${value}`, value };
+  });
+}
 
 function MiniChip({
   value,
-  size = 22,
-  offsetY = 0,
+  size,
+  offsetY,
+  wobbleX,
   animate,
   delay,
 }: {
   value: number;
-  size?: number;
-  offsetY?: number;
+  size: number;
+  offsetY: number;
+  wobbleX: number;
   animate: boolean;
   delay: number;
 }) {
@@ -30,17 +76,18 @@ function MiniChip({
       style={{
         width: size,
         height: size,
-        marginLeft: -size / 2,
+        marginLeft: -size / 2 + wobbleX,
         bottom: offsetY,
         background: `radial-gradient(circle at 30% 28%, rgba(255,255,255,0.45), transparent 42%), ${tone.fill}`,
         borderColor: tone.rim,
-        boxShadow: `0 ${2 + offsetY * 0.05}px 4px rgba(0,0,0,0.35)`,
+        boxShadow: `0 ${2 + offsetY * 0.04}px 5px rgba(0,0,0,0.4)`,
+        zIndex: Math.round(offsetY),
       }}
-      initial={animate ? { y: -42, opacity: 0, scale: 0.55, rotate: -12 } : false}
-      animate={{ y: 0, opacity: 1, scale: 1, rotate: 0 }}
+      initial={animate ? { y: -56, opacity: 0, scale: 0.45, rotate: -18 } : false}
+      animate={{ y: 0, opacity: 1, scale: 1, rotate: wobbleX * 0.8 }}
       transition={
         animate
-          ? { type: 'spring', stiffness: 520, damping: 16, delay }
+          ? { type: 'spring', stiffness: 560, damping: 15, delay }
           : { duration: 0 }
       }
     />
@@ -56,19 +103,24 @@ function ChipStack({
   compact?: boolean;
   animate: boolean;
 }) {
-  const stack = useMemo(() => amountToStack(amount).slice(-MAX_CHIPS), [amount]);
-  const size = compact ? 18 : 22;
-  const step = compact ? 3 : 4;
-  const chips = stack.length > 0 ? stack : [{ id: 'fallback', value: 10000 }];
+  const chips = useMemo(() => amountToBetInStack(amount), [amount]);
+  const size = compact ? 16 : 20;
+  const step = compact ? 2.6 : 3.2;
+  const stackH = size + Math.max(0, chips.length - 1) * step + 4;
 
   return (
-    <div className="relative w-10 h-10 shrink-0" aria-hidden>
+    <div
+      className="relative shrink-0"
+      style={{ width: size + 10, height: Math.max(stackH, size + 8) }}
+      aria-hidden
+    >
       {chips.map((chip, i) => (
         <MiniChip
           key={chip.id}
           value={chip.value}
           size={size}
           offsetY={i * step}
+          wobbleX={(i % 2 === 0 ? -1 : 1) * (i % 3 === 0 ? 1.5 : 0.6)}
           animate={animate}
           delay={i * (DROP_MS / 1000)}
         />
@@ -90,7 +142,6 @@ function useCountUp(target: number, enabled: boolean, durationMs: number, runKey
     let raf = 0;
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / durationMs);
-      // ease-out cubic — 끝에서 숫자가 빠르게 붙잡는 슬롯 느낌
       const eased = 1 - (1 - t) ** 3;
       setValue(Math.round(target * eased));
       if (t < 1) raf = requestAnimationFrame(tick);
@@ -117,43 +168,44 @@ function BetInRow({
 }) {
   const amount = banner.amount ?? 0;
   const isAuto = banner.badge.includes('오토');
-  const stackLen = Math.max(1, Math.min(MAX_CHIPS, amountToStack(amount).length || 1));
-  const durationMs = stackLen * DROP_MS + 120;
+  const chips = useMemo(() => amountToBetInStack(amount), [amount]);
+  const durationMs = chips.length * DROP_MS + 140;
   const displayAmount = useCountUp(amount, animate, durationMs, banner.id);
   const side = banner.side || '';
 
   useEffect(() => {
     if (!animate || !playAudio) return;
     const timers: number[] = [];
-    const stack = amountToStack(amount).slice(-MAX_CHIPS);
-    const chips = stack.length > 0 ? stack : [{ id: 'x', value: 10000 }];
+    const list = chips.length > 0 ? chips : [{ id: 'x', value: 10_000 }];
 
-    chips.forEach((chip, i) => {
+    list.forEach((chip, i) => {
+      // 매 칩 + 가끔 heavy 로 무게감
       timers.push(
         window.setTimeout(() => {
-          playSfx(chip.value >= 1_000_000 ? 'chipHeavy' : 'chip', { throttleMs: 55 });
-        }, 40 + index * 80 + i * DROP_MS),
+          const heavy = chip.value >= 500_000 || i === list.length - 1;
+          playSfx(heavy ? 'chipHeavy' : 'chip', { throttleMs: 40 });
+        }, 30 + index * 60 + i * DROP_MS),
       );
     });
 
     timers.push(
       window.setTimeout(() => {
         playSfx('betConfirm', { throttleMs: 450 });
-      }, 40 + index * 80 + chips.length * DROP_MS + 40),
+      }, 30 + index * 60 + list.length * DROP_MS + 50),
     );
 
     return () => timers.forEach((id) => clearTimeout(id));
-  }, [animate, playAudio, amount, banner.id, index]);
+  }, [animate, playAudio, chips, banner.id, index]);
 
   return (
     <motion.div
-      className="flex items-center gap-2"
+      className="flex items-end gap-2.5"
       initial={animate ? { y: -14, scale: 0.9, opacity: 0, rotate: -8 } : false}
       animate={{ y: 0, scale: 1, opacity: 1, rotate: -6 }}
       transition={{ type: 'spring', stiffness: 340, damping: 18, delay: index * 0.05 }}
     >
       <ChipStack amount={amount} compact={compact} animate={animate} />
-      <div className="flex flex-col items-start gap-0.5">
+      <div className="flex flex-col items-start gap-0.5 pb-0.5">
         <motion.span
           className={`font-black tracking-widest border-2 px-2 py-0.5 rounded-md bg-black/60 shadow-lg ${
             isAuto ? 'text-amber-200 border-amber-400/70' : 'text-sky-100 border-sky-400/70'
@@ -184,7 +236,7 @@ type Props = {
 };
 
 /**
- * 로드맵 위 BET IN — 칩이 한 장씩 떨어지며 금액이 카운트업
+ * 로드맵 위 BET IN — 금액만큼 칩이 높이 쌓이며 카운트업
  */
 export default function BetInOverlay({ banners, compact = false }: Props) {
   const { reduced } = useFxIntensity();
@@ -197,7 +249,6 @@ export default function BetInOverlay({ banners, compact = false }: Props) {
       setAnimate(false);
       return;
     }
-    // 같은 베팅 키면 재진입 시 즉시 표시 (플립 오버레이 후 등)
     if (playedRef.current === runKey) {
       setAnimate(false);
       return;
@@ -219,7 +270,7 @@ export default function BetInOverlay({ banners, compact = false }: Props) {
       >
         <div className="absolute inset-0 bg-zinc-950/25 backdrop-blur-[1px]" />
         <div
-          className={`relative flex ${banners.length > 1 ? 'flex-col gap-1.5' : ''} items-center`}
+          className={`relative flex ${banners.length > 1 ? 'flex-col gap-2' : ''} items-center`}
         >
           {banners.map((banner, idx) => (
             <BetInRow
