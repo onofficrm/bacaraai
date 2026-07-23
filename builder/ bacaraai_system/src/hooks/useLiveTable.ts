@@ -76,6 +76,22 @@ function liveOpinion(results: GameResult[]): 'PLAYER' | 'BANKER' | 'WAIT' {
   return latest === 'P' ? 'PLAYER' : 'BANKER';
 }
 
+/** API가 과거 슈를 섞어 줄 때를 대비해 game_no 감소 지점부터만 사용 */
+function trimToCurrentShoe(rows: LiveResultRow[]): LiveResultRow[] {
+  if (rows.length === 0) return rows;
+  const sorted = [...rows].sort((a, b) => a.id - b.id);
+  let start = 0;
+  let prevNo: number | null = null;
+  for (let i = 0; i < sorted.length; i += 1) {
+    const no = sorted[i].game_no ?? null;
+    if (prevNo !== null && no !== null && no > 0 && prevNo > 0 && no < prevNo) {
+      start = i;
+    }
+    if (no !== null && no > 0) prevNo = no;
+  }
+  return start === 0 ? sorted : sorted.slice(start);
+}
+
 export default function useLiveTable(
   base: TableData,
   tableName = 'MD2729',
@@ -91,7 +107,6 @@ export default function useLiveTable(
     error: null,
   });
   const requestActive = useRef(false);
-  const prevGameNo = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,28 +127,19 @@ export default function useLiveTable(
         }
         if (cancelled) return;
 
-        const nextGameNo = data.game_no ?? null;
-        // game_no 변경 = 새 게임 시작 → 이전 결과는 버리고 새 시퀀스만 사용
-        if (
-          prevGameNo.current !== null &&
-          nextGameNo !== null &&
-          prevGameNo.current !== nextGameNo
-        ) {
-          // intentional reset boundary for UI consumers
-        }
-        prevGameNo.current = nextGameNo;
-
-        const rows = (data.results || []).filter((row) =>
-          ['P', 'B', 'T'].includes(row.result),
+        const rows = trimToCurrentShoe(
+          (data.results || []).filter((row) => ['P', 'B', 'T'].includes(row.result)),
         );
+        const latest = rows.length ? rows[rows.length - 1] : null;
+        const nextGameNo = latest?.game_no ?? data.game_no ?? null;
 
         setState({
           loading: false,
           connected: true,
           rows,
           gameNo: nextGameNo,
-          latestId: data.latest_id ?? null,
-          latestDetectedAt: data.latest_detected_at ?? null,
+          latestId: latest?.id ?? data.latest_id ?? null,
+          latestDetectedAt: latest?.detected_at ?? data.latest_detected_at ?? null,
           error: null,
         });
       } catch (error) {
@@ -160,7 +166,7 @@ export default function useLiveTable(
   return useMemo(() => {
     const results = state.rows.map((row) => row.result);
     const shoeLabel =
-      state.gameNo !== null ? `GAME-${state.gameNo}` : base.stats.shoeNumber;
+      state.gameNo !== null ? `G${state.gameNo}` : base.stats.shoeNumber;
 
     if (!results.length) {
       return {
@@ -229,8 +235,9 @@ export default function useLiveTable(
         currentStreak: currentStreak(results),
         shoeNumber: shoeLabel,
         shoeProgress: Math.min(100, Math.round((results.length / 80) * 100)),
-        currentRound: results.length,
-        recentResults: results.slice(-20),
+        currentRound: state.gameNo ?? results.length,
+        // 현재 슈 전체 — 패턴/통계가 DB와 동일하게 맞도록 slice 하지 않음
+        recentResults: results,
       },
       ai: {
         ...base.ai,
