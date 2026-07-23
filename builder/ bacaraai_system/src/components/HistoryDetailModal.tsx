@@ -1,7 +1,12 @@
 import { getResultColor, getResultLabel } from '../utils/colors';
 import { X, Calendar, Activity, ChevronRight, CheckCircle } from 'lucide-react';
 import { GameHistoryEntry, AiOpinion, GameResult } from '../types';
-import { inferBetSource } from '../utils/betHistory';
+import {
+  betWlLabel,
+  formatHistoryDateTime,
+  inferBetSource,
+  resolveBetWl,
+} from '../utils/betHistory';
 
 interface HistoryDetailModalProps {
   entry: GameHistoryEntry | null;
@@ -12,6 +17,7 @@ export default function HistoryDetailModal({ entry, onClose }: HistoryDetailModa
   if (!entry) return null;
 
   const source = inferBetSource(entry);
+  const wl = resolveBetWl(entry);
   const hasAi =
     entry.gptOpinion !== 'WAIT' ||
     entry.geminiOpinion !== 'WAIT' ||
@@ -37,7 +43,9 @@ export default function HistoryDetailModal({ entry, onClose }: HistoryDetailModa
             >
               {source === 'auto' ? '오토베팅' : source === 'manual' ? '직접 베팅' : '구분 없음'}
             </span>
-            <span className="text-sm font-mono text-zinc-500 truncate">{entry.time}</span>
+            <span className="text-sm font-mono text-zinc-500 truncate">
+              {formatHistoryDateTime(entry.at, entry.time)}
+            </span>
           </div>
           <button
             type="button"
@@ -77,6 +85,22 @@ export default function HistoryDetailModal({ entry, onClose }: HistoryDetailModa
                 <div className="flex justify-between items-center">
                   <span className="text-zinc-500 text-sm">실제 결과</span>
                   <ResultBadge result={entry.actualResult} />
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-500 text-sm">승패</span>
+                  <span
+                    className={`text-sm font-bold ${
+                      wl === 'win'
+                        ? 'text-emerald-400'
+                        : wl === 'loss'
+                          ? 'text-rose-400'
+                          : wl === 'tie'
+                            ? 'text-zinc-300'
+                            : 'text-zinc-500'
+                    }`}
+                  >
+                    {betWlLabel(wl)}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-zinc-500 text-sm">상태</span>

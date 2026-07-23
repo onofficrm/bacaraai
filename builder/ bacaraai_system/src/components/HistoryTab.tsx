@@ -2,7 +2,14 @@ import { Search, Download, Eye } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { GameHistoryEntry } from '../types';
 import HistoryDetailModal from './HistoryDetailModal';
-import { getTodayBetStats, inferBetSource } from '../utils/betHistory';
+import {
+  betWlLabel,
+  formatHistoryDateTime,
+  getTodayBetStats,
+  inferBetSource,
+  resolveBetWl,
+  type BetWlResult,
+} from '../utils/betHistory';
 import { getResultColor, getResultLabel } from '../utils/colors';
 
 type SourceFilter = 'all' | 'manual' | 'auto';
@@ -52,17 +59,19 @@ export default function HistoryTab({
 
   const exportCsv = () => {
     const rows = [
-      ['구분', '시간', '테이블', '슈', '회차', '베팅', '결과', '금액', '손익', '단계', '상태', '규칙', '메모'],
+      ['구분', '일시', '테이블', '슈', '회차', '베팅', '결과', '승패', '금액', '손익', '단계', '상태', '규칙', '메모'],
       ...filtered.map((e) => {
         const src = inferBetSource(e);
+        const wl = resolveBetWl(e);
         return [
           src === 'auto' ? '오토' : src === 'manual' ? '직접' : '-',
-          e.time,
+          formatHistoryDateTime(e.at, e.time),
           e.tableName,
           e.shoeNumber,
           String(e.round || ''),
           displaySide(e.userSelection),
           e.actualResult === 'NONE' ? '-' : e.actualResult,
+          betWlLabel(wl),
           String(e.amount || 0),
           String(e.pnl || 0),
           String(e.martingaleStage || ''),
@@ -111,7 +120,19 @@ export default function HistoryTab({
             </button>
           ))}
           <span className="text-[11px] text-zinc-500 ml-1">
-            오늘 정산 {today.count}건 · 손익{' '}
+            오늘 정산 {today.count}건
+            {today.count > 0 && (
+              <>
+                {' '}
+                · <span className="text-emerald-400">{today.wins}승</span>
+                <span className="text-zinc-600"> </span>
+                <span className="text-rose-400">{today.losses}패</span>
+                <span className="text-zinc-600"> </span>
+                <span className="text-zinc-400">{today.ties}무</span>
+              </>
+            )}
+            {' '}
+            · 손익{' '}
             <span
               className={
                 today.pnl > 0 ? 'text-emerald-400' : today.pnl < 0 ? 'text-red-400' : 'text-zinc-400'
@@ -149,12 +170,13 @@ export default function HistoryTab({
           <thead className="bg-zinc-950/80 text-zinc-500 sticky top-0 z-10 border-b border-zinc-800">
             <tr>
               <th className="px-3 py-3 font-medium">구분</th>
-              <th className="px-3 py-3 font-medium">시간</th>
+              <th className="px-3 py-3 font-medium">일시</th>
               <th className="px-3 py-3 font-medium">테이블</th>
               <th className="px-3 py-3 font-medium">슈/회차</th>
               <th className="px-3 py-3 font-medium">베팅</th>
               <th className="px-3 py-3 font-medium text-right">금액</th>
               <th className="px-3 py-3 font-medium text-center">결과</th>
+              <th className="px-3 py-3 font-medium text-center">승패</th>
               <th className="px-3 py-3 font-medium text-right">손익</th>
               <th className="px-3 py-3 font-medium">단계</th>
               <th className="px-3 py-3 font-medium">상태</th>
@@ -164,7 +186,7 @@ export default function HistoryTab({
           <tbody className="divide-y divide-zinc-800/50">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={11} className="px-4 py-12 text-center text-zinc-500">
+                <td colSpan={12} className="px-4 py-12 text-center text-zinc-500">
                   <div className="flex flex-col items-center justify-center gap-3">
                     <Search size={32} className="opacity-20" />
                     <p>표시할 기록이 없습니다.</p>
@@ -195,6 +217,7 @@ export default function HistoryTab({
         ) : (
           filtered.map((entry) => {
             const src = inferBetSource(entry);
+            const wl = resolveBetWl(entry);
             return (
               <button
                 key={entry.id}
@@ -206,11 +229,12 @@ export default function HistoryTab({
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <SourceBadge source={src} />
+                      <WlBadge wl={wl} />
                       <StatusBadge status={entry.dataStatus} />
                     </div>
                     <p className="font-bold text-zinc-200 text-sm truncate">{entry.tableName}</p>
                     <p className="text-[11px] text-zinc-500 font-mono mt-0.5">
-                      {entry.time}
+                      {formatHistoryDateTime(entry.at, entry.time)}
                       {entry.round > 0 ? ` · ${entry.round}회` : ''}
                       {entry.shoeNumber && entry.shoeNumber !== '-'
                         ? ` · ${entry.shoeNumber}`
@@ -263,12 +287,15 @@ export default function HistoryTab({
 
 function HistoryRow({ entry, onOpen }: { entry: GameHistoryEntry; onOpen: () => void }) {
   const src = inferBetSource(entry);
+  const wl = resolveBetWl(entry);
   return (
     <tr className="hover:bg-zinc-800/30 transition-colors">
       <td className="px-3 py-3">
         <SourceBadge source={src} />
       </td>
-      <td className="px-3 py-3 font-mono text-zinc-400">{entry.time}</td>
+      <td className="px-3 py-3 font-mono text-zinc-400 text-[11px]">
+        {formatHistoryDateTime(entry.at, entry.time)}
+      </td>
       <td className="px-3 py-3 font-medium text-zinc-200 max-w-[140px] truncate">{entry.tableName}</td>
       <td className="px-3 py-3 text-zinc-500">
         {entry.shoeNumber && entry.shoeNumber !== '-' ? entry.shoeNumber : '-'}
@@ -289,6 +316,9 @@ function HistoryRow({ entry, onOpen }: { entry: GameHistoryEntry; onOpen: () => 
         >
           {entry.actualResult === 'NONE' ? '-' : getResultLabel(entry.actualResult)}
         </span>
+      </td>
+      <td className="px-3 py-3 text-center">
+        <WlBadge wl={wl} />
       </td>
       <td
         className={`px-3 py-3 text-right font-mono font-bold ${
@@ -316,6 +346,31 @@ function HistoryRow({ entry, onOpen }: { entry: GameHistoryEntry; onOpen: () => 
       </td>
     </tr>
   );
+}
+
+function WlBadge({ wl }: { wl: BetWlResult }) {
+  if (wl === 'win') {
+    return (
+      <span className="inline-flex px-1.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 text-[10px] font-bold">
+        승
+      </span>
+    );
+  }
+  if (wl === 'loss') {
+    return (
+      <span className="inline-flex px-1.5 py-0.5 rounded border border-rose-500/40 bg-rose-500/10 text-rose-300 text-[10px] font-bold">
+        패
+      </span>
+    );
+  }
+  if (wl === 'tie') {
+    return (
+      <span className="inline-flex px-1.5 py-0.5 rounded border border-zinc-500/40 bg-zinc-700/40 text-zinc-300 text-[10px] font-bold">
+        무
+      </span>
+    );
+  }
+  return <span className="text-zinc-600 text-[10px]">-</span>;
 }
 
 function SourceBadge({ source }: { source: 'manual' | 'auto' | 'unknown' }) {

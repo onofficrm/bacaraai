@@ -1,8 +1,11 @@
 import type { AiOpinion, GameHistoryEntry, GameResult } from '../types';
 import type { BetSide, BetSource, LastBetResult } from '../hooks/useSession';
+import { parseDetectedAtMs } from '../hooks/useBettingWindow';
 
 const STORAGE_KEY = 'bacara_bet_history_v1';
 const MAX_ENTRIES = 500;
+
+export type BetWlResult = 'win' | 'loss' | 'tie' | 'none';
 
 export function loadBetHistory(): GameHistoryEntry[] {
   try {
@@ -36,12 +39,42 @@ function formatTime(at: number): string {
   return `${hh}:${mm}:${ss}`;
 }
 
+/** 목록·상세용 — 날짜+시간 (로컬 벽시계) */
+export function formatHistoryDateTime(at?: number, fallbackTime?: string): string {
+  if (at && at > 0) {
+    const d = new Date(at);
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${mo}-${day} ${formatTime(at)}`;
+  }
+  return fallbackTime || '-';
+}
+
 function dayKey(at: number = Date.now()): string {
   const d = new Date(at);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/** 손익·결과 기준 승/패/무 */
+export function resolveBetWl(entry: Pick<GameHistoryEntry, 'dataStatus' | 'amount' | 'pnl' | 'actualResult'>): BetWlResult {
+  if (entry.dataStatus === '취소' || entry.dataStatus === '접수') return 'none';
+  if (entry.amount <= 0) return 'none';
+  if (entry.pnl > 0) return 'win';
+  if (entry.pnl < 0) return 'loss';
+  // 손익 0 — 타이 푸시·무승부 정산
+  if (entry.actualResult === 'NONE') return 'none';
+  return 'tie';
+}
+
+export function betWlLabel(wl: BetWlResult): string {
+  if (wl === 'win') return '승';
+  if (wl === 'loss') return '패';
+  if (wl === 'tie') return '무';
+  return '-';
 }
 
 function asOpinion(v: unknown): AiOpinion {
@@ -83,6 +116,19 @@ export function normalizeHistoryEntry(entry: GameHistoryEntry): GameHistoryEntry
     (/적중|손실|취소|반환|타이 —|베팅 차감|SETTLE|CANCEL|PLACE/.test(entry.previousResult) ||
       entry.previousResult.length > 40);
   const note = entry.note || (previousLooksLikeNote ? entry.previousResult : undefined);
+
+  // 서버 DATETIME(KST) / 로컬 epoch 을 기준으로 시각·날짜 재계산
+  const createdAt = (entry as GameHistoryEntry & { createdAt?: string }).createdAt;
+  let at = entry.at && entry.at > 0 ? entry.at : 0;
+  if (!at && createdAt) {
+    const parsed = parseDetectedAtMs(createdAt);
+    if (!Number.isNaN(parsed) && parsed > 0) at = parsed;
+  }
+  if (!at && entry.time && entry.day && /^\d{4}-\d{2}-\d{2}$/.test(entry.day)) {
+    const parsed = parseDetectedAtMs(`${entry.day} ${entry.time}`);
+    if (!Number.isNaN(parsed) && parsed > 0) at = parsed;
+  }
+
   return {
     ...entry,
     betSource,
@@ -95,12 +141,16 @@ export function normalizeHistoryEntry(entry: GameHistoryEntry): GameHistoryEntry
     claudeOpinion: asOpinion(entry.claudeOpinion),
     finalOpinion: asOpinion(entry.finalOpinion),
     userSelection: asOpinion(entry.userSelection),
+    at: at || entry.at,
+    day: at ? dayKey(at) : entry.day || (entry.at ? dayKey(entry.at) : undefined),
+    time: at ? formatTime(at) : entry.time,
   };
 }
 
 export function getTodayBetStats(entries?: GameHistoryEntry[]): {
   wins: number;
   losses: number;
+  ties: number;
   pnl: number;
   count: number;
 } {
@@ -108,6 +158,7 @@ export function getTodayBetStats(entries?: GameHistoryEntry[]): {
   const today = dayKey();
   let wins = 0;
   let losses = 0;
+  let ties = 0;
   let pnl = 0;
   let count = 0;
   for (const e of list) {
@@ -117,10 +168,12 @@ export function getTodayBetStats(entries?: GameHistoryEntry[]): {
     if (e.dataStatus === '취소' || e.dataStatus === '접수' || e.amount <= 0) continue;
     count += 1;
     pnl += e.pnl || 0;
-    if (e.pnl > 0) wins += 1;
-    else if (e.pnl < 0) losses += 1;
+    const wl = resolveBetWl(e);
+    if (wl === 'win') wins += 1;
+    else if (wl === 'loss') losses += 1;
+    else if (wl === 'tie') ties += 1;
   }
-  return { wins, losses, pnl, count };
+  return { wins, losses, ties, pnl, count };
 }
 
 function sideToOpinion(side: BetSide): AiOpinion {
@@ -210,16 +263,19 @@ function entryScore(e: GameHistoryEntry): number {
   return s;
 }
 
-function parseCreatedAt(createdAt?: string, time?: string): number {
+function parseCreatedAt(createdAt?: string, time?: string, day?: string): number {
   if (createdAt) {
-    const t = Date.parse(createdAt.replace(' ', 'T'));
-    if (!Number.isNaN(t)) return t;
+    const t = parseDetectedAtMs(createdAt);
+    if (!Number.isNaN(t) && t > 0) return t;
+  }
+  if (day && time && /^\d{4}-\d{2}-\d{2}$/.test(day) && /^\d{2}:\d{2}:\d{2}$/.test(time)) {
+    const t = parseDetectedAtMs(`${day} ${time}`);
+    if (!Number.isNaN(t) && t > 0) return t;
   }
   if (time && /^\d{2}:\d{2}:\d{2}$/.test(time)) {
-    const d = new Date();
-    const [hh, mm, ss] = time.split(':').map(Number);
-    d.setHours(hh, mm, ss, 0);
-    return d.getTime();
+    // 날짜 없으면 오늘(KST 벽시계)로만 추정 — 가능하면 createdAt 사용
+    const t = parseDetectedAtMs(`${dayKey()} ${time}`);
+    if (!Number.isNaN(t) && t > 0) return t;
   }
   return 0;
 }
@@ -231,13 +287,13 @@ export function mergeBetHistory(
   const map = new Map<string, GameHistoryEntry>();
   for (const raw of [...remote, ...local]) {
     if (!raw?.id) continue;
+    const createdAt = (raw as GameHistoryEntry & { createdAt?: string }).createdAt;
+    const parsedAt = parseCreatedAt(createdAt, raw.time, raw.day);
     const e = normalizeHistoryEntry({
       ...raw,
-      at: raw.at || parseCreatedAt(
-        (raw as GameHistoryEntry & { createdAt?: string }).createdAt,
-        raw.time,
-      ),
-    });
+      at: raw.at && raw.at > 0 ? raw.at : parsedAt || undefined,
+      createdAt,
+    } as GameHistoryEntry & { createdAt?: string });
     // 접수(차감)만 있는 서버 로그는 정산 기록과 중복되므로 기본 목록에서 제외
     if (e.dataStatus === '접수') continue;
     const prev = map.get(e.id);

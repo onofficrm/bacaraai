@@ -376,6 +376,8 @@ export default function Header({
                     <span className="text-zinc-600 mx-1">·</span>
                     <span className="text-rose-400">패 {today.losses}</span>
                     <span className="text-zinc-600 mx-1">·</span>
+                    <span className="text-zinc-400">무 {today.ties}</span>
+                    <span className="text-zinc-600 mx-1">·</span>
                     <span
                       className={`font-mono font-bold ${
                         today.pnl > 0
