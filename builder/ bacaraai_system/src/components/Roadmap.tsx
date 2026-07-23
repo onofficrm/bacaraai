@@ -338,11 +338,13 @@ function ResultIndicator({
       )}
       <style>{`
         .roadmap-drop {
-          animation: roadmapDrop 0.42s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+          animation: roadmapReelDrop 0.48s cubic-bezier(0.18, 1.25, 0.32, 1) both;
         }
-        @keyframes roadmapDrop {
-          from { transform: translateY(-10px) scale(0.7); opacity: 0; }
-          to { transform: translateY(0) scale(1); opacity: 1; }
+        @keyframes roadmapReelDrop {
+          0% { transform: translateY(-14px) scale(0.55); opacity: 0; filter: blur(2px); }
+          55% { transform: translateY(2px) scale(1.08); opacity: 1; filter: blur(0); }
+          75% { transform: translateY(-1px) scale(0.98); }
+          100% { transform: translateY(0) scale(1); opacity: 1; }
         }
         .roadmap-crack {
           animation: roadmapCrack 0.45s ease-out both;

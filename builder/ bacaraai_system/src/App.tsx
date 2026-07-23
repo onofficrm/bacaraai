@@ -727,11 +727,12 @@ export default function App() {
                       session.status === 'running' &&
                       session.mode === 'live' &&
                       (table.live != null || table.id === 't1' || table.gameCode === 'MD2729');
+                    const hasAutoPending = session.pendingBets.some(
+                      (b) => b.source === 'auto' && b.tableId === table.id,
+                    );
                     const autoLockOn =
                       autoWatching &&
-                      (session.pendingBets.some(
-                        (b) => b.source === 'auto' && b.tableId === table.id,
-                      ) ||
+                      (hasAutoPending ||
                         patternRunRef.current?.tableId === table.id ||
                         (table.ai.autoBetAllowed &&
                           (table.ai.finalOpinion === 'PLAYER' ||
@@ -753,6 +754,7 @@ export default function App() {
                         autoWatching={autoWatching}
                         autoLockOn={Boolean(autoLockOn)}
                         autoHit={autoHitTableId === table.id}
+                        autoBetIn={hasAutoPending}
                         onSelect={handleTableSelect}
                         onZoom={setZoomedTableId}
                         onToggleFavorite={toggleFavorite}

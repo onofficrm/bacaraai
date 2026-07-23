@@ -1,10 +1,11 @@
 import { getResultColor, getResultLabel } from '../utils/colors';
-import React, { useEffect, useRef, useState } from 'react';
-import { Maximize2, Star } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Maximize2, Star, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AiOpinion, TableData } from '../types';
 import { STATUS_GUIDE } from '../help/glossary';
 import Roadmap from './Roadmap';
+import TableAiSlot from './TableAiSlot';
 import { getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
 import { useFxIntensity } from '../hooks/useFxIntensity';
 import { playSfx } from '../audio/sfxEngine';
@@ -17,9 +18,16 @@ interface TableCardProps {
   autoWatching?: boolean;
   autoLockOn?: boolean;
   autoHit?: boolean;
+  /** 오토 베팅 접수됨 */
+  autoBetIn?: boolean;
   onSelect?: (id: string) => void;
   onZoom?: (id: string) => void;
   onToggleFavorite?: (id: string, e: React.MouseEvent) => void;
+}
+
+function parseStreakCount(streak: string): number {
+  const m = streak.match(/(\d+)\s*연속/);
+  return m ? Number(m[1]) : 0;
 }
 
 export default function TableCard({
@@ -30,18 +38,30 @@ export default function TableCard({
   autoWatching = false,
   autoLockOn = false,
   autoHit = false,
+  autoBetIn = false,
   onSelect,
   onZoom,
   onToggleFavorite,
 }: TableCardProps) {
   const { reduced, enableRadar, intensity } = useFxIntensity();
   const [hitFlash, setHitFlash] = useState<'P' | 'B' | 'T' | null>(null);
+  const [hitBurst, setHitBurst] = useState(0);
   const [betSec, setBetSec] = useState(0);
+  const [streakPop, setStreakPop] = useState(false);
+  const [streakBreak, setStreakBreak] = useState(false);
   const prevLatestRef = useRef<number | null | undefined>(undefined);
+  const prevStreakRef = useRef(table.stats.currentStreak);
 
   const isPassive = ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(
     table.ai.finalOpinion,
   );
+  const analyzing = table.status === 'analyzing';
+  const ruleFocus = table.status === 'rule_triggered' || table.status === 'waiting_user';
+  const streakCount = useMemo(
+    () => parseStreakCount(table.stats.currentStreak),
+    [table.stats.currentStreak],
+  );
+  const showStreakBadge = streakCount >= 3;
 
   useEffect(() => {
     const id = table.live?.latestId ?? null;
@@ -53,6 +73,7 @@ export default function TableCard({
       const last = table.stats.recentResults[table.stats.recentResults.length - 1];
       if (last === 'P' || last === 'B' || last === 'T') {
         setHitFlash(last);
+        setHitBurst((n) => n + 1);
         if (!reduced) playSfx('tick');
         const t = window.setTimeout(() => setHitFlash(null), intensity === 'high' ? 700 : 450);
         prevLatestRef.current = id;
@@ -61,6 +82,28 @@ export default function TableCard({
     }
     prevLatestRef.current = id;
   }, [table.live?.latestId, table.stats.recentResults, reduced, intensity]);
+
+  useEffect(() => {
+    const prev = prevStreakRef.current;
+    const next = table.stats.currentStreak;
+    if (prev === next) return;
+    const prevN = parseStreakCount(prev);
+    const nextN = parseStreakCount(next);
+    if (nextN >= 3 && nextN > prevN) {
+      setStreakPop(true);
+      if (!reduced) playSfx('ruleTrigger', { throttleMs: 900 });
+      const t = window.setTimeout(() => setStreakPop(false), 700);
+      prevStreakRef.current = next;
+      return () => window.clearTimeout(t);
+    }
+    if (prevN >= 3 && nextN < prevN) {
+      setStreakBreak(true);
+      const t = window.setTimeout(() => setStreakBreak(false), 500);
+      prevStreakRef.current = next;
+      return () => window.clearTimeout(t);
+    }
+    prevStreakRef.current = next;
+  }, [table.stats.currentStreak, reduced]);
 
   useEffect(() => {
     if (!table.live) {
@@ -88,7 +131,7 @@ export default function TableCard({
     cardClass +=
       ' ring-2 ring-amber-500 border-amber-500/60 shadow-lg shadow-amber-900/20 selected-pulse ';
   }
-  if (table.status === 'rule_triggered') cardClass += ' border-amber-500/50 ';
+  if (ruleFocus) cardClass += ' border-amber-400/70 rule-focus-pulse scale-[1.01] ';
   else if (table.status === 'risk_blocked') cardClass += ' border-red-900/50 ';
   if (autoLockOn) cardClass += ' ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.35)] ';
   if (flashClass) cardClass += ` ${flashClass} `;
@@ -105,6 +148,14 @@ export default function TableCard({
       ? '참고'
       : 'AI';
 
+  const streakTone = table.stats.currentStreak.includes('Player')
+    ? 'text-blue-400 border-blue-400/40 bg-blue-500/10'
+    : table.stats.currentStreak.includes('Banker')
+      ? 'text-red-400 border-red-400/40 bg-red-500/10'
+      : 'text-emerald-400 border-emerald-400/40 bg-emerald-500/10';
+
+  const particleCount = intensity === 'high' ? 10 : intensity === 'medium' ? 6 : 0;
+
   return (
     <div className={cardClass} onClick={() => onSelect?.(table.id)}>
       {betSec > 0 && (
@@ -117,10 +168,70 @@ export default function TableCard({
       )}
 
       {autoWatching && enableRadar && !reduced && (
-        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl z-[1] opacity-40">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl z-[1] opacity-35">
           <div className="absolute inset-[-40%] auto-radar-sweep bg-[conic-gradient(from_0deg,transparent_0deg,rgba(56,189,248,0.35)_40deg,transparent_80deg)]" />
         </div>
       )}
+
+      {/* 결과 히트 미니 파티클 */}
+      <AnimatePresence>
+        {hitBurst > 0 && intensity !== 'low' && !reduced && hitFlash && (
+          <motion.div
+            key={hitBurst}
+            className="pointer-events-none absolute inset-0 z-[15]"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.65 }}
+          >
+            {Array.from({ length: particleCount }).map((_, i) => (
+              <motion.span
+                key={i}
+                className={`absolute left-1/2 top-[42%] w-1.5 h-1.5 rounded-full ${
+                  hitFlash === 'P'
+                    ? 'bg-blue-400'
+                    : hitFlash === 'B'
+                      ? 'bg-red-400'
+                      : 'bg-emerald-400'
+                }`}
+                initial={{ x: 0, y: 0, scale: 1, opacity: 1 }}
+                animate={{
+                  x: Math.cos((i / particleCount) * Math.PI * 2) * (30 + (i % 3) * 8),
+                  y: Math.sin((i / particleCount) * Math.PI * 2) * (18 + (i % 3) * 6),
+                  scale: 0,
+                  opacity: 0,
+                }}
+                transition={{ duration: 0.55, ease: 'easeOut' }}
+              />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {autoBetIn && !autoHit && (
+          <motion.div
+            className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.span
+              className="absolute w-7 h-7 rounded-full bg-amber-400 border-2 border-amber-200 shadow-lg"
+              initial={{ y: -40, x: 30, scale: 0.4, opacity: 0 }}
+              animate={{ y: 0, x: 0, scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 16 }}
+            />
+            <motion.span
+              className="text-lg font-black tracking-widest text-sky-200 border-2 border-sky-400/70 px-2.5 py-0.5 rounded-md bg-black/55 -rotate-6"
+              initial={{ scale: 1.3, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+            >
+              BET IN
+            </motion.span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {autoHit && (
@@ -137,22 +248,30 @@ export default function TableCard({
         )}
       </AnimatePresence>
 
-      {autoLockOn && (
+      {autoLockOn && !autoBetIn && (
         <div className="absolute top-2 right-10 z-10 text-[9px] font-black tracking-wider text-sky-300 bg-sky-500/15 border border-sky-400/40 px-1.5 py-0.5 rounded animate-pulse">
           LOCK ON
         </div>
       )}
 
+      {ruleFocus && !reduced && (
+        <div className="pointer-events-none absolute inset-0 z-[1] rule-gold-wave rounded-xl" />
+      )}
+
       {table.status === 'risk_blocked' && (
         <div className="absolute inset-0 rounded-xl overflow-hidden bg-red-950/20 backdrop-blur-[1px] z-10 flex items-center justify-center">
-          <div className="bg-zinc-900 border border-red-900 text-red-400 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 shadow-lg">
+          <motion.div
+            className="bg-zinc-900 border border-red-900 text-red-400 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 shadow-lg"
+            initial={reduced ? false : { x: -4 }}
+            animate={reduced ? undefined : { x: [0, -3, 3, -2, 0] }}
+            transition={{ duration: 0.35 }}
+          >
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             위험 한도 차단됨
-          </div>
+          </motion.div>
         </div>
       )}
 
-      {/* 헤더 + AI 의견 (상단 컴팩트) */}
       <div className="relative z-[2] flex flex-col gap-2">
         <div className="flex justify-between items-start gap-2">
           <div className="flex flex-col gap-1 min-w-0">
@@ -161,6 +280,11 @@ export default function TableCard({
               {isSelected && (
                 <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded">
                   선택됨
+                </span>
+              )}
+              {ruleFocus && (
+                <span className="text-[9px] font-black tracking-wide text-amber-300 bg-amber-500/15 border border-amber-400/40 px-1.5 py-0.5 rounded">
+                  RULE
                 </span>
               )}
               {!beginnerMode && (
@@ -256,27 +380,14 @@ export default function TableCard({
           </div>
         </div>
 
-        <div
-          className={`rounded-lg border px-2.5 py-1.5 flex items-center justify-between gap-2 ${
-            isSelected ? 'bg-amber-500/5 border-amber-500/30' : 'bg-zinc-950/80 border-zinc-800'
-          }`}
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-[9px] text-zinc-500 shrink-0">{aiModeLabel}</span>
-            <span className={`text-sm font-bold truncate ${getOpinionColor(table.ai.finalOpinion)}`}>
-              {getOpinionText(table.ai.finalOpinion, beginnerMode)}
-            </span>
-            {!beginnerMode && (
-              <span className="hidden sm:inline text-[9px] text-zinc-600 truncate">
-                {table.ai.consensus}
-              </span>
-            )}
-          </div>
-          <div className="text-right shrink-0">
-            <div className="text-[9px] text-zinc-500 leading-none mb-0.5">참고 금액</div>
-            <div className="text-xs font-mono font-bold text-zinc-200 tabular-nums">{amountText}</div>
-          </div>
-        </div>
+        <TableAiSlot
+          opinion={table.ai.finalOpinion}
+          consensus={table.ai.consensus}
+          amountText={amountText}
+          modeLabel={aiModeLabel}
+          beginnerMode={beginnerMode}
+          analyzing={analyzing}
+        />
 
         {(table.ai.appliedRule || (!beginnerMode && table.ai.finalConfidence > 0)) && (
           <p className="text-[10px] text-zinc-500 px-0.5 leading-snug truncate -mt-0.5">
@@ -317,21 +428,43 @@ export default function TableCard({
           </div>
         </div>
 
-        <div className="flex flex-col items-end text-xs justify-center">
-          <div className="flex items-center gap-1">
-            <span className="text-zinc-500 text-[10px]">연속:</span>
-            <span
-              className={`font-medium ${
-                table.stats.currentStreak.includes('Player')
-                  ? 'text-blue-400'
-                  : table.stats.currentStreak.includes('Banker')
-                    ? 'text-red-400'
-                    : 'text-emerald-400'
-              }`}
-            >
-              {table.stats.currentStreak}
-            </span>
-          </div>
+        <div className="flex flex-col items-end text-xs justify-center gap-1">
+          <AnimatePresence mode="wait">
+            {showStreakBadge ? (
+              <motion.span
+                key={`streak-${streakCount}-${table.stats.currentStreak}`}
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-black ${streakTone} ${
+                  streakPop ? 'streak-pop' : ''
+                } ${streakBreak ? 'streak-break' : ''}`}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.6, opacity: 0, rotate: -8 }}
+              >
+                <Zap size={10} className="fill-current" />
+                STREAK x{streakCount}
+              </motion.span>
+            ) : (
+              <motion.div
+                key="plain-streak"
+                className="flex items-center gap-1"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                <span className="text-zinc-500 text-[10px]">연속:</span>
+                <span
+                  className={`font-medium ${
+                    table.stats.currentStreak.includes('Player')
+                      ? 'text-blue-400'
+                      : table.stats.currentStreak.includes('Banker')
+                        ? 'text-red-400'
+                        : 'text-emerald-400'
+                  }`}
+                >
+                  {table.stats.currentStreak}
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -343,12 +476,37 @@ export default function TableCard({
           0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.15); }
           50% { box-shadow: 0 0 0 6px rgba(245,158,11,0.08); }
         }
+        .rule-focus-pulse {
+          animation: ruleFocus 1.8s ease-in-out infinite;
+        }
+        @keyframes ruleFocus {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.2); }
+          50% { box-shadow: 0 0 18px 2px rgba(251,191,36,0.28); }
+        }
+        .rule-gold-wave {
+          background: radial-gradient(ellipse at 50% 0%, rgba(251,191,36,0.12), transparent 55%);
+        }
         .auto-radar-sweep {
-          animation: radarSpin 3.2s linear infinite;
+          animation: radarSpin 3.6s linear infinite;
         }
         @keyframes radarSpin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        .streak-pop {
+          animation: streakPop 0.55s ease-out;
+        }
+        @keyframes streakPop {
+          0% { transform: scale(0.7); }
+          40% { transform: scale(1.18); }
+          100% { transform: scale(1); }
+        }
+        .streak-break {
+          animation: streakBreak 0.45s ease-out;
+        }
+        @keyframes streakBreak {
+          0% { transform: scale(1) rotate(0); opacity: 1; }
+          100% { transform: scale(0.4) rotate(-12deg); opacity: 0; }
         }
       `}</style>
     </div>
@@ -379,16 +537,4 @@ function AiBadge({ model, opinion }: { model: string; opinion: AiOpinion }) {
       {model}:{getResultLabel(opinion).slice(0, 1)}
     </span>
   );
-}
-
-function getOpinionColor(opinion: AiOpinion) {
-  return getResultColor(opinion, 'text');
-}
-
-function getOpinionText(opinion: AiOpinion, beginnerMode: boolean) {
-  if (!beginnerMode) return getResultLabel(opinion);
-  if (opinion === 'PLAYER') return 'Player 참고';
-  if (opinion === 'BANKER') return 'Banker 참고';
-  if (opinion === 'WAIT' || opinion === 'SKIP') return '관망';
-  return getResultLabel(opinion);
 }
