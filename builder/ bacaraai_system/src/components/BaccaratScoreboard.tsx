@@ -27,6 +27,13 @@ interface BaccaratScoreboardProps {
 const TRAILING_EMPTY = 3;
 const DRAG_THRESHOLD_PX = 4;
 
+const BOARD = {
+  cell: '#fbfaf6',
+  line: '#d8d4cb',
+  panel: '#f3f0ea',
+  ink: '#1c1917',
+};
+
 function useDragScroll(depsKey: string) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
@@ -131,11 +138,13 @@ function PadGrid<T>({
 
   return (
     <div
-      className="grid bg-zinc-300"
+      className="grid rounded-[2px] overflow-hidden"
       style={{
         width,
         gap,
+        backgroundColor: BOARD.line,
         gridTemplateColumns: `repeat(${totalCols}, ${cellSize}px)`,
+        boxShadow: 'inset 0 0 0 1px rgba(28,25,23,0.06)',
       }}
     >
       {Array.from({ length: totalCols }).map((_, colIdx) => {
@@ -151,8 +160,12 @@ function PadGrid<T>({
             {Array.from({ length: rows }).map((_, rowIdx) => (
               <div
                 key={rowIdx}
-                className="bg-[#f7f7f5] flex items-center justify-center relative"
-                style={{ width: cellSize, height: cellSize }}
+                className="flex items-center justify-center relative"
+                style={{
+                  width: cellSize,
+                  height: cellSize,
+                  backgroundColor: BOARD.cell,
+                }}
               >
                 {renderCell(col?.[rowIdx], colIdx, rowIdx)}
               </div>
@@ -164,30 +177,25 @@ function PadGrid<T>({
   );
 }
 
-function derivedTone(color: RoadColor, kind: 'fill' | 'stroke' | 'text') {
-  if (color === 'R') {
-    return kind === 'fill'
-      ? 'bg-red-500'
-      : kind === 'stroke'
-        ? 'border-red-500 text-red-500'
-        : 'text-red-500';
-  }
-  return kind === 'fill'
-    ? 'bg-blue-600'
-    : kind === 'stroke'
-      ? 'border-blue-600 text-blue-600'
-      : 'text-blue-600';
+function derivedTone(color: RoadColor) {
+  return color === 'R'
+    ? { fill: '#e11d48', stroke: '#e11d48' }
+    : { fill: '#2563eb', stroke: '#2563eb' };
 }
 
 function BeadMark({ cell }: { cell: { result: GameResult; isNewest?: boolean } }) {
   const letter = cell.result;
   const fill =
-    letter === 'P' ? 'bg-blue-600' : letter === 'B' ? 'bg-red-500' : 'bg-emerald-500';
+    letter === 'P' ? '#2563eb' : letter === 'B' ? '#e11d48' : '#059669';
   return (
     <div
-      className={`w-[78%] h-[78%] rounded-full ${fill} flex items-center justify-center text-white text-[10px] font-black ${
-        cell.isNewest ? 'ring-2 ring-zinc-400 ring-offset-1' : ''
-      }`}
+      className="w-[82%] h-[82%] rounded-full flex items-center justify-center text-white text-[11px] font-bold tracking-tight"
+      style={{
+        background: `radial-gradient(circle at 30% 28%, rgba(255,255,255,0.35), transparent 45%), ${fill}`,
+        boxShadow: cell.isNewest
+          ? `0 0 0 2px ${BOARD.cell}, 0 0 0 3.5px ${fill}`
+          : '0 1px 2px rgba(0,0,0,0.18)',
+      }}
     >
       {letter}
     </div>
@@ -195,19 +203,22 @@ function BeadMark({ cell }: { cell: { result: GameResult; isNewest?: boolean } }
 }
 
 function BigMark({ cell }: { cell: BigRoadCell }) {
-  const stroke = cell.result === 'P' ? 'text-blue-600' : 'text-red-500';
+  const stroke = cell.result === 'P' ? '#2563eb' : '#e11d48';
   return (
     <div
-      className={`relative w-[78%] h-[78%] ${stroke} ${cell.isNewest ? 'animate-pulse' : ''}`}
+      className="relative w-[84%] h-[84%]"
+      style={{
+        filter: cell.isNewest ? 'drop-shadow(0 0 2px rgba(28,25,23,0.25))' : undefined,
+      }}
     >
       <svg viewBox="0 0 32 32" className="w-full h-full block" aria-hidden>
         <circle
           cx="16"
           cy="16"
-          r="11"
+          r="11.2"
           fill="none"
-          stroke="currentColor"
-          strokeWidth="2.4"
+          stroke={stroke}
+          strokeWidth="2.6"
         />
         {cell.ties > 0 && (
           <line
@@ -216,13 +227,13 @@ function BigMark({ cell }: { cell: BigRoadCell }) {
             x2="24"
             y2="8"
             stroke="#059669"
-            strokeWidth="2.2"
+            strokeWidth="2.3"
             strokeLinecap="round"
           />
         )}
       </svg>
       {cell.ties > 1 && (
-        <span className="absolute -top-0.5 -right-0.5 text-[8px] font-black text-emerald-600 leading-none">
+        <span className="absolute -top-0.5 -right-0.5 min-w-[10px] h-[10px] px-0.5 rounded-full bg-emerald-600 text-white text-[7px] font-bold leading-[10px] text-center">
           {cell.ties}
         </span>
       )}
@@ -237,18 +248,18 @@ function DerivedMark({
   cell: DerivedCell;
   variant: 'eye' | 'small' | 'cockroach';
 }) {
-  const tone = derivedTone(cell.color, variant === 'small' ? 'fill' : 'stroke');
+  const tone = derivedTone(cell.color);
   if (variant === 'cockroach') {
     return (
-      <div className={`w-[70%] h-[70%] flex items-center justify-center ${derivedTone(cell.color, 'text')}`}>
+      <div className="w-[72%] h-[72%] flex items-center justify-center">
         <svg viewBox="0 0 24 24" className="w-full h-full" aria-hidden>
           <line
             x1="5"
             y1="19"
             x2="19"
             y2="5"
-            stroke="currentColor"
-            strokeWidth="2.5"
+            stroke={tone.stroke}
+            strokeWidth="2.8"
             strokeLinecap="round"
           />
         </svg>
@@ -256,21 +267,82 @@ function DerivedMark({
     );
   }
   if (variant === 'small') {
-    return <div className={`w-[55%] h-[55%] rounded-full ${tone}`} />;
+    return (
+      <div
+        className="w-[52%] h-[52%] rounded-full"
+        style={{
+          background: tone.fill,
+          boxShadow: '0 0.5px 1px rgba(0,0,0,0.2)',
+        }}
+      />
+    );
   }
-  // eye — hollow
   return (
     <div
-      className={`w-[62%] h-[62%] rounded-full border-[2px] bg-transparent ${tone}`}
+      className="w-[60%] h-[60%] rounded-full bg-transparent"
+      style={{ border: `2.2px solid ${tone.stroke}` }}
     />
   );
 }
 
-function AskIcon({ color, variant }: { color: RoadColor | null; variant: 'eye' | 'small' | 'cockroach' }) {
+function AskIcon({
+  color,
+  variant,
+}: {
+  color: RoadColor | null;
+  variant: 'eye' | 'small' | 'cockroach';
+}) {
   if (!color) {
-    return <span className="w-3.5 h-3.5 inline-block opacity-20">·</span>;
+    return <span className="w-4 h-4 rounded-sm bg-stone-200/80 inline-block" />;
   }
-  return <DerivedMark cell={{ color }} variant={variant} />;
+  return (
+    <span className="w-4 h-4 flex items-center justify-center">
+      <DerivedMark cell={{ color }} variant={variant} />
+    </span>
+  );
+}
+
+function RoadLabel({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-[9px] font-semibold tracking-[0.14em] uppercase text-stone-500/90">
+      {children}
+    </span>
+  );
+}
+
+function StatRow({
+  label,
+  value,
+  color,
+  bar,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  bar: number;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[11px] font-semibold" style={{ color }}>
+          {label}
+        </span>
+        <span className="text-[15px] font-bold tabular-nums tracking-tight" style={{ color }}>
+          {value}
+        </span>
+      </div>
+      <div className="h-1 rounded-full bg-stone-200/90 overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-300"
+          style={{
+            width: `${Math.max(4, Math.min(100, bar))}%`,
+            background: color,
+            opacity: 0.85,
+          }}
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function BaccaratScoreboard({ results }: BaccaratScoreboardProps) {
@@ -285,147 +357,232 @@ export default function BaccaratScoreboard({ results }: BaccaratScoreboardProps)
   const askB = useMemo(() => predictNextDerived(results, 'B'), [results]);
   const askP = useMemo(() => predictNextDerived(results, 'P'), [results]);
 
+  const decisive = Math.max(1, stats.player + stats.banker);
   const beadScroll = useDragScroll(`bead:${signature}`);
   const mainScroll = useDragScroll(`main:${signature}`);
 
   return (
-    <div className="rounded-xl border border-zinc-700 overflow-hidden bg-[#ecece8] select-none">
-      <div className="flex flex-col lg:flex-row min-h-[280px]">
-        {/* Bead plate */}
-        <div
-          ref={beadScroll.scrollRef}
-          {...beadScroll.handlers}
-          className={`shrink-0 border-b lg:border-b-0 lg:border-r border-zinc-400 overflow-x-auto custom-scrollbar ${
-            beadScroll.dragging ? 'cursor-grabbing' : 'cursor-grab'
-          }`}
-          style={{ touchAction: 'pan-x', maxWidth: '100%', width: 'min(100%, 168px)' }}
-          title="드래그하여 좌우로 이동"
-        >
-          <div className="p-1.5">
-            <PadGrid
-              columns={beads}
-              minCols={4}
-              cellSize={24}
-              renderCell={(cell) => (cell ? <BeadMark cell={cell} /> : null)}
-            />
-          </div>
+    <div
+      className="rounded-2xl overflow-hidden select-none border border-stone-600/40 shadow-[0_12px_40px_rgba(0,0,0,0.35)]"
+      style={{
+        background: `linear-gradient(180deg, #2a2a28 0%, #1a1a18 100%)`,
+      }}
+    >
+      {/* Top chrome */}
+      <div className="flex items-center justify-between px-3.5 py-2 border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]" />
+          <span className="text-[11px] font-semibold text-stone-200 tracking-wide">
+            실제 스코어보드
+          </span>
         </div>
+        <span className="text-[10px] text-stone-500">드래그로 좌우 이동</span>
+      </div>
 
-        {/* Big + derived */}
-        <div
-          ref={mainScroll.scrollRef}
-          {...mainScroll.handlers}
-          className={`flex-1 min-w-0 overflow-x-auto custom-scrollbar ${
-            mainScroll.dragging ? 'cursor-grabbing' : 'cursor-grab'
-          }`}
-          style={{ touchAction: 'pan-x' }}
-          title="드래그하여 좌우로 이동"
-        >
-          <div className="p-1.5 flex flex-col gap-1.5 min-w-max">
-            <PadGrid
-              columns={bigGrid}
-              minCols={16}
-              cellSize={22}
-              renderCell={(cell) =>
-                cell ? <BigMark cell={cell as BigRoadCell} /> : null
-              }
-            />
-            <div className="flex gap-1.5">
-              <PadGrid
-                columns={eyeGrid}
-                minCols={10}
-                cellSize={14}
-                trailing={2}
-                renderCell={(cell) =>
-                  cell ? (
-                    <DerivedMark cell={cell as DerivedCell} variant="eye" />
-                  ) : null
-                }
-              />
+      <div
+        className="m-2 rounded-xl overflow-hidden border border-stone-300/60"
+        style={{ background: BOARD.panel }}
+      >
+        <div className="flex flex-col xl:flex-row min-h-[300px]">
+          {/* Bead */}
+          <div
+            ref={beadScroll.scrollRef}
+            {...beadScroll.handlers}
+            className={`shrink-0 border-b xl:border-b-0 xl:border-r overflow-x-auto scoreboard-scroll ${
+              beadScroll.dragging ? 'cursor-grabbing' : 'cursor-grab'
+            }`}
+            style={{
+              touchAction: 'pan-x',
+              borderColor: BOARD.line,
+              maxWidth: '100%',
+              width: 'min(100%, 196px)',
+              background: 'linear-gradient(180deg, #f7f4ee 0%, #efebe3 100%)',
+            }}
+            title="드래그하여 좌우로 이동"
+          >
+            <div className="px-2 pt-2 pb-1">
+              <RoadLabel>Bead</RoadLabel>
             </div>
-            <div className="flex gap-1.5">
+            <div className="px-2 pb-2.5">
               <PadGrid
-                columns={smallGrid}
-                minCols={8}
-                cellSize={14}
-                trailing={2}
-                renderCell={(cell) =>
-                  cell ? (
-                    <DerivedMark cell={cell as DerivedCell} variant="small" />
-                  ) : null
-                }
-              />
-              <PadGrid
-                columns={cockGrid}
-                minCols={8}
-                cellSize={14}
-                trailing={2}
-                renderCell={(cell) =>
-                  cell ? (
-                    <DerivedMark cell={cell as DerivedCell} variant="cockroach" />
-                  ) : null
-                }
+                columns={beads}
+                minCols={5}
+                cellSize={28}
+                renderCell={(cell) => (cell ? <BeadMark cell={cell} /> : null)}
               />
             </div>
           </div>
-        </div>
 
-        {/* Stats + ask */}
-        <div className="shrink-0 w-full lg:w-[118px] border-t lg:border-t-0 lg:border-l border-zinc-400 bg-[#f3f3ef] flex flex-row lg:flex-col">
-          <div className="flex-1 p-2.5 space-y-1.5 text-sm font-bold font-mono">
-            <div className="flex justify-between text-red-500">
-              <span>B</span>
-              <span>{stats.banker}</span>
-            </div>
-            <div className="flex justify-between text-blue-600">
-              <span>P</span>
-              <span>{stats.player}</span>
-            </div>
-            <div className="flex justify-between text-emerald-600">
-              <span>T</span>
-              <span>{stats.tie}</span>
-            </div>
-            <div className="flex justify-between text-zinc-700 pt-1 border-t border-zinc-300">
-              <span>R</span>
-              <span>{stats.total}</span>
+          {/* Roads */}
+          <div
+            ref={mainScroll.scrollRef}
+            {...mainScroll.handlers}
+            className={`flex-1 min-w-0 overflow-x-auto scoreboard-scroll ${
+              mainScroll.dragging ? 'cursor-grabbing' : 'cursor-grab'
+            }`}
+            style={{
+              touchAction: 'pan-x',
+              background: 'linear-gradient(180deg, #faf8f3 0%, #f3f0ea 100%)',
+            }}
+            title="드래그하여 좌우로 이동"
+          >
+            <div className="p-2.5 flex flex-col gap-2 min-w-max">
+              <div className="space-y-1">
+                <RoadLabel>Big Road</RoadLabel>
+                <PadGrid
+                  columns={bigGrid}
+                  minCols={18}
+                  cellSize={26}
+                  renderCell={(cell) =>
+                    cell ? <BigMark cell={cell as BigRoadCell} /> : null
+                  }
+                />
+              </div>
+
+              <div className="space-y-1 pt-0.5 border-t border-stone-300/70">
+                <RoadLabel>Big Eye Boy</RoadLabel>
+                <PadGrid
+                  columns={eyeGrid}
+                  minCols={14}
+                  cellSize={16}
+                  trailing={2}
+                  renderCell={(cell) =>
+                    cell ? <DerivedMark cell={cell as DerivedCell} variant="eye" /> : null
+                  }
+                />
+              </div>
+
+              <div className="flex gap-3 pt-0.5 border-t border-stone-300/70">
+                <div className="space-y-1">
+                  <RoadLabel>Small Road</RoadLabel>
+                  <PadGrid
+                    columns={smallGrid}
+                    minCols={10}
+                    cellSize={16}
+                    trailing={2}
+                    renderCell={(cell) =>
+                      cell ? (
+                        <DerivedMark cell={cell as DerivedCell} variant="small" />
+                      ) : null
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <RoadLabel>Cockroach</RoadLabel>
+                  <PadGrid
+                    columns={cockGrid}
+                    minCols={10}
+                    cellSize={16}
+                    trailing={2}
+                    renderCell={(cell) =>
+                      cell ? (
+                        <DerivedMark cell={cell as DerivedCell} variant="cockroach" />
+                      ) : null
+                    }
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="w-[112px] lg:w-full border-l lg:border-l-0 lg:border-t border-zinc-400 flex flex-col">
-            <div className="flex-1 flex items-center gap-1.5 px-2 py-2 border-b border-zinc-400 bg-white/50">
-              <div className="w-7 h-7 rounded-full bg-red-500 text-white text-xs font-black flex items-center justify-center shrink-0">
-                B
-              </div>
-              <div className="flex items-center gap-1 min-w-0">
-                <span className="w-3.5 h-3.5 flex items-center justify-center">
-                  <AskIcon color={askB.bigEye} variant="eye" />
-                </span>
-                <span className="w-3.5 h-3.5 flex items-center justify-center">
-                  <AskIcon color={askB.small} variant="small" />
-                </span>
-                <span className="w-3.5 h-3.5 flex items-center justify-center">
-                  <AskIcon color={askB.cockroach} variant="cockroach" />
+          {/* Side panel */}
+          <div
+            className="shrink-0 w-full xl:w-[148px] border-t xl:border-t-0 xl:border-l flex flex-row xl:flex-col"
+            style={{
+              borderColor: BOARD.line,
+              background: 'linear-gradient(180deg, #f7f4ee 0%, #ebe6dc 100%)',
+            }}
+          >
+            <div className="flex-1 p-3 space-y-3">
+              <RoadLabel>Totals</RoadLabel>
+              <StatRow
+                label="Banker"
+                value={stats.banker}
+                color="#e11d48"
+                bar={(stats.banker / decisive) * 100}
+              />
+              <StatRow
+                label="Player"
+                value={stats.player}
+                color="#2563eb"
+                bar={(stats.player / decisive) * 100}
+              />
+              <StatRow
+                label="Tie"
+                value={stats.tie}
+                color="#059669"
+                bar={stats.total ? (stats.tie / stats.total) * 100 : 0}
+              />
+              <div className="pt-2 border-t border-stone-300/80 flex justify-between items-baseline">
+                <span className="text-[11px] font-semibold text-stone-500">Rounds</span>
+                <span className="text-[15px] font-bold tabular-nums text-stone-800">
+                  {stats.total}
                 </span>
               </div>
             </div>
-            <div className="flex-1 flex items-center gap-1.5 px-2 py-2 bg-white/50">
-              <div className="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-black flex items-center justify-center shrink-0">
-                P
+
+            <div
+              className="w-[140px] xl:w-full border-l xl:border-l-0 xl:border-t flex flex-col"
+              style={{ borderColor: BOARD.line }}
+            >
+              <div className="px-3 pt-2.5 pb-1">
+                <RoadLabel>Next Ask</RoadLabel>
               </div>
-              <div className="flex items-center gap-1 min-w-0">
-                <span className="w-3.5 h-3.5 flex items-center justify-center">
-                  <AskIcon color={askP.bigEye} variant="eye" />
-                </span>
-                <span className="w-3.5 h-3.5 flex items-center justify-center">
-                  <AskIcon color={askP.small} variant="small" />
-                </span>
-                <span className="w-3.5 h-3.5 flex items-center justify-center">
-                  <AskIcon color={askP.cockroach} variant="cockroach" />
-                </span>
-              </div>
+              <AskRow side="B" ask={askB} />
+              <AskRow side="P" ask={askP} last />
             </div>
           </div>
         </div>
+      </div>
+
+      <style>{`
+        .scoreboard-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(120,113,108,0.45) transparent;
+        }
+        .scoreboard-scroll::-webkit-scrollbar {
+          height: 6px;
+        }
+        .scoreboard-scroll::-webkit-scrollbar-thumb {
+          background: rgba(120,113,108,0.4);
+          border-radius: 999px;
+        }
+        .scoreboard-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function AskRow({
+  side,
+  ask,
+  last = false,
+}: {
+  side: 'B' | 'P';
+  ask: { bigEye: RoadColor | null; small: RoadColor | null; cockroach: RoadColor | null };
+  last?: boolean;
+}) {
+  const fill = side === 'B' ? '#e11d48' : '#2563eb';
+  return (
+    <div
+      className={`flex-1 flex items-center gap-2.5 px-3 py-2.5 ${last ? '' : 'border-b'}`}
+      style={{ borderColor: BOARD.line }}
+    >
+      <div
+        className="w-8 h-8 rounded-full text-white text-[12px] font-bold flex items-center justify-center shrink-0"
+        style={{
+          background: `radial-gradient(circle at 30% 28%, rgba(255,255,255,0.35), transparent 45%), ${fill}`,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.22)',
+        }}
+      >
+        {side}
+      </div>
+      <div className="flex items-center gap-1.5 bg-white/55 rounded-lg px-2 py-1.5 border border-stone-300/60">
+        <AskIcon color={ask.bigEye} variant="eye" />
+        <AskIcon color={ask.small} variant="small" />
+        <AskIcon color={ask.cockroach} variant="cockroach" />
       </div>
     </div>
   );
