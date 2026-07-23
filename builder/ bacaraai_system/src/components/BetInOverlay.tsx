@@ -143,7 +143,6 @@ function ThickChip({
   delay,
   style,
   leanDeg = 0,
-  face = false,
 }: {
   value: number;
   size: number;
@@ -151,7 +150,6 @@ function ThickChip({
   delay: number;
   style: CSSProperties;
   leanDeg?: number;
-  face?: boolean;
 }) {
   const tone = toneOf(value);
   const thick = Math.max(3, Math.round(size * 0.12));
@@ -191,7 +189,7 @@ function ThickChip({
           boxShadow: `0 ${thick}px ${thick + 4}px rgba(0,0,0,0.45)`,
         }}
       />
-      {/* 윗면 */}
+      {/* 윗면 — 금액 텍스트 없음 */}
       <span
         className="absolute inset-0 rounded-full border-[3px]"
         style={{
@@ -208,23 +206,10 @@ function ThickChip({
           `,
         }}
       >
-        {/* 가장자리 점선 느낌 */}
         <span
           className="absolute inset-[5px] rounded-full border border-dashed opacity-50"
           style={{ borderColor: 'rgba(255,255,255,0.55)' }}
         />
-        {face && (
-          <span
-            className="absolute inset-0 flex items-center justify-center font-black leading-none"
-            style={{
-              color: tone.text,
-              fontSize: size >= 34 ? 11 : 9,
-              textShadow: '0 1px 2px rgba(0,0,0,0.45)',
-            }}
-          >
-            {tone.label || ''}
-          </span>
-        )}
       </span>
     </motion.div>
   );
@@ -276,7 +261,6 @@ function ChipPile({
               size={chipSize}
               animate={animate}
               delay={chip.order * (DROP_MS / 1000)}
-              face={chip.level === maxLevel && chip.col === Math.floor(cols / 2)}
               style={{
                 left: x,
                 bottom: 8 + y,
@@ -299,7 +283,6 @@ function ChipPile({
               animate={animate}
               delay={chip.order * (DROP_MS / 1000)}
               leanDeg={chip.leanDeg ?? 0}
-              face
               style={{
                 left: Math.max(-2, Math.min(pileW - chipSize, x)),
                 bottom: 0,
