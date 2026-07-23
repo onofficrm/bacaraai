@@ -1,100 +1,232 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CHIP_TONES, type StackChip } from './ChipBetStage';
+import { CHIP_TONES } from './ChipBetStage';
 import { playSfx } from '../audio/sfxEngine';
 import { useFxIntensity } from '../hooks/useFxIntensity';
 import type { TableBetBanner } from '../utils/autoTableEvent';
 
-const DROP_MS = 58;
-const MAX_VISUAL_CHIPS = 14;
+const DROP_MS = 48;
 const DENOMS = [1_000_000, 500_000, 100_000, 50_000, 10_000, 5_000, 1_000] as const;
 
-/** 금액 규모에 따라 쌓일 칩 장수 (1백만 → 12장) */
+type PlacedChip = {
+  id: string;
+  value: number;
+  /** 기둥 인덱스 */
+  col: number;
+  /** 기둥 안 높이 (0=바닥) */
+  level: number;
+  /** 전경 기울어진 칩 */
+  leanDeg?: number;
+  role: 'stack' | 'lean';
+  /** 드롭 순서 */
+  order: number;
+};
+
+/** 금액 → 총 칩 장수 (산처럼 보이도록 넉넉히) */
 function betInChipCount(amount: number): number {
   const n = Math.max(0, Math.floor(amount));
-  if (n >= 5_000_000) return MAX_VISUAL_CHIPS;
-  if (n >= 2_000_000) return 13;
-  if (n >= 1_000_000) return 12;
-  if (n >= 500_000) return 10;
-  if (n >= 200_000) return 8;
-  if (n >= 100_000) return 7;
-  if (n >= 50_000) return 6;
-  if (n >= 20_000) return 5;
-  if (n >= 10_000) return 4;
-  if (n >= 5_000) return 3;
+  if (n >= 5_000_000) return 28;
+  if (n >= 2_000_000) return 24;
+  if (n >= 1_000_000) return 22;
+  if (n >= 700_000) return 18;
+  if (n >= 500_000) return 16;
+  if (n >= 200_000) return 14;
+  if (n >= 100_000) return 12;
+  if (n >= 50_000) return 10;
+  if (n >= 20_000) return 8;
+  if (n >= 10_000) return 6;
+  return 4;
+}
+
+function columnCount(amount: number): number {
+  const n = Math.max(0, Math.floor(amount));
+  if (n >= 1_000_000) return 5;
+  if (n >= 500_000) return 4;
+  if (n >= 100_000) return 3;
   return 2;
 }
 
-/**
- * 베팅 오버레이용 시각 스택.
- * 큰 단위 1장으로 끝내지 않고, 금액 규모만큼 여러 장을 높이 쌓음.
- */
-function amountToBetInStack(amount: number): StackChip[] {
+function paletteFor(amount: number): number[] {
   const n = Math.max(0, Math.floor(amount));
-  const count = betInChipCount(n);
-  if (n <= 0) {
-    return Array.from({ length: 2 }, (_, i) => ({ id: `f${i}`, value: 10_000 }));
-  }
-
-  const ideal = Math.max(1_000, Math.round(n / count));
+  const ideal = Math.max(1_000, Math.round(n / Math.max(1, betInChipCount(n))));
   const unit = [...DENOMS].sort((a, b) => Math.abs(a - ideal) - Math.abs(b - ideal))[0];
-
-  // 근처 단위를 섞어 색이 다른 칩이 쌓이게
-  const palette = DENOMS.filter(
-    (d) => d <= Math.max(unit * 2, unit) && d >= Math.min(unit, 10_000),
-  );
-  const use = palette.length > 0 ? palette : [unit];
-
-  return Array.from({ length: count }, (_, i) => {
-    // 아래쪽(먼저 쌓임)일수록 큰 칩 비중 ↑
-    const value = use[Math.min(i % use.length, use.length - 1)];
-    return { id: `bet_${i}_${value}`, value };
-  });
+  const list = DENOMS.filter((d) => d <= Math.max(unit * 5, 100_000) && d >= Math.min(unit, 10_000));
+  return list.length > 0 ? [...list] : [unit];
 }
 
-function MiniChip({
+/**
+ * 여러 기둥 + 전경 기울기 칩으로 "산" 형태의 파일 구성
+ */
+function buildChipPile(amount: number): PlacedChip[] {
+  const total = betInChipCount(amount);
+  const cols = columnCount(amount);
+  const palette = paletteFor(amount);
+  const out: PlacedChip[] = [];
+  let order = 0;
+  let seq = 0;
+
+  // 기둥별 높이 비율 (가운데가 가장 높음)
+  const weights = Array.from({ length: cols }, (_, i) => {
+    const mid = (cols - 1) / 2;
+    return 1.15 - Math.abs(i - mid) * 0.22;
+  });
+  const wSum = weights.reduce((a, b) => a + b, 0);
+  const leanCount = Math.min(4, Math.max(2, Math.floor(cols * 0.8)));
+  const stackBudget = Math.max(cols * 2, total - leanCount);
+
+  const heights = weights.map((w) => Math.max(2, Math.round((w / wSum) * stackBudget)));
+  // 합이 stackBudget에 가깝게 보정
+  let hSum = heights.reduce((a, b) => a + b, 0);
+  while (hSum > stackBudget && heights.some((h) => h > 2)) {
+    const i = heights.indexOf(Math.max(...heights));
+    heights[i] -= 1;
+    hSum -= 1;
+  }
+  while (hSum < stackBudget) {
+    const mid = Math.floor(cols / 2);
+    heights[mid] += 1;
+    hSum += 1;
+  }
+
+  for (let c = 0; c < cols; c++) {
+    for (let level = 0; level < heights[c]; level++) {
+      const value = palette[(c + level) % palette.length];
+      out.push({
+        id: `s${seq++}`,
+        value,
+        col: c,
+        level,
+        role: 'stack',
+        order: order++,
+      });
+    }
+  }
+
+  // 전경 기울어진 칩 (볼륨감)
+  const leanAngles = [-38, -18, 22, 40];
+  for (let i = 0; i < leanCount; i++) {
+    out.push({
+      id: `l${seq++}`,
+      value: palette[i % palette.length],
+      col: Math.min(cols - 1, Math.floor((i / leanCount) * cols)),
+      level: 0,
+      leanDeg: leanAngles[i % leanAngles.length],
+      role: 'lean',
+      order: order++,
+    });
+  }
+
+  return out;
+}
+
+function toneOf(value: number) {
+  return (
+    CHIP_TONES[value] || {
+      fill: '#52525b',
+      rim: '#27272a',
+      text: '#fff',
+      label: '',
+      value,
+    }
+  );
+}
+
+/** 두께감 있는 카지노 칩 */
+function ThickChip({
   value,
   size,
-  offsetY,
-  wobbleX,
   animate,
   delay,
+  style,
+  leanDeg = 0,
+  face = false,
 }: {
   value: number;
   size: number;
-  offsetY: number;
-  wobbleX: number;
   animate: boolean;
   delay: number;
+  style: CSSProperties;
+  leanDeg?: number;
+  face?: boolean;
 }) {
-  const tone =
-    CHIP_TONES[value] ||
-    ({ fill: '#52525b', rim: '#27272a', text: '#fff', label: '', value } as const);
+  const tone = toneOf(value);
+  const thick = Math.max(3, Math.round(size * 0.12));
+
   return (
-    <motion.span
-      className="absolute left-1/2 rounded-full border-2 shadow-md"
+    <motion.div
+      className="absolute"
       style={{
         width: size,
         height: size,
-        marginLeft: -size / 2 + wobbleX,
-        bottom: offsetY,
-        background: `radial-gradient(circle at 30% 28%, rgba(255,255,255,0.45), transparent 42%), ${tone.fill}`,
-        borderColor: tone.rim,
-        boxShadow: `0 ${2 + offsetY * 0.04}px 5px rgba(0,0,0,0.4)`,
-        zIndex: Math.round(offsetY),
+        ...style,
       }}
-      initial={animate ? { y: -56, opacity: 0, scale: 0.45, rotate: -18 } : false}
-      animate={{ y: 0, opacity: 1, scale: 1, rotate: wobbleX * 0.8 }}
+      initial={
+        animate
+          ? { y: -70, opacity: 0, scale: 0.4, rotate: leanDeg - 25 }
+          : false
+      }
+      animate={{
+        y: 0,
+        opacity: 1,
+        scale: 1,
+        rotate: leanDeg,
+      }}
       transition={
         animate
-          ? { type: 'spring', stiffness: 560, damping: 15, delay }
+          ? { type: 'spring', stiffness: 480, damping: 14, delay }
           : { duration: 0 }
       }
-    />
+    >
+      {/* 옆면(두께) */}
+      <span
+        className="absolute inset-x-0 bottom-0 rounded-full"
+        style={{
+          height: size * 0.55,
+          top: size * 0.42,
+          background: `linear-gradient(180deg, ${tone.rim} 0%, ${tone.fill} 40%, ${tone.rim} 100%)`,
+          boxShadow: `0 ${thick}px ${thick + 4}px rgba(0,0,0,0.45)`,
+        }}
+      />
+      {/* 윗면 */}
+      <span
+        className="absolute inset-0 rounded-full border-[3px]"
+        style={{
+          background: `
+            radial-gradient(circle at 32% 28%, rgba(255,255,255,0.55), transparent 40%),
+            radial-gradient(circle at 70% 75%, rgba(0,0,0,0.25), transparent 45%),
+            ${tone.fill}
+          `,
+          borderColor: tone.rim,
+          boxShadow: `
+            inset 0 0 0 3px rgba(255,255,255,0.2),
+            inset 0 0 0 6px ${tone.rim}55,
+            0 1px 0 ${tone.rim}
+          `,
+        }}
+      >
+        {/* 가장자리 점선 느낌 */}
+        <span
+          className="absolute inset-[5px] rounded-full border border-dashed opacity-50"
+          style={{ borderColor: 'rgba(255,255,255,0.55)' }}
+        />
+        {face && (
+          <span
+            className="absolute inset-0 flex items-center justify-center font-black leading-none"
+            style={{
+              color: tone.text,
+              fontSize: size >= 34 ? 11 : 9,
+              textShadow: '0 1px 2px rgba(0,0,0,0.45)',
+            }}
+          >
+            {tone.label || ''}
+          </span>
+        )}
+      </span>
+    </motion.div>
   );
 }
 
-function ChipStack({
+function ChipPile({
   amount,
   compact,
   animate,
@@ -103,28 +235,77 @@ function ChipStack({
   compact?: boolean;
   animate: boolean;
 }) {
-  const chips = useMemo(() => amountToBetInStack(amount), [amount]);
-  const size = compact ? 16 : 20;
-  const step = compact ? 2.6 : 3.2;
-  const stackH = size + Math.max(0, chips.length - 1) * step + 4;
+  const chips = useMemo(() => buildChipPile(amount), [amount]);
+  const cols = columnCount(amount);
+  const chipSize = compact ? 26 : 34;
+  const colGap = compact ? 16 : 22;
+  const stepY = compact ? 4.2 : 5.2;
+  const pileW = chipSize + (cols - 1) * colGap + chipSize * 0.55;
+  const maxLevel = chips.reduce((m, c) => (c.role === 'stack' ? Math.max(m, c.level) : m), 0);
+  const pileH = chipSize * 0.75 + maxLevel * stepY + chipSize * 0.85;
 
   return (
     <div
       className="relative shrink-0"
-      style={{ width: size + 10, height: Math.max(stackH, size + 8) }}
+      style={{ width: pileW, height: pileH }}
       aria-hidden
     >
-      {chips.map((chip, i) => (
-        <MiniChip
-          key={chip.id}
-          value={chip.value}
-          size={size}
-          offsetY={i * step}
-          wobbleX={(i % 2 === 0 ? -1 : 1) * (i % 3 === 0 ? 1.5 : 0.6)}
-          animate={animate}
-          delay={i * (DROP_MS / 1000)}
-        />
-      ))}
+      {/* 바닥 그림자 */}
+      <div
+        className="absolute left-1/2 -translate-x-1/2 rounded-[50%] bg-black/40 blur-md"
+        style={{
+          bottom: 2,
+          width: pileW * 0.85,
+          height: chipSize * 0.28,
+        }}
+      />
+
+      {chips
+        .filter((c) => c.role === 'stack')
+        .map((chip) => {
+          const x = chip.col * colGap + (chip.level % 2 === 0 ? 0 : 1.2);
+          const y = chip.level * stepY;
+          return (
+            <ThickChip
+              key={chip.id}
+              value={chip.value}
+              size={chipSize}
+              animate={animate}
+              delay={chip.order * (DROP_MS / 1000)}
+              face={chip.level === maxLevel && chip.col === Math.floor(cols / 2)}
+              style={{
+                left: x,
+                bottom: 10 + y,
+                zIndex: 10 + chip.col + chip.level,
+              }}
+            />
+          );
+        })}
+
+      {chips
+        .filter((c) => c.role === 'lean')
+        .map((chip, i) => {
+          const x =
+            i * (chipSize * 0.55) +
+            (cols > 2 ? chipSize * 0.15 : 0) -
+            chipSize * 0.1;
+          return (
+            <ThickChip
+              key={chip.id}
+              value={chip.value}
+              size={chipSize * 0.92}
+              animate={animate}
+              delay={chip.order * (DROP_MS / 1000)}
+              leanDeg={chip.leanDeg ?? 0}
+              face
+              style={{
+                left: Math.max(-4, Math.min(pileW - chipSize, x)),
+                bottom: 0,
+                zIndex: 40 + i,
+              }}
+            />
+          );
+        })}
     </div>
   );
 }
@@ -168,30 +349,31 @@ function BetInRow({
 }) {
   const amount = banner.amount ?? 0;
   const isAuto = banner.badge.includes('오토');
-  const chips = useMemo(() => amountToBetInStack(amount), [amount]);
-  const durationMs = chips.length * DROP_MS + 140;
+  const chips = useMemo(() => buildChipPile(amount), [amount]);
+  const durationMs = Math.min(1100, chips.length * DROP_MS + 160);
   const displayAmount = useCountUp(amount, animate, durationMs, banner.id);
   const side = banner.side || '';
 
   useEffect(() => {
     if (!animate || !playAudio) return;
     const timers: number[] = [];
-    const list = chips.length > 0 ? chips : [{ id: 'x', value: 10_000 }];
+    const list = chips.length > 0 ? chips : [{ order: 0, value: 10_000, id: 'x' } as PlacedChip];
 
+    // 사운드는 2장마다 + 마지막 (너무 촘촘하지 않게)
     list.forEach((chip, i) => {
-      // 매 칩 + 가끔 heavy 로 무게감
+      if (i % 2 !== 0 && i !== list.length - 1) return;
       timers.push(
         window.setTimeout(() => {
           const heavy = chip.value >= 500_000 || i === list.length - 1;
-          playSfx(heavy ? 'chipHeavy' : 'chip', { throttleMs: 40 });
-        }, 30 + index * 60 + i * DROP_MS),
+          playSfx(heavy ? 'chipHeavy' : 'chip', { throttleMs: 35 });
+        }, 20 + index * 50 + chip.order * DROP_MS),
       );
     });
 
     timers.push(
       window.setTimeout(() => {
         playSfx('betConfirm', { throttleMs: 450 });
-      }, 30 + index * 60 + list.length * DROP_MS + 50),
+      }, 20 + index * 50 + list.length * DROP_MS + 40),
     );
 
     return () => timers.forEach((id) => clearTimeout(id));
@@ -199,25 +381,25 @@ function BetInRow({
 
   return (
     <motion.div
-      className="flex items-end gap-2.5"
-      initial={animate ? { y: -14, scale: 0.9, opacity: 0, rotate: -8 } : false}
-      animate={{ y: 0, scale: 1, opacity: 1, rotate: -6 }}
-      transition={{ type: 'spring', stiffness: 340, damping: 18, delay: index * 0.05 }}
+      className="flex flex-col items-center gap-1"
+      initial={animate ? { y: -12, scale: 0.88, opacity: 0 } : false}
+      animate={{ y: 0, scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 320, damping: 18, delay: index * 0.05 }}
     >
-      <ChipStack amount={amount} compact={compact} animate={animate} />
-      <div className="flex flex-col items-start gap-0.5 pb-0.5">
+      <ChipPile amount={amount} compact={compact} animate={animate} />
+      <div className="flex flex-col items-center gap-0.5 -mt-0.5">
         <motion.span
-          className={`font-black tracking-widest border-2 px-2 py-0.5 rounded-md bg-black/60 shadow-lg ${
+          className={`font-black tracking-widest border-2 px-2.5 py-0.5 rounded-md bg-black/65 shadow-lg -rotate-6 ${
             isAuto ? 'text-amber-200 border-amber-400/70' : 'text-sky-100 border-sky-400/70'
           } ${compact ? 'text-[11px]' : 'text-sm sm:text-base'}`}
-          initial={animate ? { scale: 1.25, opacity: 0 } : false}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 380, damping: 16, delay: animate ? 0.02 : 0 }}
+          initial={animate ? { scale: 1.3, opacity: 0, rotate: -14 } : false}
+          animate={{ scale: 1, opacity: 1, rotate: -6 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 16, delay: animate ? 0.08 : 0 }}
         >
           BET IN
         </motion.span>
         <span
-          className={`font-mono font-bold px-1.5 py-0.5 rounded bg-black/55 border border-white/10 tabular-nums ${
+          className={`font-mono font-bold px-1.5 py-0.5 rounded bg-black/60 border border-white/10 tabular-nums ${
             compact ? 'text-[10px]' : 'text-[11px] sm:text-xs'
           } ${isAuto ? 'text-amber-200' : 'text-sky-100'}`}
         >
@@ -236,7 +418,7 @@ type Props = {
 };
 
 /**
- * 로드맵 위 BET IN — 금액만큼 칩이 높이 쌓이며 카운트업
+ * 로드맵 위 BET IN — 여러 기둥 칩 산 + 금액 카운트업
  */
 export default function BetInOverlay({ banners, compact = false }: Props) {
   const { reduced } = useFxIntensity();
@@ -268,7 +450,7 @@ export default function BetInOverlay({ banners, compact = false }: Props) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
       >
-        <div className="absolute inset-0 bg-zinc-950/25 backdrop-blur-[1px]" />
+        <div className="absolute inset-0 bg-zinc-950/30 backdrop-blur-[1px]" />
         <div
           className={`relative flex ${banners.length > 1 ? 'flex-col gap-2' : ''} items-center`}
         >
