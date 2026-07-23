@@ -24,6 +24,11 @@ AI API: `/plugin/bacara_wallet/admin/ai_keys.php`
 - **자동 베팅**: 관리자 「AI 자동 베팅」ON + 3키 정상 + 2/3 · 65% · 표본 30+ · 격차 10%+
 - 세션이 **라이브**이고 전략이 **AI 추천대로**일 때만 실제 베팅
 
+## AI 코치 기능
+- **위험 코치**: 연패·마틴 상승·로스컷 근접 시 세션 바에 경고
+- **판단 설명**: 우측 패널에 결정 근거 + GPT/Claude/Gemini 요약
+- **세션 복기**: `/plugin/bacara_wallet/api/ai_session_review.php` — 종료 모달에서 요약·다음 제안
+
 ## DB
 - `g5_bacara_wallet` — 잔액
 - `g5_bacara_wallet_log` — 변동 로그
