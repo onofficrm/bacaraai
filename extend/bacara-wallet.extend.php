@@ -12,6 +12,9 @@ if (is_file(G5_LIB_PATH . '/bacara-wallet.lib.php')) {
 if (is_file(G5_LIB_PATH . '/bacara-ai-config.lib.php')) {
     include_once G5_LIB_PATH . '/bacara-ai-config.lib.php';
 }
+if (is_file(G5_LIB_PATH . '/bacara-ai-analyze.lib.php')) {
+    include_once G5_LIB_PATH . '/bacara-ai-analyze.lib.php';
+}
 
 if (!function_exists('bacara_wallet_admin_menu')) {
     function bacara_wallet_admin_menu($admin_menu)
@@ -93,4 +96,7 @@ if (function_exists('add_event')) {
 
 if (function_exists('add_event') && function_exists('bacara_wallet_install_tables')) {
     add_event('common_header', 'bacara_wallet_install_tables', 5, 0);
+}
+if (function_exists('add_event') && function_exists('bacara_ai_install_tables')) {
+    add_event('common_header', 'bacara_ai_install_tables', 6, 0);
 }

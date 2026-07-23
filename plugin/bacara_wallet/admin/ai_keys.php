@@ -10,7 +10,7 @@ $status = bacara_ai_config_status();
 $saved = isset($_GET['saved']) && $_GET['saved'] === '1';
 ?>
 
-<?php bacara_wallet_admin_shell_start('AI API 설정', 'ChatGPT(OpenAI) · Claude(Anthropic) · Gemini 키를 등록하면 실시간 테이블 분석에 사용합니다. 키는 서버 data 폴더에만 저장됩니다.'); ?>
+<?php bacara_wallet_admin_shell_start('AI API 설정', 'ChatGPT(OpenAI) · Claude(Anthropic) · Gemini 키를 등록하면 실시간 테이블을 섀도 모드로 분석합니다. 예측은 기록·화면 표시만 하며 자동 베팅에는 아직 연결되지 않습니다.'); ?>
 <?php bacara_wallet_admin_nav('ai'); ?>
 
 <?php if ($saved) { ?>

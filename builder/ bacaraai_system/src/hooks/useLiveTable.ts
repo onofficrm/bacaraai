@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PLATFORM_LINKS } from '../constants';
-import type { GameResult, TableData } from '../types';
+import type { AiModelAnalysis, AiOpinion, GameResult, TableData } from '../types';
 
 type LiveResultRow = {
   id: number;
@@ -20,6 +20,25 @@ type LiveResponse = {
   results?: LiveResultRow[];
 };
 
+type AiAnalyzeResponse = {
+  ok: boolean;
+  message?: string;
+  cached?: boolean;
+  mode?: string;
+  auto_bet_allowed?: boolean;
+  source_result_id?: number;
+  game_no?: number | null;
+  gpt?: AiModelAnalysis & { error?: string };
+  claude?: AiModelAnalysis & { error?: string };
+  gemini?: AiModelAnalysis & { error?: string };
+  finalOpinion?: AiOpinion;
+  finalConfidence?: number;
+  consensus?: string;
+  decisionReason?: string;
+  appliedRule?: string;
+  accuracy?: { settled: number; hits: number; rate: number | null };
+};
+
 type LiveState = {
   loading: boolean;
   connected: boolean;
@@ -28,6 +47,13 @@ type LiveState = {
   latestId: number | null;
   latestDetectedAt: string | null;
   error: string | null;
+};
+
+type AiState = {
+  loading: boolean;
+  error: string | null;
+  forResultId: number | null;
+  data: AiAnalyzeResponse | null;
 };
 
 const POLL_MS = 2000;
@@ -67,15 +93,6 @@ function currentStreak(results: GameResult[]): string {
   return `${decisive === 'P' ? 'Player' : 'Banker'} ${count}연속`;
 }
 
-function liveOpinion(results: GameResult[]): 'PLAYER' | 'BANKER' | 'WAIT' {
-  const decisive = results.filter((item) => item !== 'T');
-  if (decisive.length < 2) return 'WAIT';
-  const latest = decisive[decisive.length - 1];
-  const previous = decisive[decisive.length - 2];
-  if (latest !== previous) return 'WAIT';
-  return latest === 'P' ? 'PLAYER' : 'BANKER';
-}
-
 /** API가 과거 슈를 섞어 줄 때를 대비해 game_no 감소 지점부터만 사용 */
 function trimToCurrentShoe(rows: LiveResultRow[]): LiveResultRow[] {
   if (rows.length === 0) return rows;
@@ -92,6 +109,16 @@ function trimToCurrentShoe(rows: LiveResultRow[]): LiveResultRow[] {
   return start === 0 ? sorted : sorted.slice(start);
 }
 
+function fallbackModel(opinion: AiOpinion = 'WAIT'): AiModelAnalysis {
+  return {
+    status: '대기',
+    opinion,
+    confidence: 0,
+    responseTime: 0,
+    reasons: [],
+  };
+}
+
 export default function useLiveTable(
   base: TableData,
   tableName = 'MD2729',
@@ -106,7 +133,15 @@ export default function useLiveTable(
     latestDetectedAt: null,
     error: null,
   });
+  const [aiState, setAiState] = useState<AiState>({
+    loading: false,
+    error: null,
+    forResultId: null,
+    data: null,
+  });
   const requestActive = useRef(false);
+  const analyzeActive = useRef(false);
+  const analyzedIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,17 +198,106 @@ export default function useLiveTable(
     };
   }, [tableName]);
 
+  // 새 결과가 들어왔을 때만 AI 분석 (결과 ID당 1회, 서버 캐시)
+  useEffect(() => {
+    const latestId = state.latestId;
+    if (!latestId || !state.connected) return;
+    if (analyzedIdRef.current === latestId) return;
+    if (analyzeActive.current) return;
+
+    let cancelled = false;
+    analyzeActive.current = true;
+    setAiState((prev) => ({
+      ...prev,
+      loading: true,
+      error: null,
+      forResultId: latestId,
+    }));
+
+    const run = async () => {
+      try {
+        const query = new URLSearchParams({ table_name: tableName });
+        const response = await fetch(`${PLATFORM_LINKS.aiAnalyze}?${query.toString()}`, {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        });
+        const data = (await response.json()) as AiAnalyzeResponse;
+        if (cancelled) return;
+        if (!response.ok || !data.ok) {
+          throw new Error(data.message || 'AI 분석에 실패했습니다.');
+        }
+        analyzedIdRef.current = latestId;
+        setAiState({
+          loading: false,
+          error: null,
+          forResultId: latestId,
+          data,
+        });
+      } catch (error) {
+        if (cancelled) return;
+        // 실패해도 같은 ID 재호출 폭주 방지 (다음 새 결과에서 재시도)
+        analyzedIdRef.current = latestId;
+        setAiState((prev) => ({
+          ...prev,
+          loading: false,
+          error: error instanceof Error ? error.message : 'AI 분석 오류',
+        }));
+      } finally {
+        analyzeActive.current = false;
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.latestId, state.connected, tableName]);
+
   return useMemo(() => {
     const results = state.rows.map((row) => row.result);
     const shoeLabel =
       state.gameNo !== null ? `G${state.gameNo}` : base.stats.shoeNumber;
+
+    const analysis = aiState.data;
+    const analysisReady =
+      analysis &&
+      analysis.source_result_id != null &&
+      analysis.source_result_id === state.latestId;
+
+    const gpt = analysisReady && analysis.gpt ? analysis.gpt : fallbackModel('WAIT');
+    const claude = analysisReady && analysis.claude ? analysis.claude : fallbackModel('WAIT');
+    const gemini = analysisReady && analysis.gemini ? analysis.gemini : fallbackModel('WAIT');
+
+    const finalOpinion: AiOpinion =
+      analysisReady && analysis.finalOpinion ? analysis.finalOpinion : 'WAIT';
+    const finalConfidence =
+      analysisReady && typeof analysis.finalConfidence === 'number'
+        ? analysis.finalConfidence
+        : 0;
+    const consensus =
+      analysisReady && analysis.consensus
+        ? analysis.consensus
+        : aiState.loading
+          ? '분석 중'
+          : '0/3';
+    const appliedRule = aiState.loading
+      ? 'GPT·Claude·Gemini 섀도 분석 중'
+      : aiState.error
+        ? aiState.error
+        : analysisReady
+          ? analysis.appliedRule || analysis.decisionReason || '섀도 모드 분석'
+          : 'AI 분석 대기';
+
+    const isActionable = finalOpinion === 'PLAYER' || finalOpinion === 'BANKER';
+    const autoBetAllowed = Boolean(analysisReady && analysis.auto_bet_allowed);
 
     if (!results.length) {
       return {
         ...base,
         name: displayName,
         gameCode: tableName,
-        status: state.error ? 'error' : 'analyzing',
+        status: state.error ? 'error' : aiState.loading ? 'analyzing' : 'observing',
         live: {
           connected: state.connected,
           loading: state.loading,
@@ -195,10 +319,18 @@ export default function useLiveTable(
         },
         ai: {
           ...base.ai,
+          gpt,
+          claude,
+          gemini,
           finalOpinion: 'WAIT',
           finalConfidence: 0,
-          consensus: '0/3',
-          appliedRule: '실시간 데이터 대기',
+          consensus,
+          appliedRule,
+          recommendedAmount: 0,
+          skipReasons: aiState.error ? [aiState.error] : ['실시간 데이터 대기'],
+          discussionSummary: '섀도 모드: 예측만 기록하며 자동 베팅에는 사용하지 않습니다.',
+          autoBetAllowed: false,
+          shadowMode: true,
         },
       };
     }
@@ -206,17 +338,23 @@ export default function useLiveTable(
     const player = results.filter((result) => result === 'P').length;
     const banker = results.filter((result) => result === 'B').length;
     const tie = results.filter((result) => result === 'T').length;
-    const opinion = liveOpinion(results);
-    const isActionable = opinion !== 'WAIT';
-    const confidence = isActionable
-      ? Math.min(75, 50 + Math.max(0, Math.abs(player - banker)))
-      : 45;
+
+    let status: TableData['status'] = 'observing';
+    if (state.error) status = 'error';
+    else if (aiState.loading) status = 'analyzing';
+    else if (isActionable) status = 'rule_triggered';
+
+    const accuracy = analysisReady ? analysis.accuracy : undefined;
+    const accuracyText =
+      accuracy && accuracy.settled > 0 && accuracy.rate != null
+        ? `적중 ${Math.round(accuracy.rate * 100)}% (${accuracy.hits}/${accuracy.settled})`
+        : '섀도 검증 중';
 
     return {
       ...base,
       name: displayName,
       gameCode: tableName,
-      status: isActionable ? 'rule_triggered' : 'observing',
+      status,
       timer: 0,
       live: {
         connected: state.connected,
@@ -236,25 +374,43 @@ export default function useLiveTable(
         shoeNumber: shoeLabel,
         shoeProgress: Math.min(100, Math.round((results.length / 80) * 100)),
         currentRound: state.gameNo ?? results.length,
-        // 현재 슈 전체 — 패턴/통계가 DB와 동일하게 맞도록 slice 하지 않음
         recentResults: results,
       },
       ai: {
         ...base.ai,
-        finalOpinion: opinion,
-        finalConfidence: confidence,
-        consensus: isActionable ? '2/3' : '0/3',
-        appliedRule:
-          state.gameNo !== null
-            ? `게임 ${state.gameNo} 실시간 관찰`
-            : isActionable
-              ? '동일 결과 2연속 감지'
-              : '실시간 흐름 관찰',
-        recommendedAmount: isActionable ? base.ai.recommendedAmount : 0,
-        gpt: { ...base.ai.gpt, opinion },
-        gemini: { ...base.ai.gemini, opinion },
-        claude: { ...base.ai.claude, opinion: 'WAIT' },
+        gpt: {
+          status: gpt.status || '분석 완료',
+          opinion: gpt.opinion,
+          confidence: gpt.confidence,
+          responseTime: gpt.responseTime,
+          reasons: gpt.reasons || [],
+        },
+        claude: {
+          status: claude.status || '분석 완료',
+          opinion: claude.opinion,
+          confidence: claude.confidence,
+          responseTime: claude.responseTime,
+          reasons: claude.reasons || [],
+        },
+        gemini: {
+          status: gemini.status || '분석 완료',
+          opinion: gemini.opinion,
+          confidence: gemini.confidence,
+          responseTime: gemini.responseTime,
+          reasons: gemini.reasons || [],
+        },
+        finalOpinion,
+        finalConfidence,
+        consensus,
+        appliedRule,
+        recommendedAmount: 0,
+        skipReasons: isActionable
+          ? undefined
+          : [appliedRule, accuracyText],
+        discussionSummary: `섀도 모드 · ${accuracyText}. 자동 베팅에는 아직 연결되지 않습니다.`,
+        autoBetAllowed,
+        shadowMode: true,
       },
     };
-  }, [base, state, tableName, displayName]);
+  }, [base, state, aiState, tableName, displayName]);
 }

@@ -160,7 +160,9 @@ export default function TableCard({
           isSelected ? 'bg-amber-500/5 border-amber-500/30' : 'bg-zinc-950 border-zinc-800/80'
         }`}>
           <div className="flex flex-col gap-0.5">
-            <span className="text-[10px] text-zinc-500">AI 의견</span>
+            <span className="text-[10px] text-zinc-500">
+              {table.ai.shadowMode ? 'AI 의견 · 섀도' : 'AI 의견'}
+            </span>
             <span className={`text-sm font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
               {getOpinionText(table.ai.finalOpinion, beginnerMode)}
             </span>
@@ -168,7 +170,7 @@ export default function TableCard({
           <div className="flex flex-col items-end gap-0.5">
             <span className="text-[10px] text-zinc-500">참고 금액</span>
             <span className="text-sm font-mono font-bold text-zinc-200">
-              {isPassive ? '-' : table.ai.recommendedAmount.toLocaleString() + '원'}
+              {isPassive || table.ai.shadowMode ? '-' : table.ai.recommendedAmount.toLocaleString() + '원'}
             </span>
           </div>
         </div>

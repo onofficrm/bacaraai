@@ -59,6 +59,9 @@ export interface TableData {
     finalResult?: AiAnalysisResult;
     skipReasons?: string[];
     discussionSummary?: string;
+    /** 섀도 모드에서는 false — AI 의견으로 자동 베팅하지 않음 */
+    autoBetAllowed?: boolean;
+    shadowMode?: boolean;
   };
 }
 

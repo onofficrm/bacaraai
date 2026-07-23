@@ -286,10 +286,12 @@ export default function App() {
         }
       }
     } else {
+      // AI 전략: 섀도 모드(autoBetAllowed=false)에서는 자동 베팅하지 않음
       for (const t of watchTables) {
         if (t.status === 'risk_blocked') continue;
         if (isCancelledRound(t)) continue;
         if (getBettingRemainingSecForTable(t) <= 0) continue;
+        if (t.ai.autoBetAllowed === false || t.ai.shadowMode) continue;
         const opinion = t.ai.finalOpinion;
         if (opinion !== 'PLAYER' && opinion !== 'BANKER') continue;
         const signal = `${t.id}:${roundKeyOf(t)}:ai:${opinion}`;
