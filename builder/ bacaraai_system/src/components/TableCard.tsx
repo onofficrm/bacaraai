@@ -161,7 +161,11 @@ export default function TableCard({
         }`}>
           <div className="flex flex-col gap-0.5">
             <span className="text-[10px] text-zinc-500">
-              {table.ai.shadowMode ? 'AI 의견 · 섀도' : 'AI 의견'}
+              {table.ai.autoBetAllowed
+                ? 'AI 의견 · 자동베팅'
+                : table.ai.shadowMode
+                  ? 'AI 의견 · 참고'
+                  : 'AI 의견'}
             </span>
             <span className={`text-sm font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
               {getOpinionText(table.ai.finalOpinion, beginnerMode)}
@@ -170,7 +174,7 @@ export default function TableCard({
           <div className="flex flex-col items-end gap-0.5">
             <span className="text-[10px] text-zinc-500">참고 금액</span>
             <span className="text-sm font-mono font-bold text-zinc-200">
-              {isPassive || table.ai.shadowMode ? '-' : table.ai.recommendedAmount.toLocaleString() + '원'}
+              {isPassive ? '-' : table.ai.recommendedAmount > 0 ? table.ai.recommendedAmount.toLocaleString() + '원' : '-'}
             </span>
           </div>
         </div>

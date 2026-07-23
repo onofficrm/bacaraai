@@ -120,6 +120,7 @@ if ($mode === 'save_ai_keys') {
             'gemini_api_key' => isset($_POST['gemini_api_key']) ? (string) $_POST['gemini_api_key'] : '',
             'gemini_model' => isset($_POST['gemini_model']) ? (string) $_POST['gemini_model'] : '',
             'enabled' => !empty($_POST['enabled']) ? '1' : '0',
+            'auto_bet_enabled' => !empty($_POST['auto_bet_enabled']) ? '1' : '0',
         ),
         $clear_keys
     );

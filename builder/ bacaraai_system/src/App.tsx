@@ -286,12 +286,12 @@ export default function App() {
         }
       }
     } else {
-      // AI 전략: 섀도 모드(autoBetAllowed=false)에서는 자동 베팅하지 않음
+      // AI 전략: 서버가 auto_bet_allowed=true 인 테이블만 자동 베팅
       for (const t of watchTables) {
         if (t.status === 'risk_blocked') continue;
         if (isCancelledRound(t)) continue;
-        if (getBettingRemainingSecForTable(t) <= 0) continue;
-        if (t.ai.autoBetAllowed === false || t.ai.shadowMode) continue;
+        if (getBettingRemainingSecForTable(t) < 5) continue;
+        if (!t.ai.autoBetAllowed) continue;
         const opinion = t.ai.finalOpinion;
         if (opinion !== 'PLAYER' && opinion !== 'BANKER') continue;
         const signal = `${t.id}:${roundKeyOf(t)}:ai:${opinion}`;

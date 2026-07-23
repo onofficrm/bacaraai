@@ -291,6 +291,7 @@ export default function useLiveTable(
 
     const isActionable = finalOpinion === 'PLAYER' || finalOpinion === 'BANKER';
     const autoBetAllowed = Boolean(analysisReady && analysis.auto_bet_allowed);
+    const shadowMode = !autoBetAllowed;
 
     if (!results.length) {
       return {
@@ -328,7 +329,7 @@ export default function useLiveTable(
           appliedRule,
           recommendedAmount: 0,
           skipReasons: aiState.error ? [aiState.error] : ['실시간 데이터 대기'],
-          discussionSummary: '섀도 모드: 예측만 기록하며 자동 베팅에는 사용하지 않습니다.',
+          discussionSummary: 'AI 분석 대기 중. 조건 충족 시에만 자동 베팅됩니다.',
           autoBetAllowed: false,
           shadowMode: true,
         },
@@ -342,13 +343,20 @@ export default function useLiveTable(
     let status: TableData['status'] = 'observing';
     if (state.error) status = 'error';
     else if (aiState.loading) status = 'analyzing';
-    else if (isActionable) status = 'rule_triggered';
+    else if (isActionable && autoBetAllowed) status = 'rule_triggered';
+    else if (isActionable) status = 'observing';
 
     const accuracy = analysisReady ? analysis.accuracy : undefined;
     const accuracyText =
       accuracy && accuracy.settled > 0 && accuracy.rate != null
         ? `적중 ${Math.round(accuracy.rate * 100)}% (${accuracy.hits}/${accuracy.settled})`
-        : '섀도 검증 중';
+        : '검증 데이터 축적 중';
+
+    const modeLabel = autoBetAllowed
+      ? 'AI 자동베팅 가능'
+      : isActionable
+        ? '참고 추천(자동베팅 조건 미충족)'
+        : '관망';
 
     return {
       ...base,
@@ -403,13 +411,11 @@ export default function useLiveTable(
         finalConfidence,
         consensus,
         appliedRule,
-        recommendedAmount: 0,
-        skipReasons: isActionable
-          ? undefined
-          : [appliedRule, accuracyText],
-        discussionSummary: `섀도 모드 · ${accuracyText}. 자동 베팅에는 아직 연결되지 않습니다.`,
+        recommendedAmount: autoBetAllowed ? base.ai.recommendedAmount || 0 : 0,
+        skipReasons: isActionable ? undefined : [appliedRule, accuracyText],
+        discussionSummary: `${modeLabel} · ${accuracyText}`,
         autoBetAllowed,
-        shadowMode: true,
+        shadowMode,
       },
     };
   }, [base, state, aiState, tableName, displayName]);

@@ -628,7 +628,11 @@ export default function RightPanel({
                 <div className="rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden">
                   <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between">
                     <span className="text-[11px] font-bold text-zinc-400">
-                      {table.ai.shadowMode ? '다음 게임 예측 · 섀도(자동베팅 제외)' : '다음 게임 추천 · 참고용'}
+                      {table.ai.autoBetAllowed
+                        ? '다음 게임 · AI 자동베팅 가능'
+                        : table.ai.shadowMode
+                          ? '다음 게임 예측 · 참고(조건 미충족)'
+                          : '다음 게임 추천 · 참고용'}
                     </span>
                     <span className="text-[10px] text-zinc-500">{table.ai.consensus}</span>
                   </div>

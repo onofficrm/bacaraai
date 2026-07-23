@@ -17,11 +17,12 @@ AI API: `/plugin/bacara_wallet/admin/ai_keys.php`
 
 설정 파일: `data/bacaraai-ai.config.php` (Git 제외)
 
-## AI 섀도 분석
+## AI 분석 · 자동 베팅
 - API: `/plugin/bacara_wallet/api/ai_analyze.php?table_name=MD2729`
-- 새 게임 결과마다 GPT·Claude·Gemini 분석 후 예측 저장
-- 테이블: `g5_bacara_ai_prediction` (적중 여부 자동 정산)
-- 현재는 **섀도 모드** — 화면 표시·기록만, 자동 베팅 미연결
+- GPT·Claude·Gemini **병렬** 분석 후 예측 저장 (`g5_bacara_ai_prediction`)
+- 화면 추천: 2/3 · 신뢰도 55%+ · 표본 20+ · 격차 8%+
+- **자동 베팅**: 관리자 「AI 자동 베팅」ON + 3키 정상 + 2/3 · 65% · 표본 30+ · 격차 10%+
+- 세션이 **라이브**이고 전략이 **AI 추천대로**일 때만 실제 베팅
 
 ## DB
 - `g5_bacara_wallet` — 잔액

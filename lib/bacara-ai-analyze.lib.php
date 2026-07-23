@@ -686,18 +686,30 @@ if (!function_exists('bacara_ai_call_gemini')) {
 if (!function_exists('bacara_ai_decide_final')) {
     /**
      * 결정 엔진: 다수결 + 신뢰도 + 표본
+     * - final_opinion: 화면 추천 (완화된 기준)
+     * - auto_bet_ok: 자동 베팅용 엄격 기준 (3키 정상 · 2/3 · 65% · n≥30 · edge≥10%)
      */
     function bacara_ai_decide_final(array $models, array $stats)
     {
         $votes = array();
         $conf_sum = array('PLAYER' => 0, 'BANKER' => 0, 'WAIT' => 0);
+        $ok_count = 0;
+        $key_count = 0;
         foreach (array('gpt', 'claude', 'gemini') as $name) {
             if (empty($models[$name])) {
                 continue;
             }
+            $has_key = empty($models[$name]['error']) || $models[$name]['error'] !== 'API 키 없음';
+            // 키가 있는 모델만 카운트
+            if (!empty($models[$name]['error']) && $models[$name]['error'] === 'API 키 없음') {
+                continue;
+            }
+            $key_count++;
             $op = bacara_ai_normalize_opinion($models[$name]['opinion']);
             if (!empty($models[$name]['error'])) {
                 $op = 'WAIT';
+            } else {
+                $ok_count++;
             }
             $votes[] = $op;
             $conf = isset($models[$name]['confidence']) ? (int) $models[$name]['confidence'] : 0;
@@ -718,8 +730,6 @@ if (!function_exists('bacara_ai_decide_final')) {
         $agree = $best_n;
         $total = max(1, count($votes));
         $consensus = $agree . '/' . $total;
-
-        $min_conf = 55;
         $avg_conf = $agree > 0 ? (int) round($conf_sum[$best] / $agree) : 0;
 
         $best_pattern = null;
@@ -736,46 +746,255 @@ if (!function_exists('bacara_ai_decide_final')) {
             $edge = abs((float) $best_pattern['p_rate'] - (float) $best_pattern['b_rate']);
         }
 
-        $reasons = array();
+        $display = array(
+            'final_opinion' => 'WAIT',
+            'final_confidence' => max($avg_conf, 40),
+            'consensus' => $consensus,
+            'decision_reason' => '관망',
+            'auto_bet_ok' => false,
+        );
+
         if ($agree < 2) {
-            return array(
-                'final_opinion' => 'WAIT',
-                'final_confidence' => max($avg_conf, 40),
-                'consensus' => $consensus,
-                'decision_reason' => '모델 의견 불일치 → 관망',
-            );
+            $display['decision_reason'] = '모델 의견 불일치 → 관망';
+            return $display;
         }
-        if ($avg_conf < $min_conf) {
-            return array(
-                'final_opinion' => 'WAIT',
-                'final_confidence' => $avg_conf,
-                'consensus' => $consensus,
-                'decision_reason' => '신뢰도 부족(' . $avg_conf . '%) → 관망',
-            );
+        if ($avg_conf < 55) {
+            $display['final_confidence'] = $avg_conf;
+            $display['decision_reason'] = '신뢰도 부족(' . $avg_conf . '%) → 관망';
+            return $display;
         }
         if ($sample < 20) {
-            return array(
-                'final_opinion' => 'WAIT',
-                'final_confidence' => $avg_conf,
-                'consensus' => $consensus,
-                'decision_reason' => '패턴 표본 부족(n=' . $sample . ') → 관망',
-            );
+            $display['final_confidence'] = $avg_conf;
+            $display['decision_reason'] = '패턴 표본 부족(n=' . $sample . ') → 관망';
+            return $display;
         }
         if ($edge < 0.08) {
+            $display['final_confidence'] = $avg_conf;
+            $display['decision_reason'] = '통계 우위 미미 → 관망';
+            return $display;
+        }
+
+        $display['final_opinion'] = $best;
+        $display['final_confidence'] = min(90, $avg_conf);
+        $display['decision_reason'] = '다수결 ' . $consensus . ' · 표본 ' . $sample;
+
+        // 자동 베팅: 3개 키 모두 등록·정상 + 더 엄격한 기준
+        $auto_ok = true;
+        $auto_reason = '';
+        if (!bacara_ai_config_has_key('openai')
+            || !bacara_ai_config_has_key('anthropic')
+            || !bacara_ai_config_has_key('gemini')
+        ) {
+            $auto_ok = false;
+            $auto_reason = '3개 API 키 모두 필요';
+        } elseif ($ok_count < 3) {
+            $auto_ok = false;
+            $auto_reason = 'AI 호출 일부 실패';
+        } elseif ($agree < 2) {
+            $auto_ok = false;
+            $auto_reason = '다수결 미달';
+        } elseif ($avg_conf < 65) {
+            $auto_ok = false;
+            $auto_reason = '자동베팅 신뢰도 부족(' . $avg_conf . '%<65%)';
+        } elseif ($sample < 30) {
+            $auto_ok = false;
+            $auto_reason = '자동베팅 표본 부족(n=' . $sample . '<30)';
+        } elseif ($edge < 0.10) {
+            $auto_ok = false;
+            $auto_reason = '자동베팅 통계 우위 부족';
+        }
+
+        if ($auto_ok && bacara_ai_config_is_auto_bet_enabled()) {
+            $display['auto_bet_ok'] = true;
+            $display['decision_reason'] .= ' · AI 자동베팅 가능';
+        } elseif ($auto_ok && !bacara_ai_config_is_auto_bet_enabled()) {
+            $display['decision_reason'] .= ' · 관리자 자동베팅 OFF';
+        } else {
+            $display['decision_reason'] .= ' · ' . ($auto_reason !== '' ? $auto_reason : '자동베팅 보류');
+        }
+
+        return $display;
+    }
+}
+
+if (!function_exists('bacara_ai_parse_provider_response')) {
+    function bacara_ai_parse_provider_response($provider, array $res, $ms)
+    {
+        if (!$res['ok']) {
+            $label = $provider === 'openai' ? 'OpenAI' : ($provider === 'anthropic' ? 'Claude' : 'Gemini');
             return array(
-                'final_opinion' => 'WAIT',
-                'final_confidence' => $avg_conf,
-                'consensus' => $consensus,
-                'decision_reason' => '통계 우위 미미 → 관망',
+                'opinion' => 'WAIT',
+                'confidence' => 0,
+                'reasons' => array(),
+                'ms' => $ms,
+                'error' => $res['error'] ?: ($label . ' 호출 실패'),
+            );
+        }
+        $json = json_decode($res['raw'], true);
+        $text = '';
+        if ($provider === 'openai') {
+            if (isset($json['choices'][0]['message']['content'])) {
+                $text = $json['choices'][0]['message']['content'];
+            }
+        } elseif ($provider === 'anthropic') {
+            if (!empty($json['content']) && is_array($json['content'])) {
+                foreach ($json['content'] as $block) {
+                    if (isset($block['type']) && $block['type'] === 'text' && isset($block['text'])) {
+                        $text .= $block['text'];
+                    }
+                }
+            }
+        } else {
+            if (isset($json['candidates'][0]['content']['parts'][0]['text'])) {
+                $text = $json['candidates'][0]['content']['parts'][0]['text'];
+            }
+        }
+        $parsed = bacara_ai_parse_model_json($text);
+        if (!$parsed) {
+            return array('opinion' => 'WAIT', 'confidence' => 0, 'reasons' => array(), 'ms' => $ms, 'error' => '응답 파싱 실패');
+        }
+        if ($parsed['abstain']) {
+            $parsed['opinion'] = 'WAIT';
+        }
+        return array(
+            'opinion' => $parsed['opinion'],
+            'confidence' => $parsed['confidence'],
+            'reasons' => $parsed['reasons'],
+            'ms' => $ms,
+            'error' => '',
+        );
+    }
+}
+
+if (!function_exists('bacara_ai_call_models_parallel')) {
+    /**
+     * GPT / Claude / Gemini 병렬 호출
+     *
+     * @return array{gpt:array,claude:array,gemini:array}
+     */
+    function bacara_ai_call_models_parallel(array $stats)
+    {
+        $empty = array('opinion' => 'WAIT', 'confidence' => 0, 'reasons' => array('키 없음'), 'ms' => 0, 'error' => 'API 키 없음');
+        $out = array('gpt' => $empty, 'claude' => $empty, 'gemini' => $empty);
+        list($system, $user) = bacara_ai_prompt_messages($stats);
+
+        $jobs = array();
+        if (bacara_ai_config_has_key('openai')) {
+            $jobs['gpt'] = array(
+                'provider' => 'openai',
+                'url' => 'https://api.openai.com/v1/chat/completions',
+                'headers' => array(
+                    'Content-Type: application/json',
+                    'Authorization: Bearer ' . bacara_ai_config_get('openai_api_key'),
+                ),
+                'body' => json_encode(array(
+                    'model' => bacara_ai_config_get('openai_model', 'gpt-4o-mini'),
+                    'temperature' => 0.2,
+                    'response_format' => array('type' => 'json_object'),
+                    'messages' => array(
+                        array('role' => 'system', 'content' => $system),
+                        array('role' => 'user', 'content' => $user),
+                    ),
+                ), JSON_UNESCAPED_UNICODE),
+            );
+        }
+        if (bacara_ai_config_has_key('anthropic')) {
+            $jobs['claude'] = array(
+                'provider' => 'anthropic',
+                'url' => 'https://api.anthropic.com/v1/messages',
+                'headers' => array(
+                    'Content-Type: application/json',
+                    'x-api-key: ' . bacara_ai_config_get('anthropic_api_key'),
+                    'anthropic-version: 2023-06-01',
+                ),
+                'body' => json_encode(array(
+                    'model' => bacara_ai_config_get('anthropic_model', 'claude-sonnet-4-20250514'),
+                    'max_tokens' => 400,
+                    'temperature' => 0.2,
+                    'system' => $system,
+                    'messages' => array(
+                        array('role' => 'user', 'content' => $user),
+                    ),
+                ), JSON_UNESCAPED_UNICODE),
+            );
+        }
+        if (bacara_ai_config_has_key('gemini')) {
+            $model = bacara_ai_config_get('gemini_model', 'gemini-2.0-flash');
+            $jobs['gemini'] = array(
+                'provider' => 'gemini',
+                'url' => 'https://generativelanguage.googleapis.com/v1beta/models/'
+                    . rawurlencode($model)
+                    . ':generateContent?key='
+                    . rawurlencode(bacara_ai_config_get('gemini_api_key')),
+                'headers' => array('Content-Type: application/json'),
+                'body' => json_encode(array(
+                    'systemInstruction' => array(
+                        'parts' => array(array('text' => $system)),
+                    ),
+                    'contents' => array(
+                        array(
+                            'role' => 'user',
+                            'parts' => array(array('text' => $user)),
+                        ),
+                    ),
+                    'generationConfig' => array(
+                        'temperature' => 0.2,
+                        'responseMimeType' => 'application/json',
+                    ),
+                ), JSON_UNESCAPED_UNICODE),
             );
         }
 
-        return array(
-            'final_opinion' => $best,
-            'final_confidence' => min(90, $avg_conf),
-            'consensus' => $consensus,
-            'decision_reason' => '다수결 ' . $consensus . ' · 표본 ' . $sample . ' · 섀도 모드',
-        );
+        if (!$jobs) {
+            return $out;
+        }
+
+        $mh = curl_multi_init();
+        $handles = array();
+        $started = array();
+        foreach ($jobs as $name => $job) {
+            $ch = curl_init($job['url']);
+            curl_setopt_array($ch, array(
+                CURLOPT_POST => true,
+                CURLOPT_HTTPHEADER => $job['headers'],
+                CURLOPT_POSTFIELDS => $job['body'],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_TIMEOUT => 14,
+            ));
+            curl_multi_add_handle($mh, $ch);
+            $handles[$name] = $ch;
+            $started[$name] = microtime(true);
+        }
+
+        $running = null;
+        do {
+            $status = curl_multi_exec($mh, $running);
+            if ($running) {
+                curl_multi_select($mh, 1.0);
+            }
+        } while ($running && $status === CURLM_OK);
+
+        foreach ($handles as $name => $ch) {
+            $raw = curl_multi_getcontent($ch);
+            $errno = curl_errno($ch);
+            $error = curl_error($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $ms = (int) round((microtime(true) - $started[$name]) * 1000);
+            curl_multi_remove_handle($mh, $ch);
+            curl_close($ch);
+
+            $res = array(
+                'ok' => $errno === 0 && $code >= 200 && $code < 300,
+                'code' => $code,
+                'raw' => $raw === false || $raw === null ? '' : $raw,
+                'error' => $errno ? $error : ($code >= 400 ? 'HTTP ' . $code : ''),
+            );
+            $out[$name] = bacara_ai_parse_provider_response($jobs[$name]['provider'], $res, $ms);
+        }
+        curl_multi_close($mh);
+
+        return $out;
     }
 }
 
@@ -1019,15 +1238,47 @@ if (!function_exists('bacara_ai_row_to_public')) {
         };
 
         $final = bacara_ai_normalize_opinion($row['final_opinion']);
+        $stats_decoded = $stats !== null
+            ? $stats
+            : (isset($row['stats_json']) ? json_decode($row['stats_json'], true) : null);
+        if (!is_array($stats_decoded)) {
+            $stats_decoded = array();
+        }
+
+        // 캐시 행에서도 자동베팅 가능 여부를 현재 설정·엄격 기준으로 재평가
+        $models = array(
+            'gpt' => array(
+                'opinion' => $row['gpt_opinion'],
+                'confidence' => (int) $row['gpt_confidence'],
+                'error' => isset($row['gpt_error']) ? $row['gpt_error'] : '',
+            ),
+            'claude' => array(
+                'opinion' => $row['claude_opinion'],
+                'confidence' => (int) $row['claude_confidence'],
+                'error' => isset($row['claude_error']) ? $row['claude_error'] : '',
+            ),
+            'gemini' => array(
+                'opinion' => $row['gemini_opinion'],
+                'confidence' => (int) $row['gemini_confidence'],
+                'error' => isset($row['gemini_error']) ? $row['gemini_error'] : '',
+            ),
+        );
+        $reeval = bacara_ai_decide_final($models, $stats_decoded);
+        $auto_bet = !empty($reeval['auto_bet_ok'])
+            && ($final === 'PLAYER' || $final === 'BANKER');
+
+        $mode = $auto_bet ? 'live' : (isset($row['mode']) ? $row['mode'] : 'shadow');
+
         return array(
             'ok' => true,
             'cached' => (bool) $cached,
-            'mode' => isset($row['mode']) ? $row['mode'] : 'shadow',
-            'auto_bet_allowed' => false,
+            'mode' => $mode,
+            'auto_bet_allowed' => $auto_bet,
+            'auto_bet_enabled' => bacara_ai_config_is_auto_bet_enabled(),
             'table_name' => $row['table_name'],
             'source_result_id' => (int) $row['source_result_id'],
             'game_no' => isset($row['game_no']) ? (int) $row['game_no'] : null,
-            'stats' => $stats !== null ? $stats : (isset($row['stats_json']) ? json_decode($row['stats_json'], true) : null),
+            'stats' => $stats_decoded,
             'gpt' => $model('gpt'),
             'claude' => $model('claude'),
             'gemini' => $model('gemini'),
@@ -1044,7 +1295,7 @@ if (!function_exists('bacara_ai_row_to_public')) {
 
 if (!function_exists('bacara_ai_analyze_table')) {
     /**
-     * 테이블 분석 (캐시 우선). 섀도 모드 기본.
+     * 테이블 분석 (캐시 우선). 조건 충족 시 auto_bet_allowed=true.
      */
     function bacara_ai_analyze_table($table_name, $force = false)
     {
@@ -1068,81 +1319,88 @@ if (!function_exists('bacara_ai_analyze_table')) {
             );
         }
 
-        $fetched = bacara_ai_fetch_table_history($table_name, 2000);
-        if (!$fetched['ok']) {
-            return array('ok' => false, 'message' => $fetched['error'] ?: '이력 조회 실패');
-        }
-        if (empty($fetched['shoe'])) {
-            return array('ok' => false, 'message' => '분석할 결과가 없습니다.');
-        }
-
-        bacara_ai_settle_open_predictions($table_name, $fetched['history']);
-
-        $stats = bacara_ai_build_stats($fetched['shoe'], $fetched['history']);
-        $latest = $stats['latest'];
-        if (!$latest) {
-            return array('ok' => false, 'message' => '최신 결과가 없습니다.');
-        }
-
-        $source_id = (int) $latest['id'];
-        if (!$force) {
-            $cached = bacara_ai_get_cached_prediction($table_name, $source_id);
-            if ($cached) {
-                return bacara_ai_row_to_public($cached, $stats, true);
+        $lock_path = G5_DATA_PATH . '/bacaraai-ai-' . preg_replace('/[^A-Z0-9_-]/', '', $table_name) . '.lock';
+        $lock_fp = @fopen($lock_path, 'c');
+        if ($lock_fp) {
+            if (!flock($lock_fp, LOCK_EX | LOCK_NB)) {
+                // 다른 요청이 분석 중이면 잠시 대기 후 캐시 우선
+                flock($lock_fp, LOCK_EX);
             }
         }
 
-        // 병렬 대신 순차 호출 (호스팅 호환). 키가 있는 모델만.
-        $gpt = bacara_ai_config_has_key('openai')
-            ? bacara_ai_call_openai($stats)
-            : array('opinion' => 'WAIT', 'confidence' => 0, 'reasons' => array('키 없음'), 'ms' => 0, 'error' => 'API 키 없음');
-        $claude = bacara_ai_config_has_key('anthropic')
-            ? bacara_ai_call_anthropic($stats)
-            : array('opinion' => 'WAIT', 'confidence' => 0, 'reasons' => array('키 없음'), 'ms' => 0, 'error' => 'API 키 없음');
-        $gemini = bacara_ai_config_has_key('gemini')
-            ? bacara_ai_call_gemini($stats)
-            : array('opinion' => 'WAIT', 'confidence' => 0, 'reasons' => array('키 없음'), 'ms' => 0, 'error' => 'API 키 없음');
+        try {
+            $fetched = bacara_ai_fetch_table_history($table_name, 2000);
+            if (!$fetched['ok']) {
+                return array('ok' => false, 'message' => $fetched['error'] ?: '이력 조회 실패');
+            }
+            if (empty($fetched['shoe'])) {
+                return array('ok' => false, 'message' => '분석할 결과가 없습니다.');
+            }
 
-        $decision = bacara_ai_decide_final(
-            array('gpt' => $gpt, 'claude' => $claude, 'gemini' => $gemini),
-            $stats
-        );
+            bacara_ai_settle_open_predictions($table_name, $fetched['history']);
 
-        $save = array(
-            'table_name' => $table_name,
-            'source_result_id' => $source_id,
-            'game_no' => $latest['game_no'],
-            'mode' => 'shadow',
-            'stats_json' => json_encode($stats, JSON_UNESCAPED_UNICODE),
-            'gpt_opinion' => $gpt['opinion'],
-            'gpt_confidence' => $gpt['confidence'],
-            'gpt_reasons' => bacara_ai_reasons_to_text($gpt['reasons']),
-            'gpt_ms' => $gpt['ms'],
-            'gpt_error' => $gpt['error'],
-            'claude_opinion' => $claude['opinion'],
-            'claude_confidence' => $claude['confidence'],
-            'claude_reasons' => bacara_ai_reasons_to_text($claude['reasons']),
-            'claude_ms' => $claude['ms'],
-            'claude_error' => $claude['error'],
-            'gemini_opinion' => $gemini['opinion'],
-            'gemini_confidence' => $gemini['confidence'],
-            'gemini_reasons' => bacara_ai_reasons_to_text($gemini['reasons']),
-            'gemini_ms' => $gemini['ms'],
-            'gemini_error' => $gemini['error'],
-            'final_opinion' => $decision['final_opinion'],
-            'final_confidence' => $decision['final_confidence'],
-            'consensus' => $decision['consensus'],
-            'decision_reason' => $decision['decision_reason'],
-        );
+            $stats = bacara_ai_build_stats($fetched['shoe'], $fetched['history']);
+            $latest = $stats['latest'];
+            if (!$latest) {
+                return array('ok' => false, 'message' => '최신 결과가 없습니다.');
+            }
 
-        bacara_ai_save_prediction($save);
-        $row = bacara_ai_get_cached_prediction($table_name, $source_id);
-        if (!$row) {
-            // fallback public shape without DB row
-            $row = $save;
-            $row['created_at'] = G5_TIME_YMDHIS;
+            $source_id = (int) $latest['id'];
+            if (!$force) {
+                $cached = bacara_ai_get_cached_prediction($table_name, $source_id);
+                if ($cached) {
+                    return bacara_ai_row_to_public($cached, $stats, true);
+                }
+            }
+
+            $models = bacara_ai_call_models_parallel($stats);
+            $gpt = $models['gpt'];
+            $claude = $models['claude'];
+            $gemini = $models['gemini'];
+
+            $decision = bacara_ai_decide_final($models, $stats);
+            $mode = !empty($decision['auto_bet_ok']) ? 'live' : 'shadow';
+
+            $save = array(
+                'table_name' => $table_name,
+                'source_result_id' => $source_id,
+                'game_no' => $latest['game_no'],
+                'mode' => $mode,
+                'stats_json' => json_encode($stats, JSON_UNESCAPED_UNICODE),
+                'gpt_opinion' => $gpt['opinion'],
+                'gpt_confidence' => $gpt['confidence'],
+                'gpt_reasons' => bacara_ai_reasons_to_text($gpt['reasons']),
+                'gpt_ms' => $gpt['ms'],
+                'gpt_error' => $gpt['error'],
+                'claude_opinion' => $claude['opinion'],
+                'claude_confidence' => $claude['confidence'],
+                'claude_reasons' => bacara_ai_reasons_to_text($claude['reasons']),
+                'claude_ms' => $claude['ms'],
+                'claude_error' => $claude['error'],
+                'gemini_opinion' => $gemini['opinion'],
+                'gemini_confidence' => $gemini['confidence'],
+                'gemini_reasons' => bacara_ai_reasons_to_text($gemini['reasons']),
+                'gemini_ms' => $gemini['ms'],
+                'gemini_error' => $gemini['error'],
+                'final_opinion' => $decision['final_opinion'],
+                'final_confidence' => $decision['final_confidence'],
+                'consensus' => $decision['consensus'],
+                'decision_reason' => $decision['decision_reason'],
+            );
+
+            bacara_ai_save_prediction($save);
+            $row = bacara_ai_get_cached_prediction($table_name, $source_id);
+            if (!$row) {
+                $row = $save;
+                $row['created_at'] = G5_TIME_YMDHIS;
+            }
+
+            return bacara_ai_row_to_public($row, $stats, false);
+        } finally {
+            if ($lock_fp) {
+                flock($lock_fp, LOCK_UN);
+                fclose($lock_fp);
+            }
         }
-
-        return bacara_ai_row_to_public($row, $stats, false);
     }
 }

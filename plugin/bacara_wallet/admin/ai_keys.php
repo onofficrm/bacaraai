@@ -10,7 +10,7 @@ $status = bacara_ai_config_status();
 $saved = isset($_GET['saved']) && $_GET['saved'] === '1';
 ?>
 
-<?php bacara_wallet_admin_shell_start('AI API 설정', 'ChatGPT(OpenAI) · Claude(Anthropic) · Gemini 키를 등록하면 실시간 테이블을 섀도 모드로 분석합니다. 예측은 기록·화면 표시만 하며 자동 베팅에는 아직 연결되지 않습니다.'); ?>
+<?php bacara_wallet_admin_shell_start('AI API 설정', 'ChatGPT · Claude · Gemini로 실시간 분석합니다. 「AI 자동 베팅」을 켜면 오토베팅의 「AI 추천대로」 모드에서 조건을 충족한 경우 시스템이 자동으로 베팅합니다.'); ?>
 <?php bacara_wallet_admin_nav('ai'); ?>
 
 <?php if ($saved) { ?>
@@ -22,6 +22,7 @@ $saved = isset($_GET['saved']) && $_GET['saved'] === '1';
     <span class="bw-pill <?php echo $status['anthropic'] ? 'is-on' : 'is-off'; ?>">Claude <?php echo $status['anthropic'] ? '등록됨' : '미등록'; ?></span>
     <span class="bw-pill <?php echo $status['gemini'] ? 'is-on' : 'is-off'; ?>">Gemini <?php echo $status['gemini'] ? '등록됨' : '미등록'; ?></span>
     <span class="bw-pill <?php echo $status['enabled'] ? 'is-on' : 'is-off'; ?>">분석 <?php echo $status['enabled'] ? '사용 중' : '중지'; ?></span>
+    <span class="bw-pill <?php echo !empty($status['auto_bet']) ? 'is-on' : 'is-off'; ?>">자동베팅 <?php echo !empty($status['auto_bet']) ? '허용' : '차단'; ?></span>
 </div>
 
 <div class="bw-card">
@@ -29,11 +30,18 @@ $saved = isset($_GET['saved']) && $_GET['saved'] === '1';
         <input type="hidden" name="token" value="">
         <input type="hidden" name="mode" value="save_ai_keys">
 
-        <div class="bw-field-full" style="margin-top:0;margin-bottom:20px">
+        <div class="bw-field-full" style="margin-top:0;margin-bottom:12px">
             <label>
                 <input type="checkbox" name="enabled" value="1"<?php echo $cfg['enabled'] === '1' ? ' checked' : ''; ?>>
                 AI 분석 사용 (체크 해제 시 키는 유지되고 호출만 중단)
             </label>
+        </div>
+        <div class="bw-field-full" style="margin-top:0;margin-bottom:20px">
+            <label>
+                <input type="checkbox" name="auto_bet_enabled" value="1"<?php echo (!isset($cfg['auto_bet_enabled']) || $cfg['auto_bet_enabled'] === '1') ? ' checked' : ''; ?>>
+                AI 자동 베팅 허용 (세션이 라이브 + 「AI 추천대로」일 때, 엄격 조건 충족 시에만 실제 베팅)
+            </label>
+            <p class="bw-hint">조건: 3개 AI 모두 정상 · 2/3 이상 동의 · 신뢰도 65%+ · 표본 30+ · P/B 격차 10%+</p>
         </div>
 
         <h3>ChatGPT (OpenAI)</h3>

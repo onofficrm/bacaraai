@@ -26,6 +26,8 @@ if (!function_exists('bacara_ai_config_defaults')) {
             'gemini_api_key' => '',
             'gemini_model' => 'gemini-2.0-flash',
             'enabled' => '1',
+            /** 1이면 AI 추천 전략에서 조건 충족 시 자동 베팅 허용 */
+            'auto_bet_enabled' => '1',
         );
     }
 }
@@ -53,6 +55,7 @@ if (!function_exists('bacara_ai_config_load')) {
             'BACARAAI_GEMINI_API_KEY' => 'gemini_api_key',
             'BACARAAI_GEMINI_MODEL' => 'gemini_model',
             'BACARAAI_AI_ENABLED' => 'enabled',
+            'BACARAAI_AI_AUTO_BET' => 'auto_bet_enabled',
         );
         foreach ($map as $const => $key) {
             if (!defined($const)) {
@@ -84,6 +87,14 @@ if (!function_exists('bacara_ai_config_is_enabled')) {
     function bacara_ai_config_is_enabled()
     {
         return bacara_ai_config_get('enabled', '1') === '1';
+    }
+}
+
+if (!function_exists('bacara_ai_config_is_auto_bet_enabled')) {
+    function bacara_ai_config_is_auto_bet_enabled()
+    {
+        return bacara_ai_config_is_enabled()
+            && bacara_ai_config_get('auto_bet_enabled', '1') === '1';
     }
 }
 
@@ -127,6 +138,7 @@ if (!function_exists('bacara_ai_config_status')) {
             'anthropic' => bacara_ai_config_has_key('anthropic'),
             'gemini' => bacara_ai_config_has_key('gemini'),
             'enabled' => bacara_ai_config_is_enabled(),
+            'auto_bet' => bacara_ai_config_is_auto_bet_enabled(),
         );
     }
 }
@@ -164,6 +176,9 @@ if (!function_exists('bacara_ai_config_save')) {
         if ($cfg['enabled'] !== '0') {
             $cfg['enabled'] = '1';
         }
+        if ($cfg['auto_bet_enabled'] !== '0') {
+            $cfg['auto_bet_enabled'] = '1';
+        }
 
         $path = bacara_ai_config_path();
         $php = "<?php\nif (!defined('_GNUBOARD_')) exit;\n"
@@ -173,7 +188,8 @@ if (!function_exists('bacara_ai_config_save')) {
             . "define('BACARAAI_ANTHROPIC_MODEL', " . var_export($cfg['anthropic_model'], true) . ");\n"
             . "define('BACARAAI_GEMINI_API_KEY', " . var_export($cfg['gemini_api_key'], true) . ");\n"
             . "define('BACARAAI_GEMINI_MODEL', " . var_export($cfg['gemini_model'], true) . ");\n"
-            . "define('BACARAAI_AI_ENABLED', " . var_export($cfg['enabled'], true) . ");\n";
+            . "define('BACARAAI_AI_ENABLED', " . var_export($cfg['enabled'], true) . ");\n"
+            . "define('BACARAAI_AI_AUTO_BET', " . var_export($cfg['auto_bet_enabled'], true) . ");\n";
 
         if (@file_put_contents($path, $php, LOCK_EX) === false) {
             return false;
