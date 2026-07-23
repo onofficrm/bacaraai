@@ -11,8 +11,8 @@ import { useFxIntensity } from '../hooks/useFxIntensity';
 import { playSfx } from '../audio/sfxEngine';
 import WinFlipOverlay from './WinFlipOverlay';
 import BetInOverlay from './BetInOverlay';
+import TableEventOverlay from './TableEventOverlay';
 import {
-  autoEventBarClass,
   autoEventCardClass,
   type AutoTableEvent,
   type TableBetBanner,
@@ -296,92 +296,7 @@ export default function TableCard({
         <div className="pointer-events-none absolute inset-0 z-[1] rule-gold-wave rounded-xl" />
       )}
 
-      {table.status === 'risk_blocked' && !autoEvent && (
-        <div className="absolute inset-0 rounded-xl overflow-hidden bg-red-950/20 backdrop-blur-[1px] z-10 flex items-center justify-center">
-          <motion.div
-            className="bg-zinc-900 border border-red-900 text-red-400 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 shadow-lg"
-            initial={reduced ? false : { x: -4 }}
-            animate={reduced ? undefined : { x: [0, -3, 3, -2, 0] }}
-            transition={{ duration: 0.35 }}
-          >
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            위험 한도 차단됨
-          </motion.div>
-        </div>
-      )}
-
       <div className={`relative z-[2] flex flex-col ${compact ? 'gap-1.5' : 'gap-2'}`}>
-        <AnimatePresence mode="popLayout">
-          {settleBanner && !showWinFlip && (
-            <motion.div
-              key={settleBanner.id}
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -2 }}
-              transition={{ duration: 0.18 }}
-              className={`rounded-lg border px-2 py-1.5 flex items-center gap-1.5 min-w-0 ${autoEventBarClass(settleBanner.tone)}`}
-            >
-              <span className="shrink-0 text-[9px] font-black tracking-wide px-1 py-0.5 rounded bg-black/25 border border-white/10">
-                {settleBanner.badge}
-              </span>
-              <span className="min-w-0 flex-1 text-[10px] sm:text-[11px] font-bold truncate leading-tight">
-                {settleBanner.label}
-              </span>
-            </motion.div>
-          )}
-
-          {!settleBanner &&
-            betBanners.length === 0 &&
-            autoEvent &&
-            autoEvent.kind !== 'pending' && (
-              <motion.div
-                key={`${autoEvent.kind}-${autoEvent.label}`}
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -2 }}
-                transition={{ duration: 0.18 }}
-                className={`rounded-lg border px-2 py-1 flex items-center gap-1.5 min-w-0 ${autoEventBarClass(autoEvent.tone)}`}
-              >
-                {autoEvent.badge && (
-                  <span className="shrink-0 text-[9px] font-black tracking-wide px-1 py-0.5 rounded bg-black/25 border border-white/10">
-                    {autoEvent.badge}
-                  </span>
-                )}
-                <span className="min-w-0 flex-1 text-[10px] sm:text-[11px] font-bold truncate leading-tight">
-                  {autoEvent.label}
-                </span>
-                {typeof autoEvent.betSec === 'number' && autoEvent.betSec > 0 && (
-                  <span
-                    className={`shrink-0 font-mono tabular-nums text-[10px] font-black ${
-                      autoEvent.betSec <= 10 ? 'animate-pulse' : ''
-                    }`}
-                  >
-                    {autoEvent.betSec}s
-                  </span>
-                )}
-              </motion.div>
-            )}
-        </AnimatePresence>
-
-        {!settleBanner &&
-          betBanners.length === 0 &&
-          autoEvent &&
-          typeof autoEvent.progress === 'number' &&
-          autoEvent.progress > 0 && (
-          <div className="h-0.5 rounded-full bg-zinc-950/80 overflow-hidden -mt-1">
-            <div
-              className={`h-full rounded-full transition-[width] duration-200 ease-linear ${
-                autoEvent.tone === 'pattern'
-                  ? 'bg-amber-400'
-                  : autoEvent.tone === 'ai'
-                    ? 'bg-violet-400'
-                    : 'bg-sky-400'
-              }`}
-              style={{ width: `${Math.max(4, Math.round(autoEvent.progress * 100))}%` }}
-            />
-          </div>
-        )}
-
         <div className="flex justify-between items-start gap-2">
           <div className="flex flex-col gap-0.5 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -528,6 +443,19 @@ export default function TableCard({
         <Roadmap data={table.roadmap} results={table.stats.recentResults} size="sm" />
         {!showWinFlip && !autoHit && betBanners.length > 0 && (
           <BetInOverlay banners={betBanners} compact={compact} />
+        )}
+        {!showWinFlip && !autoHit && betBanners.length === 0 && (
+          <TableEventOverlay
+            settle={settleBanner && settleBanner.tone !== 'hit' ? settleBanner : null}
+            event={
+              settleBanner && settleBanner.tone !== 'hit'
+                ? null
+                : autoEvent && autoEvent.kind !== 'pending' && autoEvent.kind !== 'hit'
+                  ? autoEvent
+                  : null
+            }
+            compact={compact}
+          />
         )}
       </div>
 
