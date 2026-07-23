@@ -8,9 +8,12 @@ type TickerItem = { id: string; text: string; tone?: 'win' | 'risk' | 'info' };
 export default function GameFxChrome({
   riskLevel,
   tickers,
+  /** 세션바(게이지)가 열려 있으면 그 아래로 내려 겹침 방지 */
+  sessionBarVisible = false,
 }: {
   riskLevel: 'none' | 'warn' | 'critical';
   tickers: TickerItem[];
+  sessionBarVisible?: boolean;
 }) {
   const { reduced, intensity, enableParticles } = useFxIntensity();
   const [visible, setVisible] = useState<TickerItem[]>([]);
@@ -18,12 +21,20 @@ export default function GameFxChrome({
   useEffect(() => {
     if (!tickers.length) return;
     const latest = tickers[tickers.length - 1];
-    setVisible((prev) => [...prev.slice(-2), latest]);
+    setVisible((prev) => {
+      if (prev.some((x) => x.id === latest.id)) return prev;
+      return [...prev.filter((x) => x.id !== latest.id).slice(-1), latest];
+    });
     const t = window.setTimeout(() => {
       setVisible((prev) => prev.filter((x) => x.id !== latest.id));
     }, intensity === 'high' ? 4200 : 2800);
     return () => window.clearTimeout(t);
   }, [tickers, intensity]);
+
+  // Header min-h 68px + (세션바 ≈ 72~96px). 헤더 z-200 위·게이지와 안 겹치게
+  const topOffset = sessionBarVisible
+    ? 'top-[calc(4.25rem+5.5rem)] sm:top-[calc(4.25rem+4.75rem)]'
+    : 'top-[calc(4.25rem+0.5rem)]';
 
   return (
     <>
@@ -45,20 +56,22 @@ export default function GameFxChrome({
         )}
       </AnimatePresence>
 
-      <div className="pointer-events-none fixed top-14 left-0 right-0 z-[95] flex flex-col items-center gap-1 px-3">
+      <div
+        className={`pointer-events-none fixed ${topOffset} right-3 sm:right-4 z-[210] flex flex-col items-end gap-1.5 max-w-[min(20rem,calc(100vw-1.5rem))]`}
+      >
         <AnimatePresence>
           {visible.map((item) => (
             <motion.div
               key={item.id}
-              initial={{ y: -16, opacity: 0, scale: 0.96 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: -10, opacity: 0 }}
-              className={`max-w-md w-full text-center text-[11px] font-bold px-3 py-1.5 rounded-full border backdrop-blur-md shadow-lg ${
+              initial={{ x: 24, opacity: 0, scale: 0.96 }}
+              animate={{ x: 0, opacity: 1, scale: 1 }}
+              exit={{ x: 16, opacity: 0 }}
+              className={`w-full text-right text-[11px] sm:text-xs font-bold px-3 py-2 rounded-xl border backdrop-blur-md shadow-lg ${
                 item.tone === 'win'
-                  ? 'bg-emerald-950/80 border-emerald-400/40 text-emerald-200'
+                  ? 'bg-emerald-950/90 border-emerald-400/45 text-emerald-200'
                   : item.tone === 'risk'
-                    ? 'bg-rose-950/80 border-rose-400/40 text-rose-200'
-                    : 'bg-zinc-950/85 border-zinc-500/40 text-zinc-200'
+                    ? 'bg-rose-950/90 border-rose-400/45 text-rose-200'
+                    : 'bg-zinc-950/92 border-zinc-500/45 text-zinc-100'
               }`}
             >
               {enableParticles && item.tone === 'win' ? '✦ ' : ''}

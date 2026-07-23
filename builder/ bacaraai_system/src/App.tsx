@@ -1029,7 +1029,14 @@ export default function App() {
           session.clearWinCelebration(session.winCelebration?.id);
         }}
       />
-      <GameFxChrome riskLevel={riskLevel} tickers={fxTickers} />
+      <GameFxChrome
+        riskLevel={riskLevel}
+        tickers={fxTickers}
+        sessionBarVisible={
+          activeView === 'multitable' &&
+          (session.status === 'running' || session.status === 'paused')
+        }
+      />
       
       <OnboardingModal 
         isOpen={showOnboarding} 
