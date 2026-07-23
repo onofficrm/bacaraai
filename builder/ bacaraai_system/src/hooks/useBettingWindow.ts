@@ -17,7 +17,7 @@ export function getBettingRemainingSecForTable(
     ? Date.parse(table.live.latestDetectedAt)
     : NaN;
   if (Number.isNaN(detected)) {
-    return table.stats.recentResults?.length ? 0 : 0;
+    return 0;
   }
   return Math.max(0, BET_WINDOW_SEC - Math.floor((now - detected) / 1000));
 }
@@ -25,7 +25,7 @@ export function getBettingRemainingSecForTable(
 export type BettingWindowState = {
   /** 남은 초 (0이면 마감) */
   remainingSec: number;
-  /** 새 결과가 있어 윈도우가 열린 적 있는지 */
+  /** 이 선택 이후 베팅 창이 열린 적 있는지(새 결과 기준) */
   hasResult: boolean;
   /** 베팅 접수 가능 */
   canPlaceBet: boolean;
@@ -38,13 +38,15 @@ export type BettingWindowState = {
 };
 
 /**
- * 결과가 화면에 반영된 시점부터 30초 베팅 창.
- * latestId 변경을 "표시 시점"으로 보고 로컬 시각으로 카운트한다.
+ * 테이블을 고른 직후에는 베팅 불가.
+ * 선택 이후 새 결과가 화면에 반영된 시점부터 30초 베팅 창.
  */
 export default function useBettingWindow(table: TableData | null): BettingWindowState {
   const [now, setNow] = useState(() => Date.now());
   const [windowOpenedAt, setWindowOpenedAt] = useState<number | null>(null);
-  const prevLatestIdRef = useRef<number | null | undefined>(undefined);
+  const tableIdRef = useRef<string | null>(null);
+  const baselineReadyRef = useRef(false);
+  const prevLatestIdRef = useRef<number | null>(null);
   const prevResultKeyRef = useRef<string>('');
 
   useEffect(() => {
@@ -55,7 +57,9 @@ export default function useBettingWindow(table: TableData | null): BettingWindow
   useEffect(() => {
     if (!table) {
       setWindowOpenedAt(null);
-      prevLatestIdRef.current = undefined;
+      tableIdRef.current = null;
+      baselineReadyRef.current = false;
+      prevLatestIdRef.current = null;
       prevResultKeyRef.current = '';
       return;
     }
@@ -63,41 +67,43 @@ export default function useBettingWindow(table: TableData | null): BettingWindow
     const latestId = table.live?.latestId ?? null;
     const results = table.stats.recentResults || [];
     const resultKey = `${latestId ?? 'x'}:${results.length}:${results[results.length - 1] ?? ''}`;
+    const hasSnapshot = latestId != null || results.length > 0;
 
-    const idChanged =
-      latestId != null &&
-      prevLatestIdRef.current !== undefined &&
-      latestId !== prevLatestIdRef.current;
-
-    const keyChanged =
-      prevResultKeyRef.current !== '' && prevResultKeyRef.current !== resultKey && results.length > 0;
-
-    // 최초 로드: 서버 detected_at 기준으로 남은 시간 맞춤 (너무 오래된 결과는 0)
-    if (prevLatestIdRef.current === undefined && prevResultKeyRef.current === '') {
-      prevLatestIdRef.current = latestId;
-      prevResultKeyRef.current = resultKey;
-      if (results.length === 0 && latestId == null) {
-        setWindowOpenedAt(null);
-        return;
-      }
-      const detected = table.live?.latestDetectedAt
-        ? Date.parse(table.live.latestDetectedAt)
-        : NaN;
-      if (!Number.isNaN(detected)) {
-        const ageSec = (Date.now() - detected) / 1000;
-        if (ageSec <= BET_WINDOW_SEC) {
-          setWindowOpenedAt(detected);
-        } else {
-          setWindowOpenedAt(null);
-        }
+    // 테이블을 새로 고르면: 현재 결과를 기준선으로만 잡고 창은 닫음
+    if (tableIdRef.current !== table.id) {
+      tableIdRef.current = table.id;
+      setWindowOpenedAt(null);
+      if (hasSnapshot) {
+        prevLatestIdRef.current = latestId;
+        prevResultKeyRef.current = resultKey;
+        baselineReadyRef.current = true;
       } else {
-        setWindowOpenedAt(Date.now());
+        // 라이브 첫 응답 대기
+        prevLatestIdRef.current = null;
+        prevResultKeyRef.current = '';
+        baselineReadyRef.current = false;
       }
       return;
     }
 
+    // 선택 직후 로딩 → 첫 스냅샷은 기준선만 설정 (베팅 창 열지 않음)
+    if (!baselineReadyRef.current) {
+      if (!hasSnapshot) return;
+      prevLatestIdRef.current = latestId;
+      prevResultKeyRef.current = resultKey;
+      baselineReadyRef.current = true;
+      setWindowOpenedAt(null);
+      return;
+    }
+
+    const idChanged =
+      latestId != null &&
+      prevLatestIdRef.current !== latestId;
+
+    const keyChanged =
+      resultKey !== prevResultKeyRef.current && results.length > 0;
+
     if (idChanged || keyChanged) {
-      // 결과가 새로 표시된 순간부터 30초
       setWindowOpenedAt(Date.now());
     }
 
@@ -111,23 +117,16 @@ export default function useBettingWindow(table: TableData | null): BettingWindow
   ]);
 
   return useMemo(() => {
-    const hasResult = Boolean(
-      table &&
-        ((table.stats.recentResults && table.stats.recentResults.length > 0) ||
-          table.live?.latestId != null),
-    );
-
-    if (!table || !hasResult || windowOpenedAt == null) {
+    // 창이 한 번도 안 열렸으면: 기존 슈 결과가 있어도 "다음 결과 대기"
+    if (!table || windowOpenedAt == null) {
       return {
         remainingSec: 0,
-        hasResult: Boolean(hasResult),
+        hasResult: false,
         canPlaceBet: false,
         canCancelBet: false,
         progress: 0,
-        statusLabel: hasResult ? '베팅 마감' : '결과 대기',
-        hint: hasResult
-          ? '베팅 가능 시간이 끝났습니다. 다음 결과를 기다리세요.'
-          : '결과가 표시되면 30초 동안 베팅할 수 있습니다.',
+        statusLabel: '결과 대기',
+        hint: '새 결과가 나오면 30초 동안 베팅할 수 있습니다.',
       };
     }
 
