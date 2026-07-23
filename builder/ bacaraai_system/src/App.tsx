@@ -38,7 +38,7 @@ import {
   normalizePatternCases,
   patternSignalKey,
 } from './utils/patternMatch';
-import { resolveAutoTableEvent } from './utils/autoTableEvent';
+import { resolveAutoTableEvent, resolveTableBetBanners, resolveTableSettleBanner } from './utils/autoTableEvent';
 import { buildRiskCoachAlerts } from './utils/riskCoach';
 import {
   getCaseMartinStage,
@@ -767,12 +767,25 @@ export default function App() {
                     const hasAutoPending = session.pendingBets.some(
                       (b) => b.source === 'auto' && b.tableId === table.id,
                     );
+                    const hasAnyPending = session.pendingBets.some((b) => b.tableId === table.id);
+                    const betBanners = resolveTableBetBanners({
+                      table,
+                      pendingBets: session.pendingBets,
+                      strategy: session.config.strategy || 'ai',
+                    });
+                    const settleBanner = resolveTableSettleBanner({
+                      table,
+                      lastAutoResult: session.lastAutoResult,
+                      lastManualResult: session.lastManualResult,
+                      autoHit: autoHitTableId === table.id,
+                    });
                     const autoEvent = resolveAutoTableEvent({
                       table,
                       autoRunning,
                       strategy: session.config.strategy || 'ai',
                       pendingBets: session.pendingBets,
                       lastAutoResult: session.lastAutoResult,
+                      lastManualResult: session.lastManualResult,
                       autoHit: autoHitTableId === table.id,
                       patternCases,
                       patternRunTableId: patternRun?.tableId ?? null,
@@ -800,8 +813,10 @@ export default function App() {
                         autoWatching={autoWatching}
                         autoLockOn={Boolean(autoLockOn)}
                         autoHit={autoHitTableId === table.id}
-                        autoBetIn={hasAutoPending}
+                        autoBetIn={hasAutoPending || hasAnyPending}
                         autoEvent={autoEvent}
+                        betBanners={betBanners}
+                        settleBanner={settleBanner}
                         onSelect={handleTableSelect}
                         onZoom={setZoomedTableId}
                         onToggleFavorite={toggleFavorite}

@@ -3,7 +3,7 @@ import type { LastBetResult, PendingBet } from '../hooks/useSession';
 import { BET_WINDOW_SEC, getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
 import { findMatchingPatternCase } from './patternMatch';
 
-/** 우선순위 높은 순 — 카드에는 하나만 표시 */
+/** 우선순위 높은 순 — 카드 테두리·메인 이벤트 */
 export type AutoTableEventKind =
   | 'risk'
   | 'hit'
@@ -12,25 +12,43 @@ export type AutoTableEventKind =
   | 'signal'
   | 'watching';
 
-export type AutoTableEventTone = 'risk' | 'hit' | 'miss' | 'pending' | 'ai' | 'pattern' | 'watch';
+export type AutoTableEventTone =
+  | 'risk'
+  | 'hit'
+  | 'miss'
+  | 'pending'
+  | 'manual'
+  | 'ai'
+  | 'pattern'
+  | 'watch';
 
 export type AutoTableEvent = {
   kind: AutoTableEventKind;
   tone: AutoTableEventTone;
   /** 이벤트 바 한 줄 */
   label: string;
-  /** 작은 배지 (AI / 패턴) */
+  /** 작은 배지 (AI / 패턴 / 직접) */
   badge?: string;
   betSec?: number;
   progress?: number;
 };
 
-export type ResolveAutoTableEventInput = {
+/** 카드에 쌓이는 베팅·정산 줄 (직접/오토 각각) */
+export type TableBetBanner = {
+  id: string;
+  tone: AutoTableEventTone;
+  badge: string;
+  label: string;
+  hint?: string;
+};
+
+export type ResolveTableCardEventInput = {
   table: TableData;
   autoRunning: boolean;
   strategy: AutoBetStrategy;
   pendingBets: PendingBet[];
   lastAutoResult: LastBetResult | null;
+  lastManualResult?: LastBetResult | null;
   /** 최근 오토 적중 연출 중 */
   autoHit?: boolean;
   patternCases?: PatternCase[];
@@ -54,12 +72,101 @@ function formatWon(amount: number): string {
 
 const RESULT_FLASH_MS = 4500;
 
+function pendingBanner(bet: PendingBet, strategy: AutoBetStrategy): TableBetBanner {
+  const isAuto = bet.source === 'auto';
+  return {
+    id: bet.id,
+    tone: isAuto ? (strategy === 'pattern' ? 'pattern' : 'pending') : 'manual',
+    badge: isAuto ? (strategy === 'pattern' ? '오토·패턴' : '오토') : '직접',
+    label: `${sideShort(bet.side)} · ${formatWon(bet.amount)}`,
+    hint: '결과 대기',
+  };
+}
+
+function settleBanner(result: LastBetResult): TableBetBanner {
+  const isAuto = result.source === 'auto';
+  const won = result.won === true;
+  const lost = result.won === false;
+  const pnl = result.pnlDelta ?? 0;
+  const side = sideShort(result.side);
+  if (won) {
+    return {
+      id: `settle-${result.id}`,
+      tone: 'hit',
+      badge: isAuto ? '오토 적중' : '직접 적중',
+      label: pnl > 0 ? `${side} · +${formatWon(pnl)}` : `${side} · 적중`,
+    };
+  }
+  if (lost) {
+    const stage = result.martinStage != null ? result.martinStage + 1 : null;
+    return {
+      id: `settle-${result.id}`,
+      tone: 'miss',
+      badge: isAuto ? '오토 미적중' : '직접 미적중',
+      label:
+        stage != null && isAuto
+          ? `${side} · −${formatWon(Math.abs(pnl) || result.amount)} · 다음 ${stage}단계`
+          : `${side} · −${formatWon(Math.abs(pnl) || result.amount)}`,
+    };
+  }
+  return {
+    id: `settle-${result.id}`,
+    tone: 'watch',
+    badge: isAuto ? '오토' : '직접',
+    label: `${side} · 정산`,
+  };
+}
+
+/** 이 테이블의 진행 중 베팅 줄 (마감 후에도 유지) */
+export function resolveTableBetBanners(
+  input: Pick<ResolveTableCardEventInput, 'table' | 'pendingBets' | 'strategy'>,
+): TableBetBanner[] {
+  const { table, pendingBets, strategy } = input;
+  return pendingBets
+    .filter((b) => b.tableId === table.id)
+    .sort((a, b) => {
+      if (a.source === b.source) return a.placedAt - b.placedAt;
+      return a.source === 'manual' ? -1 : 1;
+    })
+    .map((b) => pendingBanner(b, strategy));
+}
+
+/** 최근 정산 플래시 (직접·오토) */
+export function resolveTableSettleBanner(
+  input: Pick<
+    ResolveTableCardEventInput,
+    'table' | 'lastAutoResult' | 'lastManualResult' | 'autoHit' | 'now'
+  >,
+): TableBetBanner | null {
+  const {
+    table,
+    lastAutoResult,
+    lastManualResult = null,
+    autoHit = false,
+    now = Date.now(),
+  } = input;
+
+  const candidates = [lastManualResult, lastAutoResult].filter(
+    (r): r is LastBetResult =>
+      Boolean(r && r.tableId === table.id && now - r.at < RESULT_FLASH_MS),
+  );
+  if (candidates.length === 0) {
+    if (autoHit && lastAutoResult?.tableId === table.id) {
+      return settleBanner(lastAutoResult);
+    }
+    return null;
+  }
+  candidates.sort((a, b) => b.at - a.at);
+  return settleBanner(candidates[0]);
+}
+
 /**
- * 오토베팅 실행 중 테이블의 현재 이벤트 1개.
- * 우선순위: 위험 > 적중/미적중 > 접수 > 신호(AI/패턴) > 감시
+ * 테이블 카드 메인 이벤트 (테두리용).
+ * 진행 중 베팅은 오토 실행 여부와 무관하게 표시.
+ * 우선순위: 위험 > 정산 플래시 > 접수 > (오토) 신호/감시
  */
 export function resolveAutoTableEvent(
-  input: ResolveAutoTableEventInput,
+  input: ResolveTableCardEventInput,
 ): AutoTableEvent | null {
   const {
     table,
@@ -67,6 +174,7 @@ export function resolveAutoTableEvent(
     strategy,
     pendingBets,
     lastAutoResult,
+    lastManualResult = null,
     autoHit = false,
     patternCases = [],
     patternRunTableId = null,
@@ -74,11 +182,8 @@ export function resolveAutoTableEvent(
     now = Date.now(),
   } = input;
 
-  if (!autoRunning) return null;
-
   const isLive =
     table.live != null || table.id === 't1' || table.gameCode === 'MD2729';
-  if (!isLive) return null;
 
   if (table.status === 'risk_blocked') {
     return {
@@ -89,43 +194,41 @@ export function resolveAutoTableEvent(
     };
   }
 
-  const recent =
-    lastAutoResult &&
-    lastAutoResult.tableId === table.id &&
-    lastAutoResult.source === 'auto' &&
-    now - lastAutoResult.at < RESULT_FLASH_MS
-      ? lastAutoResult
-      : null;
-
-  if (autoHit || (recent && recent.won === true)) {
-    const pnl = recent?.pnlDelta ?? 0;
+  const settle = resolveTableSettleBanner({
+    table,
+    lastAutoResult,
+    lastManualResult,
+    autoHit,
+    now,
+  });
+  if (settle) {
     return {
-      kind: 'hit',
-      tone: 'hit',
-      label: pnl > 0 ? `적중 +${formatWon(pnl)}` : '적중',
-      badge: 'HIT',
+      kind: settle.tone === 'hit' ? 'hit' : settle.tone === 'miss' ? 'miss' : 'watching',
+      tone: settle.tone,
+      label: settle.label,
+      badge: settle.badge,
     };
   }
 
-  if (recent && recent.won === false) {
-    const stage = recent.martinStage != null ? recent.martinStage + 1 : null;
-    return {
-      kind: 'miss',
-      tone: 'miss',
-      label: stage != null ? `미적중 · 다음 ${stage}단계` : '미적중',
-      badge: 'MISS',
-    };
-  }
-
-  const pending = pendingBets.find((b) => b.source === 'auto' && b.tableId === table.id);
-  if (pending) {
+  const tablePendings = pendingBets.filter((b) => b.tableId === table.id);
+  if (tablePendings.length > 0) {
+    const manual = tablePendings.find((b) => b.source === 'manual');
+    const auto = tablePendings.find((b) => b.source === 'auto');
+    const primary = manual || auto!;
+    const isAuto = primary.source === 'auto';
     return {
       kind: 'pending',
-      tone: 'pending',
-      label: `${sideShort(pending.side)} · ${formatWon(pending.amount)} 접수`,
-      badge: strategy === 'pattern' ? '패턴' : 'AI',
+      tone: isAuto ? (strategy === 'pattern' ? 'pattern' : 'pending') : 'manual',
+      label: `${sideShort(primary.side)} · ${formatWon(primary.amount)} · 결과 대기`,
+      badge: isAuto
+        ? strategy === 'pattern'
+          ? '오토·패턴'
+          : '오토'
+        : '직접',
     };
   }
+
+  if (!autoRunning || !isLive) return null;
 
   const betSec = getBettingRemainingSecForTable(table, now);
   const tone: AutoTableEventTone = strategy === 'pattern' ? 'pattern' : 'ai';
@@ -191,7 +294,7 @@ export function resolveAutoTableEvent(
     kind: 'watching',
     tone: 'watch',
     label: strategy === 'pattern' ? '패턴 감시 중' : 'AI 감시 중',
-    badge: badge,
+    badge,
   };
 }
 
@@ -211,7 +314,11 @@ export function autoEventCardClass(event: AutoTableEvent | null, reduced: boolea
     case 'pending':
       return reduced
         ? ' border-sky-400/70 ring-2 ring-sky-400/50 '
-        : ' border-sky-400/80 ring-2 ring-sky-400/40 shadow-[0_0_22px_rgba(56,189,248,0.4)] auto-event-pulse-pending ';
+        : ' border-sky-400/80 ring-2 ring-sky-400/50 shadow-[0_0_22px_rgba(56,189,248,0.45)] auto-event-pulse-pending ';
+    case 'manual':
+      return reduced
+        ? ' border-blue-400/70 ring-2 ring-blue-400/50 '
+        : ' border-blue-400/80 ring-2 ring-blue-400/55 shadow-[0_0_22px_rgba(59,130,246,0.45)] auto-event-pulse-manual ';
     case 'ai':
       return reduced
         ? ' border-violet-400/60 '
@@ -237,6 +344,8 @@ export function autoEventBarClass(tone: AutoTableEventTone): string {
       return 'border-rose-500/40 bg-rose-500/15 text-rose-200';
     case 'pending':
       return 'border-sky-400/45 bg-sky-500/15 text-sky-200';
+    case 'manual':
+      return 'border-blue-400/45 bg-blue-500/15 text-blue-200';
     case 'ai':
       return 'border-violet-400/45 bg-violet-500/15 text-violet-200';
     case 'pattern':

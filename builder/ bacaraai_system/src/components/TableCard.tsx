@@ -13,6 +13,7 @@ import {
   autoEventBarClass,
   autoEventCardClass,
   type AutoTableEvent,
+  type TableBetBanner,
 } from '../utils/autoTableEvent';
 
 interface TableCardProps {
@@ -27,8 +28,12 @@ interface TableCardProps {
   autoHit?: boolean;
   /** 오토 베팅 접수됨 */
   autoBetIn?: boolean;
-  /** 오토베팅 실시간 이벤트 (테두리·이벤트 바) */
+  /** 오토/베팅 실시간 이벤트 (테두리) */
   autoEvent?: AutoTableEvent | null;
+  /** 이 테이블 진행 중 베팅 줄 (직접·오토) */
+  betBanners?: TableBetBanner[];
+  /** 최근 정산 플래시 */
+  settleBanner?: TableBetBanner | null;
   onSelect?: (id: string) => void;
   onZoom?: (id: string) => void;
   onToggleFavorite?: (id: string, e: React.MouseEvent) => void;
@@ -50,6 +55,8 @@ export default function TableCard({
   autoHit = false,
   autoBetIn = false,
   autoEvent = null,
+  betBanners = [],
+  settleBanner = null,
   onSelect,
   onZoom,
   onToggleFavorite,
@@ -144,12 +151,19 @@ export default function TableCard({
     `bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-all group rounded-xl flex flex-col relative cursor-pointer overflow-hidden ${
       compact ? 'p-2.5 gap-2' : 'p-3 sm:p-3.5 gap-2.5'
     } `;
-  if (isSelected) {
+  const hasBetMarker = betBanners.length > 0 || Boolean(settleBanner);
+  // 진행 중 베팅/정산이 선택 테두리보다 우선 — 어디에 걸었는지 유지
+  if (isSelected && !hasBetMarker && !autoEvent) {
     cardClass +=
       ' ring-2 ring-amber-500 border-amber-500/60 shadow-lg shadow-amber-900/20 selected-pulse ';
+  } else if (isSelected && (hasBetMarker || autoEvent)) {
+    cardClass += ' selected-pulse ';
   }
-  if (ruleFocus && !autoEvent) cardClass += ' border-amber-400/70 rule-focus-pulse scale-[1.01] ';
-  else if (table.status === 'risk_blocked' && !autoEvent) cardClass += ' border-red-900/50 ';
+  if (ruleFocus && !autoEvent && !hasBetMarker) {
+    cardClass += ' border-amber-400/70 rule-focus-pulse scale-[1.01] ';
+  } else if (table.status === 'risk_blocked' && !autoEvent) {
+    cardClass += ' border-red-900/50 ';
+  }
   if (autoEvent) {
     cardClass += autoEventCardClass(autoEvent, reduced);
   } else if (autoLockOn) {
@@ -301,38 +315,86 @@ export default function TableCard({
       )}
 
       <div className={`relative z-[2] flex flex-col ${compact ? 'gap-1.5' : 'gap-2'}`}>
-        <AnimatePresence mode="wait">
-          {autoEvent && (
+        <AnimatePresence mode="popLayout">
+          {settleBanner && (
             <motion.div
-              key={`${autoEvent.kind}-${autoEvent.label}`}
+              key={settleBanner.id}
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -2 }}
               transition={{ duration: 0.18 }}
-              className={`rounded-lg border px-2 py-1 flex items-center gap-1.5 min-w-0 ${autoEventBarClass(autoEvent.tone)}`}
+              className={`rounded-lg border px-2 py-1.5 flex items-center gap-1.5 min-w-0 ${autoEventBarClass(settleBanner.tone)}`}
             >
-              {autoEvent.badge && (
-                <span className="shrink-0 text-[9px] font-black tracking-wide px-1 py-0.5 rounded bg-black/25 border border-white/10">
-                  {autoEvent.badge}
-                </span>
-              )}
-              <span className="min-w-0 flex-1 text-[10px] sm:text-[11px] font-bold truncate leading-tight">
-                {autoEvent.label}
+              <span className="shrink-0 text-[9px] font-black tracking-wide px-1 py-0.5 rounded bg-black/25 border border-white/10">
+                {settleBanner.badge}
               </span>
-              {typeof autoEvent.betSec === 'number' && autoEvent.betSec > 0 && (
-                <span
-                  className={`shrink-0 font-mono tabular-nums text-[10px] font-black ${
-                    autoEvent.betSec <= 10 ? 'animate-pulse' : ''
-                  }`}
-                >
-                  {autoEvent.betSec}s
-                </span>
-              )}
+              <span className="min-w-0 flex-1 text-[10px] sm:text-[11px] font-bold truncate leading-tight">
+                {settleBanner.label}
+              </span>
             </motion.div>
           )}
+
+          {!settleBanner &&
+            betBanners.map((banner) => (
+              <motion.div
+                key={banner.id}
+                layout
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -2 }}
+                transition={{ duration: 0.18 }}
+                className={`rounded-lg border px-2 py-1.5 flex items-center gap-1.5 min-w-0 ${autoEventBarClass(banner.tone)}`}
+              >
+                <span className="shrink-0 text-[9px] font-black tracking-wide px-1 py-0.5 rounded bg-black/25 border border-white/10">
+                  {banner.badge}
+                </span>
+                <span className="min-w-0 flex-1 text-[10px] sm:text-[11px] font-bold truncate leading-tight">
+                  {banner.label}
+                </span>
+                {banner.hint && (
+                  <span className="shrink-0 text-[9px] font-bold opacity-80">{banner.hint}</span>
+                )}
+              </motion.div>
+            ))}
+
+          {!settleBanner &&
+            betBanners.length === 0 &&
+            autoEvent &&
+            autoEvent.kind !== 'pending' && (
+              <motion.div
+                key={`${autoEvent.kind}-${autoEvent.label}`}
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -2 }}
+                transition={{ duration: 0.18 }}
+                className={`rounded-lg border px-2 py-1 flex items-center gap-1.5 min-w-0 ${autoEventBarClass(autoEvent.tone)}`}
+              >
+                {autoEvent.badge && (
+                  <span className="shrink-0 text-[9px] font-black tracking-wide px-1 py-0.5 rounded bg-black/25 border border-white/10">
+                    {autoEvent.badge}
+                  </span>
+                )}
+                <span className="min-w-0 flex-1 text-[10px] sm:text-[11px] font-bold truncate leading-tight">
+                  {autoEvent.label}
+                </span>
+                {typeof autoEvent.betSec === 'number' && autoEvent.betSec > 0 && (
+                  <span
+                    className={`shrink-0 font-mono tabular-nums text-[10px] font-black ${
+                      autoEvent.betSec <= 10 ? 'animate-pulse' : ''
+                    }`}
+                  >
+                    {autoEvent.betSec}s
+                  </span>
+                )}
+              </motion.div>
+            )}
         </AnimatePresence>
 
-        {autoEvent && typeof autoEvent.progress === 'number' && autoEvent.progress > 0 && (
+        {!settleBanner &&
+          betBanners.length === 0 &&
+          autoEvent &&
+          typeof autoEvent.progress === 'number' &&
+          autoEvent.progress > 0 && (
           <div className="h-0.5 rounded-full bg-zinc-950/80 overflow-hidden -mt-1">
             <div
               className={`h-full rounded-full transition-[width] duration-200 ease-linear ${
@@ -354,6 +416,11 @@ export default function TableCard({
               {isSelected && (
                 <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded">
                   선택됨
+                </span>
+              )}
+              {(betBanners.length > 0 || autoEvent?.kind === 'pending') && (
+                <span className="text-[9px] font-black tracking-wide text-sky-300 bg-sky-500/15 border border-sky-400/40 px-1.5 py-0.5 rounded">
+                  베팅 대기
                 </span>
               )}
               {ruleFocus && (
@@ -604,6 +671,13 @@ export default function TableCard({
         @keyframes autoEventPulsePending {
           0%, 100% { box-shadow: 0 0 12px rgba(56,189,248,0.25); }
           50% { box-shadow: 0 0 24px rgba(56,189,248,0.45); }
+        }
+        .auto-event-pulse-manual {
+          animation: autoEventPulseManual 1.4s ease-in-out infinite;
+        }
+        @keyframes autoEventPulseManual {
+          0%, 100% { box-shadow: 0 0 12px rgba(59,130,246,0.28); }
+          50% { box-shadow: 0 0 24px rgba(59,130,246,0.5); }
         }
         .auto-event-pulse-hit {
           animation: autoEventPulseHit 0.9s ease-out;
