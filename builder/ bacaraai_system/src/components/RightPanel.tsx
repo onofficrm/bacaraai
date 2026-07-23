@@ -25,6 +25,13 @@ import {
 } from '../hooks/useSession';
 import PatternCasesEditor from './PatternCasesEditor';
 import { formatAllPatternCases } from '../utils/patternMatch';
+import ChipBetStage, {
+  amountToStack,
+  createFlyer,
+  getStackAnchor,
+  type Flyer,
+  type StackChip,
+} from './ChipBetStage';
 
 type PanelMode = 'manual' | 'auto';
 
@@ -110,6 +117,12 @@ export default function RightPanel({
 }: RightPanelProps) {
   const [panelMode, setPanelMode] = useState<PanelMode>('manual');
   const [betAmount, setBetAmount] = useState<number>(10000);
+  const [chipStack, setChipStack] = useState<StackChip[]>(() => amountToStack(10000));
+  const [flyers, setFlyers] = useState<Flyer[]>([]);
+  const [burstKey, setBurstKey] = useState(0);
+  const [chipCelebrating, setChipCelebrating] = useState(false);
+  const stackAnchorRef = React.useRef<HTMLDivElement | null>(null);
+  const chipSeqRef = React.useRef(0);
   const [selectedSide, setSelectedSide] = useState<BetSide>('PLAYER');
   const [showMoreChips, setShowMoreChips] = useState(false);
   const [showAiDetails, setShowAiDetails] = useState(false);
@@ -141,6 +154,9 @@ export default function RightPanel({
           ? suggestedBet
           : 10000;
     setBetAmount(preferred);
+    setChipStack(amountToStack(preferred));
+    setFlyers([]);
+    setChipCelebrating(false);
     setSelectedSide(
       table?.ai.finalOpinion === 'BANKER'
         ? 'BANKER'
@@ -168,9 +184,12 @@ export default function RightPanel({
       setSelectedSide(table.ai.finalOpinion === 'BANKER' ? 'BANKER' : 'PLAYER');
     }
     if ((table.ai.recommendedAmount ?? 0) > 0) {
-      setBetAmount(
-        Math.max(0, Math.min(table.ai.recommendedAmount, maxBet, availableBankroll || table.ai.recommendedAmount)),
+      const next = Math.max(
+        0,
+        Math.min(table.ai.recommendedAmount, maxBet, availableBankroll || table.ai.recommendedAmount),
       );
+      setBetAmount(next);
+      setChipStack(amountToStack(next));
     }
   }, [table?.live?.latestId, table?.ai.finalOpinion, table?.ai.recommendedAmount]);
 
@@ -227,17 +246,55 @@ export default function RightPanel({
   const clampAmount = (amount: number) =>
     Math.max(0, Math.min(amount, maxBet, availableBankroll || amount));
 
-  const addChip = (chip: { label: string; value: number | 'DOUBLE'; color: string }) => {
+  const pushStackChip = (value: number) => {
+    chipSeqRef.current += 1;
+    const id = `chip_${chipSeqRef.current}_${value}`;
+    setChipStack((prev) => {
+      const next = [...prev, { id, value }];
+      return next.length > 8 ? next.slice(next.length - 8) : next;
+    });
+  };
+
+  const addChip = (
+    chip: { label: string; value: number | 'DOUBLE'; color: string },
+    clickEvent?: React.MouseEvent<HTMLButtonElement>,
+  ) => {
     if (isManualSettling) return;
     if (chip.value === 'DOUBLE') {
       playSfx('chipHeavy');
-      setBetAmount((prev) => clampAmount(prev * 2 || suggestedBet || 1000));
+      setBetAmount((prev) => {
+        const next = clampAmount(prev * 2 || suggestedBet || 1000);
+        setChipStack(amountToStack(next));
+        return next;
+      });
+      setBurstKey((k) => k + 1);
     } else {
       const amount = chip.value as number;
       playSfx(amount >= 1_000_000 ? 'chipHeavy' : 'chip');
-      setBetAmount((prev) => clampAmount(prev + amount));
+      setBetAmount((prev) => {
+        const next = clampAmount(prev + amount);
+        if (next <= prev) return prev;
+        const from = clickEvent
+          ? { x: clickEvent.clientX - 20, y: clickEvent.clientY - 20 }
+          : { x: window.innerWidth - 120, y: window.innerHeight / 2 };
+        const to = getStackAnchor(stackAnchorRef.current);
+        const flyer = createFlyer(amount, from, to);
+        setFlyers((list) => [...list.slice(-4), flyer]);
+        setBurstKey((k) => k + 1);
+        window.setTimeout(() => pushStackChip(amount), 380);
+        return next;
+      });
     }
     setBetError(null);
+  };
+
+  const clearChips = () => {
+    playSfx('ui');
+    setFlyers([]);
+    setChipStack([]);
+    setBetAmount(0);
+    setBetError(null);
+    setBurstKey((k) => k + 1);
   };
 
   const applyRecommendedBet = () => {
@@ -250,7 +307,10 @@ export default function RightPanel({
         : suggestedBet > 0
           ? suggestedBet
           : 10000;
-    setBetAmount(clampAmount(amount));
+    const next = clampAmount(amount);
+    setBetAmount(next);
+    setChipStack(amountToStack(next));
+    setBurstKey((k) => k + 1);
     setBetError(
       recommendedSide
         ? null
@@ -313,6 +373,8 @@ export default function RightPanel({
 
       setHighConfirmOpen(false);
       playSfx('betConfirm');
+      setChipCelebrating(true);
+      window.setTimeout(() => setChipCelebrating(false), 900);
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -846,44 +908,42 @@ export default function RightPanel({
                         <label className="text-[11px] font-bold text-zinc-400">베팅 금액</label>
                         <button
                           type="button"
-                          onClick={() => {
-                            playSfx('ui');
-                            setBetAmount(0);
-                            setBetError(null);
-                          }}
+                          onClick={clearChips}
                           className="text-[12px] min-h-[36px] px-2 text-zinc-500 hover:text-white touch-manipulation"
                         >
                           초기화
                         </button>
                       </div>
-                      <div
-                        className={`bg-zinc-950 border rounded-xl px-4 py-3.5 flex items-center justify-between ${
+
+                      <ChipBetStage
+                        amount={betAmount}
+                        sideLabel={sideShortLabel(selectedSide)}
+                        sideClassName={sideColor(selectedSide)}
+                        borderClassName={
                           selectedSide === 'BANKER'
                             ? 'border-red-500/40'
                             : selectedSide === 'TIE'
                               ? 'border-emerald-500/40'
                               : 'border-blue-500/40'
-                        }`}
-                      >
-                        <span className={`text-sm font-bold ${sideColor(selectedSide)}`}>
-                          {sideShortLabel(selectedSide)}
-                        </span>
-                        <div className="flex items-baseline gap-1">
-                          <span className="font-mono font-bold text-white text-2xl leading-none tabular-nums">
-                            {betAmount.toLocaleString()}
-                          </span>
-                          <span className="text-zinc-500 text-xs">원</span>
-                        </div>
-                      </div>
+                        }
+                        stack={chipStack}
+                        flyers={flyers}
+                        onFlyerDone={(id) =>
+                          setFlyers((prev) => prev.filter((f) => f.id !== id))
+                        }
+                        celebrating={chipCelebrating}
+                        burstKey={burstKey}
+                        stackAnchorRef={stackAnchorRef}
+                      />
 
                       <div className="grid grid-cols-5 gap-2 mt-3">
                         {primaryChips.map((chip) => (
                           <button
                             key={chip.label}
                             type="button"
-                            onClick={() => addChip(chip)}
+                            onClick={(e) => addChip(chip, e)}
                             disabled={isManualSettling || !bettingWindow.canPlaceBet}
-                            className={`aspect-square min-h-[48px] rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-95 disabled:opacity-40 ${chip.color}`}
+                            className={`aspect-square min-h-[48px] rounded-full border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-90 transition-transform disabled:opacity-40 ${chip.color}`}
                           >
                             <span className="text-[11px] sm:text-xs font-bold leading-none">{chip.label}</span>
                           </button>
@@ -896,9 +956,9 @@ export default function RightPanel({
                             <button
                               key={chip.label}
                               type="button"
-                              onClick={() => addChip(chip)}
+                              onClick={(e) => addChip(chip, e)}
                               disabled={isManualSettling || !bettingWindow.canPlaceBet}
-                              className={`min-h-[48px] rounded-xl border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-95 disabled:opacity-40 ${chip.color}`}
+                              className={`min-h-[48px] rounded-xl border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-90 transition-transform disabled:opacity-40 ${chip.color}`}
                             >
                               <span className="text-xs font-bold">{chip.label}</span>
                             </button>
