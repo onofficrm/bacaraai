@@ -50,9 +50,9 @@ export default function BettingCountdown({
           </p>
           <p className="text-[10px] text-zinc-500 mt-0.5 truncate">
             {!hasResult
-              ? '결과가 나오면 30초 카운트가 시작됩니다'
+              ? '마지막 결과가 나오면 30초 카운트가 시작됩니다'
               : canPlaceBet
-                ? '이 시간 안에만 베팅·취소할 수 있습니다'
+                ? '마지막 결과 기준 · 이 시간 안에만 베팅·취소'
                 : pending
                   ? '접수한 베팅은 취소할 수 없습니다. 다음 결과를 기다립니다.'
                   : '다음 결과가 나올 때까지 베팅할 수 없습니다'}

@@ -109,15 +109,15 @@ export default function TableCard({
   }, [table.stats.currentStreak, reduced]);
 
   useEffect(() => {
-    if (!table.live) {
-      setBetSec(0);
-      return;
-    }
     const tick = () => setBetSec(getBettingRemainingSecForTable(table));
     tick();
     const id = window.setInterval(tick, 500);
     return () => window.clearInterval(id);
   }, [table]);
+
+  const lastResult = table.stats.recentResults[table.stats.recentResults.length - 1] ?? null;
+  const lastResultLabel =
+    lastResult === 'P' ? 'P' : lastResult === 'B' ? 'B' : lastResult === 'T' ? 'T' : null;
 
   const flashClass =
     hitFlash === 'P'
@@ -316,46 +316,42 @@ export default function TableCard({
                     />
                     {table.live.connected ? 'LIVE' : table.live.loading ? '연결 중' : '연결 오류'}
                   </span>
-                  {!compact && (
-                    <span className="text-[10px] font-mono text-zinc-500">
-                      {table.live.gameNo != null ? `G${table.live.gameNo} · ` : ''}
-                      {formatDetectedAt(table.live.latestDetectedAt)}
-                    </span>
+                  {!compact && table.live.gameNo != null && (
+                    <span className="text-[10px] font-mono text-zinc-500">G{table.live.gameNo}</span>
                   )}
                   {compact && table.live.gameNo != null && (
                     <span className="text-[10px] font-mono text-zinc-500">G{table.live.gameNo}</span>
                   )}
-                  {betSec > 0 && (
-                    <span className="text-[10px] font-mono font-bold text-sky-300 animate-pulse">
-                      BET {betSec}s
-                    </span>
-                  )}
                 </>
               ) : (
-                <>
-                  <StatusBadge status={table.status} />
-                  <div
-                    className={`text-xs font-mono font-bold flex items-center gap-1 ${
-                      table.status === 'betting' ||
-                      table.status === 'rule_triggered' ||
-                      table.status === 'waiting_user'
-                        ? 'text-amber-500'
-                        : 'text-zinc-400'
-                    }`}
-                  >
-                    <div
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        table.status === 'betting' ||
-                        table.status === 'rule_triggered' ||
-                        table.status === 'waiting_user'
-                          ? 'bg-amber-500 animate-ping'
-                          : 'bg-zinc-500'
-                      }`}
-                    />
-                    {table.timer}초
-                  </div>
-                </>
+                <StatusBadge status={table.status} />
               )}
+
+              {lastResultLabel && (
+                <span
+                  title={`마지막 결과 ${getResultLabel(lastResult!)}`}
+                  className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-black text-white border ${getResultColor(lastResult!, 'bg')} ${getResultColor(lastResult!, 'border')}`}
+                >
+                  {lastResultLabel}
+                </span>
+              )}
+
+              {betSec > 0 ? (
+                <span
+                  title="베팅 가능 남은 시간"
+                  className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 font-mono tabular-nums ${
+                    betSec <= 10
+                      ? 'text-[10px] font-bold text-rose-300 border-rose-500/40 bg-rose-500/10 animate-pulse'
+                      : 'text-[10px] font-bold text-sky-300 border-sky-500/35 bg-sky-500/10'
+                  }`}
+                >
+                  <span className="opacity-70 font-sans text-[9px]">BET</span>
+                  {betSec}
+                  <span className="opacity-70 font-sans text-[9px]">s</span>
+                </span>
+              ) : lastResultLabel ? (
+                <span className="text-[10px] font-mono text-zinc-600">마감</span>
+              ) : null}
             </div>
           </div>
 
@@ -522,13 +518,6 @@ export default function TableCard({
       `}</style>
     </div>
   );
-}
-
-function formatDetectedAt(value: string | null) {
-  if (!value) return '대기';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleTimeString('ko-KR', { hour12: false });
 }
 
 function StatusBadge({ status }: { status: TableData['status'] }) {
