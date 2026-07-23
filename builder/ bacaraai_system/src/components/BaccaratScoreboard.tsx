@@ -1,10 +1,9 @@
 import {
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
-  type PointerEvent,
   type ReactNode,
 } from 'react';
 import type { GameResult } from '../types';
@@ -36,83 +35,102 @@ const BOARD = {
 
 function useDragScroll(depsKey: string) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startScroll: number;
-    moved: boolean;
-  } | null>(null);
-  const didDragRef = useRef(false);
   const [dragging, setDragging] = useState(false);
 
+  // 최신(오른쪽)으로 스크롤 — 레이아웃·이미지 반영 후 재시도
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+
     const toEnd = () => {
-      el.scrollLeft = el.scrollWidth;
+      el.scrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
     };
+
     toEnd();
-    const raf = requestAnimationFrame(toEnd);
-    return () => cancelAnimationFrame(raf);
+    const raf1 = requestAnimationFrame(() => {
+      toEnd();
+      requestAnimationFrame(toEnd);
+    });
+    const t1 = window.setTimeout(toEnd, 50);
+    const t2 = window.setTimeout(toEnd, 200);
+
+    const ro = new ResizeObserver(() => toEnd());
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      ro.disconnect();
+    };
   }, [depsKey]);
 
-  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
+  // 네이티브 포인터로 드래그 스크롤 (React 합성 이벤트보다 안정적)
+  useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    didDragRef.current = false;
-    dragRef.current = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startScroll: el.scrollLeft,
-      moved: false,
+
+    let active = false;
+    let pointerId = -1;
+    let startX = 0;
+    let startScroll = 0;
+    let moved = false;
+
+    const onDown = (e: globalThis.PointerEvent) => {
+      if (e.button !== 0) return;
+      // 스크롤 가능 영역이 있을 때만 드래그 캡처
+      if (el.scrollWidth <= el.clientWidth + 1) return;
+      active = true;
+      moved = false;
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startScroll = el.scrollLeft;
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      setDragging(true);
     };
-    el.setPointerCapture(e.pointerId);
-    setDragging(true);
-  };
 
-  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    const el = scrollRef.current;
-    if (!drag || !el || drag.pointerId !== e.pointerId) return;
-    const dx = e.clientX - drag.startX;
-    if (!drag.moved && Math.abs(dx) >= DRAG_THRESHOLD_PX) {
-      drag.moved = true;
-      didDragRef.current = true;
-    }
-    if (!drag.moved) return;
-    el.scrollLeft = drag.startScroll - dx;
-    e.preventDefault();
-  };
-
-  const endDrag = (e: PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    const el = scrollRef.current;
-    if (!drag || drag.pointerId !== e.pointerId) return;
-    if (el?.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
-    dragRef.current = null;
-    setDragging(false);
-  };
-
-  const onClickCapture = (e: MouseEvent<HTMLDivElement>) => {
-    if (didDragRef.current) {
+    const onMove = (e: globalThis.PointerEvent) => {
+      if (!active || e.pointerId !== pointerId) return;
+      const dx = e.clientX - startX;
+      if (!moved && Math.abs(dx) >= DRAG_THRESHOLD_PX) {
+        moved = true;
+      }
+      if (!moved) return;
+      el.scrollLeft = startScroll - dx;
       e.preventDefault();
-      e.stopPropagation();
-      didDragRef.current = false;
-    }
-  };
+    };
 
-  return {
-    scrollRef,
-    dragging,
-    handlers: {
-      onPointerDown,
-      onPointerMove,
-      onPointerUp: endDrag,
-      onPointerCancel: endDrag,
-      onClickCapture,
-    },
-  };
+    const onUp = (e: globalThis.PointerEvent) => {
+      if (!active || e.pointerId !== pointerId) return;
+      active = false;
+      pointerId = -1;
+      try {
+        if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      setDragging(false);
+    };
+
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointermove', onMove, { passive: false });
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onUp);
+
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('pointercancel', onUp);
+    };
+  }, [depsKey]);
+
+  return { scrollRef, dragging };
 }
 
 function PadGrid<T>({
@@ -388,30 +406,31 @@ export default function BaccaratScoreboard({ results }: BaccaratScoreboardProps)
         style={{ background: BOARD.panel }}
       >
         <div className="flex flex-col xl:flex-row min-h-[300px]">
-          {/* Bead */}
+          {/* Bead — 고정 칸 크기 + 가로 스크롤 (최신=오른쪽) */}
           <div
             ref={beadScroll.scrollRef}
-            {...beadScroll.handlers}
-            className={`shrink-0 border-b xl:border-b-0 xl:border-r overflow-x-auto scoreboard-scroll w-full xl:w-[240px] ${
+            className={`shrink-0 border-b xl:border-b-0 xl:border-r overflow-x-auto overflow-y-hidden scoreboard-scroll w-full xl:w-[280px] ${
               beadScroll.dragging ? 'cursor-grabbing' : 'cursor-grab'
             }`}
             style={{
-              touchAction: 'pan-x',
+              touchAction: 'none',
+              WebkitOverflowScrolling: 'touch',
               borderColor: BOARD.line,
               background: 'linear-gradient(180deg, #f7f4ee 0%, #efebe3 100%)',
             }}
-            title="드래그하여 좌우로 이동"
           >
-            <div className="px-2.5 pt-2 pb-1">
+            <div
+              className="px-2.5 pt-2 pb-1 sticky left-0 z-[1] pointer-events-none"
+              style={{ background: 'linear-gradient(180deg, #f7f4ee 0%, #efebe3 100%)' }}
+            >
               <RoadLabel>Bead</RoadLabel>
             </div>
-            <div className="px-2.5 pb-2.5">
+            <div className="px-2.5 pb-2.5 inline-block min-w-full">
               <PadGrid
                 columns={beads}
                 trailing={0}
-                minCols={Math.max(beads.length, 1)}
-                cellSize={34}
-                fillWidth
+                minCols={Math.max(beads.length, 8)}
+                cellSize={30}
                 renderCell={(cell) => (cell ? <BeadMark cell={cell} /> : null)}
               />
             </div>
@@ -420,15 +439,14 @@ export default function BaccaratScoreboard({ results }: BaccaratScoreboardProps)
           {/* Roads */}
           <div
             ref={mainScroll.scrollRef}
-            {...mainScroll.handlers}
-            className={`flex-1 min-w-0 overflow-x-auto scoreboard-scroll ${
+            className={`flex-1 min-w-0 overflow-x-auto overflow-y-hidden scoreboard-scroll ${
               mainScroll.dragging ? 'cursor-grabbing' : 'cursor-grab'
             }`}
             style={{
-              touchAction: 'pan-x',
+              touchAction: 'none',
+              WebkitOverflowScrolling: 'touch',
               background: 'linear-gradient(180deg, #faf8f3 0%, #f3f0ea 100%)',
             }}
-            title="드래그하여 좌우로 이동"
           >
             <div className="p-2.5 flex flex-col gap-2 min-w-max">
               <div className="space-y-1">
