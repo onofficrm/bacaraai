@@ -241,12 +241,39 @@ function playPattern(name: SfxName) {
       noiseBurst(t, 0.035, { gain: 0.08, freq: 3800, q: 5 });
       tone(1600, t, 0.04, { type: 'square', gain: 0.05, decay: 0.04, filterFreq: 4500 });
       break;
-    case 'betClosed':
-      tone(880, t, 0.06, { type: 'square', gain: 0.07, decay: 0.06, filterFreq: 2400 });
-      tone(440, t + 0.07, 0.1, { type: 'square', gain: 0.08, decay: 0.1, filterFreq: 1800 });
-      tone(220, t + 0.16, 0.22, { type: 'triangle', gain: 0.1, decay: 0.24 });
-      noiseBurst(t + 0.05, 0.12, { gain: 0.1, freq: 900, q: 1.2, type: 'lowpass' });
+    case 'betClosed': {
+      // 청량한 띵~ (밝은 종소리, 짧게 울리다가 여운)
+      tone(2093.0, t, 0.65, {
+        type: 'sine',
+        gain: 0.16,
+        attack: 0.004,
+        decay: 0.62,
+        filterFreq: 9000,
+      });
+      tone(3139.5, t, 0.45, {
+        type: 'sine',
+        gain: 0.055,
+        attack: 0.005,
+        decay: 0.42,
+        filterFreq: 10000,
+      });
+      tone(4186.0, t + 0.008, 0.32, {
+        type: 'sine',
+        gain: 0.03,
+        attack: 0.004,
+        decay: 0.3,
+        filterFreq: 12000,
+      });
+      // 아주 약한 하이 쉬머
+      tone(5274.0, t + 0.012, 0.18, {
+        type: 'sine',
+        gain: 0.016,
+        attack: 0.003,
+        decay: 0.16,
+        filterFreq: 14000,
+      });
       break;
+    }
     case 'chip':
       noiseBurst(t, 0.06, { gain: 0.18, freq: 3200, q: 2.5 });
       tone(1400, t, 0.08, { type: 'triangle', gain: 0.1, decay: 0.08 });
@@ -370,6 +397,26 @@ export function playBetCountdownTick(remainingSec: number) {
     const c = ensureCtx();
     if (c.state === 'suspended') void c.resume();
     const t = c.currentTime + 0.01;
+
+    // 마지막 1초: 청량한 짧은 띵
+    if (sec === 1) {
+      tone(2093, t, 0.28, {
+        type: 'sine',
+        gain: 0.11,
+        attack: 0.004,
+        decay: 0.26,
+        filterFreq: 9000,
+      });
+      tone(3139.5, t, 0.18, {
+        type: 'sine',
+        gain: 0.04,
+        attack: 0.004,
+        decay: 0.16,
+        filterFreq: 10000,
+      });
+      return;
+    }
+
     const urgent = sec <= 2;
     const freq = 1100 + (5 - sec) * 320;
     const gain = urgent ? 0.09 : 0.055 + (5 - sec) * 0.008;
@@ -384,14 +431,6 @@ export function playBetCountdownTick(remainingSec: number) {
       decay: urgent ? 0.055 : 0.035,
       filterFreq: 5200,
     });
-    if (sec === 1) {
-      tone(freq * 1.5, t + 0.04, 0.05, {
-        type: 'triangle',
-        gain: 0.06,
-        decay: 0.05,
-        filterFreq: 6000,
-      });
-    }
   } catch {
     /* ignore */
   }
