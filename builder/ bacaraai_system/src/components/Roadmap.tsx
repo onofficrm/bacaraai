@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import { GameResult } from '../types';
 
 interface RoadmapProps {
@@ -11,6 +12,8 @@ interface BigRoadCell {
   ties: number;
   isNewest: boolean;
 }
+
+const TRAILING_EMPTY_COLS = 3;
 
 function processBigRoad(data: GameResult[][]): BigRoadCell[][] {
   const flat: { res: GameResult; isNewest: boolean }[] = [];
@@ -67,43 +70,63 @@ function processBigRoad(data: GameResult[][]): BigRoadCell[][] {
 }
 
 const SIZE = {
-  sm: { cell: 22, stroke: 2.25, cols: 12 },
-  md: { cell: 26, stroke: 2.5, cols: 12 },
-  lg: { cell: 32, stroke: 2.75, cols: 16 },
+  sm: { cell: 22, stroke: 2.25, minCols: 12 },
+  md: { cell: 26, stroke: 2.5, minCols: 12 },
+  lg: { cell: 32, stroke: 2.75, minCols: 16 },
 } as const;
 
 export default function Roadmap({ data, size = 'md' }: RoadmapProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const processedColumns = processBigRoad(data);
-  const { cell, stroke, cols } = SIZE[size];
+  const { cell, stroke, minCols } = SIZE[size];
   const rows = 6;
 
-  const displayCols =
-    processedColumns.length > cols
-      ? processedColumns.slice(processedColumns.length - cols)
-      : processedColumns;
+  const trailingEmpty = Array.from({ length: TRAILING_EMPTY_COLS }, () => [] as BigRoadCell[]);
+  const withTrailing = [...processedColumns, ...trailingEmpty];
+  const totalCols = Math.max(minCols, withTrailing.length);
+  const leftPad = totalCols - withTrailing.length;
+  const displayCols = [
+    ...Array.from({ length: leftPad }, () => [] as BigRoadCell[]),
+    ...withTrailing,
+  ];
 
-  const gridWidth = cols * cell + (cols - 1); // 1px gaps
+  const gridWidth = totalCols * cell + (totalCols - 1); // 1px gaps
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const scrollToEnd = () => {
+      el.scrollLeft = el.scrollWidth;
+    };
+    scrollToEnd();
+    // 레이아웃/폰트 반영 후 한 번 더
+    const raf = window.requestAnimationFrame(scrollToEnd);
+    return () => window.cancelAnimationFrame(raf);
+  }, [data, size, totalCols, processedColumns.length]);
 
   return (
-    <div className="bg-white rounded-lg border border-zinc-200 overflow-x-auto custom-scrollbar touch-pan-x">
+    <div
+      ref={scrollRef}
+      className="bg-white rounded-lg border border-zinc-200 overflow-x-auto custom-scrollbar touch-pan-x"
+    >
       {/* 좌우 여백으로 원이 테두리에 잘리지 않게 */}
       <div className="p-2 sm:p-2.5 min-w-0">
         <div
-          className="grid gap-px bg-zinc-200 mx-auto"
+          className="grid gap-px bg-zinc-200"
           style={{
             width: gridWidth,
             minWidth: '100%',
-            gridTemplateColumns: `repeat(${cols}, minmax(${cell}px, 1fr))`,
+            gridTemplateColumns: `repeat(${totalCols}, minmax(${cell}px, 1fr))`,
           }}
         >
-          {Array.from({ length: cols }).map((_, colIdx) => (
+          {displayCols.map((col, colIdx) => (
             <div
               key={colIdx}
               className="grid gap-px"
               style={{ gridTemplateRows: `repeat(${rows}, minmax(${cell}px, ${cell}px))` }}
             >
               {Array.from({ length: rows }).map((_, rowIdx) => {
-                const cellData = displayCols[colIdx]?.[rowIdx];
+                const cellData = col[rowIdx];
                 return (
                   <div
                     key={`${colIdx}-${rowIdx}`}
