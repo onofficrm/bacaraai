@@ -200,7 +200,7 @@ export default function SessionModal({
         aria-modal="true"
         aria-labelledby="session-settings-title"
       >
-        <div className="flex-1 p-6 lg:p-8 overflow-y-auto max-h-[90vh]">
+        <div className="flex-1 p-6 lg:p-8 overflow-y-auto max-h-[90vh] custom-scrollbar">
           <div className="flex justify-between items-center mb-6">
             <h2 id="session-settings-title" className="text-xl font-bold text-white flex items-center gap-2">
               <SettingsIcon />
