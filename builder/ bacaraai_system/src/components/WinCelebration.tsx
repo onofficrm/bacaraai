@@ -27,6 +27,10 @@ const WIN_IMAGES = [
   `${BASE}win-glam/win-glam-08.jpg`,
 ];
 
+const SHOW_MS = 5200;
+/** 이보다 오래된 승리는 카드로 표시하지 않음 */
+const FRESH_MS = 20_000;
+
 type Props = {
   result: LastBetResult | null;
   onDismiss: () => void;
@@ -36,20 +40,26 @@ function pickImage(seed: number) {
   return WIN_IMAGES[Math.abs(seed) % WIN_IMAGES.length];
 }
 
+function isFreshWin(result: LastBetResult | null | undefined): result is LastBetResult {
+  if (!result || result.won !== true || !(result.amount > 0)) return false;
+  return Date.now() - (result.at || 0) < FRESH_MS;
+}
+
 /** 승리 시 랜덤 강렬 글램 이미지 + 축하 연출 (직접·오토 공통) */
 export default function WinCelebration({ result, onDismiss }: Props) {
   const [held, setHeld] = useState<LastBetResult | null>(null);
   const [imgReady, setImgReady] = useState(false);
-  const playingIdRef = useRef<string | null>(null);
+  const shownIdsRef = useRef<Set<string>>(new Set());
+  const dismissTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!result || result.won !== true || result.amount <= 0) return;
-    if (playingIdRef.current === result.id) return;
-    playingIdRef.current = result.id;
+    if (!isFreshWin(result)) return;
+    if (shownIdsRef.current.has(result.id)) return;
+    shownIdsRef.current.add(result.id);
     setHeld(result);
     setImgReady(false);
     playSfx('win');
-  }, [result?.id, result?.won, result?.amount, result]);
+  }, [result?.id, result?.won, result?.amount, result?.at, result]);
 
   const open = Boolean(held);
   const display = held;
@@ -65,27 +75,37 @@ export default function WinCelebration({ result, onDismiss }: Props) {
     return pickImage(display.at + display.amount * 7);
   }, [display]);
 
-  useEffect(() => {
-    if (!open || !display) return;
-    const autoClose = window.setTimeout(() => {
-      setHeld(null);
-      playingIdRef.current = null;
-      onDismiss();
-    }, 5200);
-    return () => window.clearTimeout(autoClose);
-  }, [open, display?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const dismiss = () => {
+    if (dismissTimerRef.current) {
+      window.clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
     setHeld(null);
-    playingIdRef.current = null;
     onDismiss();
   };
+
+  useEffect(() => {
+    if (!open || !display) return;
+    if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
+    dismissTimerRef.current = window.setTimeout(() => {
+      dismissTimerRef.current = null;
+      setHeld(null);
+      onDismiss();
+    }, SHOW_MS);
+    return () => {
+      if (dismissTimerRef.current) {
+        window.clearTimeout(dismissTimerRef.current);
+        dismissTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, display?.id]);
 
   return (
     <AnimatePresence>
       {open && display && (
         <motion.div
-          className="fixed inset-0 z-[300] flex items-center justify-center p-3 sm:p-4"
+          className="fixed inset-0 z-[400] flex items-center justify-center p-3 sm:p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -96,7 +116,6 @@ export default function WinCelebration({ result, onDismiss }: Props) {
         >
           <div className="absolute inset-0 bg-gradient-to-b from-rose-950/80 via-black/85 to-black/90 backdrop-blur-md" />
 
-          {/* Hot spark particles */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             {Array.from({ length: 36 }).map((_, i) => (
               <motion.span
@@ -142,7 +161,6 @@ export default function WinCelebration({ result, onDismiss }: Props) {
           >
             <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-rose-600 via-amber-300 to-fuchsia-500 z-20" />
 
-            {/* Full-bleed glam hero */}
             <div className="relative h-[22rem] sm:h-[26rem] overflow-hidden bg-zinc-900">
               <motion.img
                 key={imageSrc}
@@ -152,13 +170,13 @@ export default function WinCelebration({ result, onDismiss }: Props) {
                 initial={{ scale: 1.25, opacity: 0 }}
                 animate={{
                   scale: imgReady ? 1.05 : 1.2,
-                  opacity: imgReady ? 1 : 0.35,
+                  opacity: imgReady ? 1 : 0.55,
                 }}
                 transition={{ duration: 0.85, ease: 'easeOut' }}
                 onLoad={() => setImgReady(true)}
+                onError={() => setImgReady(true)}
                 draggable={false}
               />
-              {/* Vignette + heat overlay */}
               <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-rose-950/25 to-transparent" />
               <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.55)_100%)]" />
 
@@ -176,7 +194,6 @@ export default function WinCelebration({ result, onDismiss }: Props) {
                 </span>
               </motion.div>
 
-              {/* Text over image */}
               <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pt-16 z-10">
                 <motion.h3
                   className="text-[1.65rem] leading-tight font-black text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.85)] mb-1"

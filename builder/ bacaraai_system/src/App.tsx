@@ -195,13 +195,13 @@ export default function App() {
     // 베팅 가능 시간(결과 후 30초)이 끝난 테이블은 오토도 스킵
     // (후보 선택 시 다시 검사)
 
-    // 오토 승리 축하 연출 중에는 다음 베팅을 잠시 보류
-    const lastAuto = session.lastAutoResult;
+    // 승리 축하 연출 중에는 다음 오토 베팅을 잠시 보류
+    const celebrating = session.winCelebration;
     if (
-      lastAuto?.won === true &&
-      lastAuto.amount > 0
+      celebrating?.won === true &&
+      celebrating.amount > 0
     ) {
-      const waitMs = 4800 - (Date.now() - lastAuto.at);
+      const waitMs = 5200 - (Date.now() - celebrating.at);
       if (waitMs > 0) {
         const t = window.setTimeout(() => setAutoResumeTick((n) => n + 1), waitMs + 30);
         return () => window.clearTimeout(t);
@@ -415,6 +415,7 @@ export default function App() {
     session.caseMartinStages,
     session.lastBetResult,
     session.lastAutoResult,
+    session.winCelebration,
     autoResumeTick,
     session.config,
     session.placeBet,
@@ -783,20 +784,9 @@ export default function App() {
         }}
       />
       <WinCelebration
-        result={(() => {
-          const wins = [session.lastAutoResult, session.lastManualResult, session.lastBetResult].filter(
-            (r): r is NonNullable<typeof r> => Boolean(r && r.won === true && r.amount > 0),
-          );
-          if (!wins.length) return null;
-          return wins.reduce((a, b) => (a.at >= b.at ? a : b));
-        })()}
+        result={session.winCelebration}
         onDismiss={() => {
-          const latest = [session.lastAutoResult, session.lastManualResult].find(
-            (r) => r && r.won === true && r.amount > 0,
-          );
-          if (latest?.source === 'auto') session.clearLastBetResult('auto');
-          else if (latest?.source === 'manual') session.clearLastBetResult('manual');
-          else session.clearLastBetResult();
+          session.clearWinCelebration(session.winCelebration?.id);
         }}
       />
       

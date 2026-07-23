@@ -111,6 +111,8 @@ export type SessionState = {
   lastBetResult: LastBetResult | null;
   lastManualResult: LastBetResult | null;
   lastAutoResult: LastBetResult | null;
+  /** 승리 축하 카드 전용 (다른 결과 갱신에 덮이지 않음) */
+  winCelebration: LastBetResult | null;
   skippedCount: number;
 };
 
@@ -152,6 +154,7 @@ const DEFAULT_STATE: SessionState = {
   lastBetResult: null,
   lastManualResult: null,
   lastAutoResult: null,
+  winCelebration: null,
   skippedCount: 0,
 };
 
@@ -183,6 +186,14 @@ function normalizeConfig(partial?: Partial<SessionConfig>): SessionConfig {
   };
 }
 
+function freshWinCelebration(parsed: Partial<SessionState>): LastBetResult | null {
+  const win = parsed.winCelebration ?? null;
+  if (!win || win.won !== true || !(win.amount > 0)) return null;
+  // 새로고침 직후 오래된 승리는 카드로 다시 띄우지 않음
+  if (Date.now() - (win.at || 0) > 12_000) return null;
+  return win;
+}
+
 function readStored(): SessionState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -199,6 +210,7 @@ function readStored(): SessionState {
       lastBetResult: parsed.lastBetResult ?? null,
       lastManualResult: parsed.lastManualResult ?? null,
       lastAutoResult: parsed.lastAutoResult ?? null,
+      winCelebration: freshWinCelebration(parsed),
       skippedCount: Number(parsed.skippedCount) || 0,
     };
   } catch {
@@ -495,6 +507,7 @@ export default function useSession() {
       lastBetResult: null,
       lastManualResult: null,
       lastAutoResult: null,
+      winCelebration: null,
       skippedCount: 0,
     });
   }, []);
@@ -537,6 +550,7 @@ export default function useSession() {
       lastBetResult: null,
       lastManualResult: null,
       lastAutoResult: null,
+      winCelebration: null,
       skippedCount: 0,
     }));
   }, []);
@@ -641,6 +655,9 @@ export default function useSession() {
       lastBetResult: preferResult,
       lastManualResult: pending.source === 'manual' ? result : curr.lastManualResult,
       lastAutoResult: pending.source === 'auto' ? result : curr.lastAutoResult,
+      // 승리만 축하 카드 큐에 넣음 (이후 place/cancel 에 덮이지 않음)
+      winCelebration:
+        settled.won === true && result.amount > 0 ? result : curr.winCelebration,
     };
   }, []);
 
@@ -973,6 +990,14 @@ export default function useSession() {
     });
   }, []);
 
+  const clearWinCelebration = useCallback((id?: string) => {
+    setState((prev) => {
+      if (!prev.winCelebration) return prev;
+      if (id && prev.winCelebration.id !== id) return prev;
+      return { ...prev, winCelebration: null };
+    });
+  }, []);
+
   const isActive = state.status === 'running' || state.status === 'paused';
   const availableBankroll = bankroll(state.config.seed, state.pnl);
   const suggestedBet = resolveBetAmount(
@@ -1001,6 +1026,7 @@ export default function useSession() {
     settlePendingWithOutcome,
     skipRound,
     clearLastBetResult,
+    clearWinCelebration,
     setCutHandler,
   };
 }
