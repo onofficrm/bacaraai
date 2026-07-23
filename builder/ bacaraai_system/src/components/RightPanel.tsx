@@ -219,7 +219,7 @@ export default function RightPanel({
       setBetAmount((prev) => clampAmount(prev * 2 || suggestedBet || 1000));
     } else {
       const amount = chip.value as number;
-      playSfx(amount >= 100000 ? 'chipHeavy' : 'chip');
+      playSfx(amount >= 500_000 ? 'chipHeavy' : 'chip');
       setBetAmount((prev) => clampAmount(prev + amount));
     }
     setBetError(null);
@@ -248,10 +248,8 @@ export default function RightPanel({
     betAmount > 0 && availableBankroll > 0 && betAmount > availableBankroll * 0.3
       ? `잔액의 ${Math.round((betAmount / availableBankroll) * 100)}%를 걸게 됩니다`
       : null;
-  const needsHighConfirm =
-    betAmount >= 100_000 ||
-    (availableBankroll > 0 && betAmount >= availableBankroll * 0.25) ||
-    betAmount >= maxBet * 0.5;
+  // 고액 베팅 확인 알림: 50만 원 이상
+  const needsHighConfirm = betAmount >= 500_000;
 
   const placeManualBet = async () => {
     if (!table || !onPlaceBet) return;
