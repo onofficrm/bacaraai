@@ -56,11 +56,25 @@ export default function App() {
   const { beginnerMode, toggleBeginnerMode, setBeginnerMode } = useBeginnerMode();
   const session = useSession();
   const wallet = useWallet();
-  const liveTable = useLiveTable(MOCK_TABLES[0], 'MD2729', 'TABLE1(MD2729)');
-  const tables = useMemo(() => [liveTable, ...MOCK_TABLES.slice(1)], [liveTable]);
   const availableBankroll = wallet.loggedIn
     ? wallet.balance
     : session.availableBankroll;
+  const recommendCtx = useMemo(
+    () => ({
+      config: session.config,
+      pnl: session.pnl,
+      availableBankroll,
+      martinStage: session.martinStage,
+    }),
+    [session.config, session.pnl, availableBankroll, session.martinStage],
+  );
+  const liveTable = useLiveTable(
+    MOCK_TABLES[0],
+    'MD2729',
+    'TABLE1(MD2729)',
+    recommendCtx,
+  );
+  const tables = useMemo(() => [liveTable, ...MOCK_TABLES.slice(1)], [liveTable]);
   
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return localStorage.getItem('onboardingComplete') !== 'true';

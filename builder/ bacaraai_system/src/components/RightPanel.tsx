@@ -144,7 +144,9 @@ export default function RightPanel({
     setSelectedSide(
       table?.ai.finalOpinion === 'BANKER'
         ? 'BANKER'
-        : 'PLAYER',
+        : table?.ai.finalOpinion === 'PLAYER'
+          ? 'PLAYER'
+          : 'PLAYER',
     );
     setShowMoreChips(false);
     setShowAiDetails(false);
@@ -158,6 +160,19 @@ export default function RightPanel({
     setSubmitting(false);
     submittingRef.current = false;
   }, [table?.id, isDesktop]);
+
+  // 새 결과·AI 추천이 바뀌면 추천 방향/금액을 폼에 반영 (칩 수동 입력 중 덮어쓰기 최소화: 결과 ID 기준)
+  React.useEffect(() => {
+    if (!table) return;
+    if (table.ai.finalOpinion === 'BANKER' || table.ai.finalOpinion === 'PLAYER') {
+      setSelectedSide(table.ai.finalOpinion === 'BANKER' ? 'BANKER' : 'PLAYER');
+    }
+    if ((table.ai.recommendedAmount ?? 0) > 0) {
+      setBetAmount(
+        Math.max(0, Math.min(table.ai.recommendedAmount, maxBet, availableBankroll || table.ai.recommendedAmount)),
+      );
+    }
+  }, [table?.live?.latestId, table?.ai.finalOpinion, table?.ai.recommendedAmount]);
 
   // 금액은 테이블 전환 시에만 맞추고, 칩 입력 중에는 덮어쓰지 않음
   // (라이브 폴링으로 table/suggestedBet 이 바뀌면 초기화되던 문제 방지)

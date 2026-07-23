@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PLATFORM_LINKS } from '../constants';
 import type { AiModelAnalysis, AiOpinion, GameResult, TableData } from '../types';
+import {
+  recommendBetAmount,
+  type RecommendBetContext,
+} from '../utils/recommendBetAmount';
 
 type LiveResultRow = {
   id: number;
@@ -123,6 +127,7 @@ export default function useLiveTable(
   base: TableData,
   tableName = 'MD2729',
   displayName = 'TABLE1(MD2729)',
+  recommendCtx: RecommendBetContext | null = null,
 ): TableData {
   const [state, setState] = useState<LiveState>({
     loading: true,
@@ -358,6 +363,16 @@ export default function useLiveTable(
         ? '참고 추천(자동베팅 조건 미충족)'
         : '관망';
 
+    const betRec =
+      isActionable && recommendCtx
+        ? recommendBetAmount({
+            ...recommendCtx,
+            opinion: finalOpinion,
+            confidence: finalConfidence,
+            consensus,
+          })
+        : { amount: 0, reason: '관망 — 금액 추천 없음' };
+
     return {
       ...base,
       name: displayName,
@@ -411,12 +426,14 @@ export default function useLiveTable(
         finalConfidence,
         consensus,
         appliedRule,
-        recommendedAmount: autoBetAllowed ? base.ai.recommendedAmount || 0 : 0,
+        recommendedAmount: betRec.amount,
         skipReasons: isActionable ? undefined : [appliedRule, accuracyText],
-        discussionSummary: `${modeLabel} · ${accuracyText}`,
+        discussionSummary: isActionable
+          ? `${modeLabel} · ${betRec.reason} · ${accuracyText}`
+          : `${modeLabel} · ${accuracyText}`,
         autoBetAllowed,
         shadowMode,
       },
     };
-  }, [base, state, aiState, tableName, displayName]);
+  }, [base, state, aiState, tableName, displayName, recommendCtx]);
 }
