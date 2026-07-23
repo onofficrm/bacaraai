@@ -9,9 +9,13 @@
 - 충전 내역 조회
 
 ## 관리자 메뉴
-회원관리 → **가상머니 관리**
+회원관리 → **가상머니 관리**  
+회원관리 → **AI API 설정** (ChatGPT / Claude / Gemini 키)
 
-URL: `/plugin/bacara_wallet/admin/index.php`
+URL: `/plugin/bacara_wallet/admin/index.php`  
+AI API: `/plugin/bacara_wallet/admin/ai_keys.php`
+
+설정 파일: `data/bacaraai-ai.config.php` (Git 제외)
 
 ## DB
 - `g5_bacara_wallet` — 잔액

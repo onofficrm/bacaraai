@@ -6,6 +6,7 @@
 data/dbconfig.php
 data/dbconfig.local.php
 data/bacaraai-live.config.php
+data/bacaraai-ai.config.php
 data/icrm.config.php
 data/onoff-builder.config.php
 data/seo-meta.config.php

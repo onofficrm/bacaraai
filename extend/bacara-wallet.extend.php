@@ -9,6 +9,9 @@ if (!defined('_GNUBOARD_')) {
 if (is_file(G5_LIB_PATH . '/bacara-wallet.lib.php')) {
     include_once G5_LIB_PATH . '/bacara-wallet.lib.php';
 }
+if (is_file(G5_LIB_PATH . '/bacara-ai-config.lib.php')) {
+    include_once G5_LIB_PATH . '/bacara-ai-config.lib.php';
+}
 
 if (!function_exists('bacara_wallet_admin_menu')) {
     function bacara_wallet_admin_menu($admin_menu)
@@ -25,6 +28,12 @@ if (!function_exists('bacara_wallet_admin_menu')) {
             '가상머니 관리',
             G5_PLUGIN_URL . '/bacara_wallet/admin/index.php',
             'bacara_wallet',
+        );
+        $admin_menu['menu200'][] = array(
+            '200960',
+            'AI API 설정',
+            G5_PLUGIN_URL . '/bacara_wallet/admin/ai_keys.php',
+            'bacara_ai_keys',
         );
 
         return $admin_menu;

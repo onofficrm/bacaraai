@@ -1,5 +1,7 @@
 <?php
-$sub_menu = '200950';
+$sub_menu = (isset($_SERVER['SCRIPT_NAME']) && basename($_SERVER['SCRIPT_NAME']) === 'ai_keys.php')
+    ? '200960'
+    : '200950';
 
 if (!defined('G5_IS_ADMIN')) {
     define('G5_IS_ADMIN', true);
@@ -65,6 +67,7 @@ if (!function_exists('bacara_wallet_admin_nav')) {
             'create' => array('form.php', '회원 생성'),
             'charge' => array('charge.php', '머니 충전'),
             'log'    => array('log.php', '충전 내역'),
+            'ai'     => array('ai_keys.php', 'AI API 설정'),
         );
 
         echo '<nav class="bw-tabs" aria-label="가상머니 관리 메뉴">';
@@ -99,7 +102,7 @@ if (!function_exists('bacara_wallet_admin_shell_end')) {
     }
 }
 
-add_stylesheet('<link rel="stylesheet" href="' . G5_PLUGIN_URL . '/bacara_wallet/admin/style.css?v=20260719">', 10);
+add_stylesheet('<link rel="stylesheet" href="' . G5_PLUGIN_URL . '/bacara_wallet/admin/style.css?v=20260723">', 10);
 
 // admin.js 는 admin.tail 에서 늦게 로드되므로 ready 시점에 플러그인 토큰 API로 재정의
 $bacara_wallet_token_url = G5_PLUGIN_URL . '/bacara_wallet/admin/ajax.token.php';

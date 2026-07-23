@@ -331,6 +331,58 @@
   margin-top: 16px;
 }
 
+.bacara-wallet .bw-field-span {
+  grid-column: 1 / -1;
+}
+
+.bacara-wallet .bw-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.bacara-wallet .bw-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--bw-line);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.bacara-wallet .bw-pill.is-on {
+  color: #34d399;
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.1);
+}
+
+.bacara-wallet .bw-pill.is-off {
+  color: var(--bw-dim);
+  background: #121214;
+}
+
+.bacara-wallet .bw-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  color: #f87171;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bacara-wallet .bw-card h3 + .bw-grid {
+  margin-top: 0;
+}
+
+.bacara-wallet code {
+  color: #fcd34d;
+  font-size: 0.85em;
+}
+
 .bacara-wallet .pg_wrap,
 .bacara-wallet .pg_page,
 .bacara-wallet .pg_current {

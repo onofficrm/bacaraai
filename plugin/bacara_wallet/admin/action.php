@@ -97,4 +97,38 @@ if ($mode === 'charge') {
     );
 }
 
+if ($mode === 'save_ai_keys') {
+    include_once G5_LIB_PATH . '/bacara-ai-config.lib.php';
+
+    $clear_keys = array();
+    if (!empty($_POST['clear_openai_api_key'])) {
+        $clear_keys[] = 'openai_api_key';
+    }
+    if (!empty($_POST['clear_anthropic_api_key'])) {
+        $clear_keys[] = 'anthropic_api_key';
+    }
+    if (!empty($_POST['clear_gemini_api_key'])) {
+        $clear_keys[] = 'gemini_api_key';
+    }
+
+    $ok = bacara_ai_config_save(
+        array(
+            'openai_api_key' => isset($_POST['openai_api_key']) ? (string) $_POST['openai_api_key'] : '',
+            'openai_model' => isset($_POST['openai_model']) ? (string) $_POST['openai_model'] : '',
+            'anthropic_api_key' => isset($_POST['anthropic_api_key']) ? (string) $_POST['anthropic_api_key'] : '',
+            'anthropic_model' => isset($_POST['anthropic_model']) ? (string) $_POST['anthropic_model'] : '',
+            'gemini_api_key' => isset($_POST['gemini_api_key']) ? (string) $_POST['gemini_api_key'] : '',
+            'gemini_model' => isset($_POST['gemini_model']) ? (string) $_POST['gemini_model'] : '',
+            'enabled' => !empty($_POST['enabled']) ? '1' : '0',
+        ),
+        $clear_keys
+    );
+
+    if (!$ok) {
+        alert('설정 파일 저장에 실패했습니다. data 폴더 쓰기 권한을 확인해 주세요.', bacara_wallet_admin_url('ai_keys.php'));
+    }
+
+    goto_url(bacara_wallet_admin_url('ai_keys.php', array('saved' => '1')));
+}
+
 alert('잘못된 요청입니다.', bacara_wallet_admin_url());
