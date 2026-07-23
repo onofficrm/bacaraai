@@ -124,6 +124,9 @@ export default function RightPanel({
   const [chipCelebrating, setChipCelebrating] = useState(false);
   const stackAnchorRef = React.useRef<HTMLDivElement | null>(null);
   const chipSeqRef = React.useRef(0);
+  /** 라운드(결과) 키 — 새 결과가 오면 베팅 칩 자동 초기화 */
+  const roundKeyRef = React.useRef<string | null>(null);
+  const settledResultIdRef = React.useRef<string | null>(null);
   const [selectedSide, setSelectedSide] = useState<BetSide>('PLAYER');
   const [showMoreChips, setShowMoreChips] = useState(false);
   const [showAiDetails, setShowAiDetails] = useState(false);
@@ -176,26 +179,71 @@ export default function RightPanel({
     setHighConfirmOpen(false);
     setSubmitting(false);
     submittingRef.current = false;
+    roundKeyRef.current = table
+      ? `${table.id}:${table.live?.latestId ?? table.stats.recentResults.length}`
+      : null;
+    settledResultIdRef.current = null;
   }, [table?.id, isDesktop]);
 
-  // 새 결과·AI 추천이 바뀌면 추천 방향/금액을 폼에 반영 (칩 수동 입력 중 덮어쓰기 최소화: 결과 ID 기준)
+  const prepareNextRoundBet = React.useCallback(
+    (t: TableData) => {
+      setFlyers([]);
+      setChipCelebrating(false);
+      setBetError(null);
+      setBurstKey((k) => k + 1);
+      if (t.ai.finalOpinion === 'BANKER' || t.ai.finalOpinion === 'PLAYER') {
+        setSelectedSide(t.ai.finalOpinion === 'BANKER' ? 'BANKER' : 'PLAYER');
+      }
+      const rec = t.ai.recommendedAmount ?? 0;
+      const actionable =
+        rec > 0 &&
+        (t.ai.finalOpinion === 'PLAYER' || t.ai.finalOpinion === 'BANKER');
+      if (actionable) {
+        const next = Math.max(0, Math.min(rec, maxBet, availableBankroll || rec));
+        setBetAmount(next);
+        setChipStack(amountToStack(next));
+      } else {
+        setBetAmount(0);
+        setChipStack([]);
+      }
+    },
+    [maxBet, availableBankroll],
+  );
+
+  // 새 게임 결과 → 칩/금액 자동 초기화 (다음 회차 AI 추천이 있으면 그 금액만 채움)
   React.useEffect(() => {
     if (!table) return;
-    if (table.ai.finalOpinion === 'BANKER' || table.ai.finalOpinion === 'PLAYER') {
-      setSelectedSide(table.ai.finalOpinion === 'BANKER' ? 'BANKER' : 'PLAYER');
+    const key = `${table.id}:${table.live?.latestId ?? table.stats.recentResults.length}`;
+    if (roundKeyRef.current === null) {
+      roundKeyRef.current = key;
+      return;
     }
-    if ((table.ai.recommendedAmount ?? 0) > 0) {
-      const next = Math.max(
-        0,
-        Math.min(table.ai.recommendedAmount, maxBet, availableBankroll || table.ai.recommendedAmount),
-      );
-      setBetAmount(next);
-      setChipStack(amountToStack(next));
+    if (roundKeyRef.current === key) return;
+    roundKeyRef.current = key;
+    // 직접 베팅 대기 중이면 정산 직후 결과 핸들러에서 초기화 (대기 중 UI 유지)
+    if (pendingBets.some((b) => b.source === 'manual' && b.tableId === table.id)) {
+      return;
     }
-  }, [table?.live?.latestId, table?.ai.finalOpinion, table?.ai.recommendedAmount]);
+    prepareNextRoundBet(table);
+  }, [
+    table?.id,
+    table?.live?.latestId,
+    table?.stats.recentResults.length,
+    table,
+    pendingBets,
+    prepareNextRoundBet,
+  ]);
 
-  // 금액은 테이블 전환 시에만 맞추고, 칩 입력 중에는 덮어쓰지 않음
-  // (라이브 폴링으로 table/suggestedBet 이 바뀌면 초기화되던 문제 방지)
+  // 직접 베팅 정산 완료 시에도 자동 초기화
+  React.useEffect(() => {
+    if (!table || !lastManualResult) return;
+    if (lastManualResult.tableId !== table.id) return;
+    if (settledResultIdRef.current === lastManualResult.id) return;
+    settledResultIdRef.current = lastManualResult.id;
+    prepareNextRoundBet(table);
+  }, [lastManualResult, table, prepareNextRoundBet]);
+
+  // 금액은 테이블 전환·라운드 종료 시에만 맞추고, 칩 입력 중에는 덮어쓰지 않음
 
   const resultForSfx = lastManualResult || lastAutoResult || lastBetResult;
   React.useEffect(() => {
