@@ -23,17 +23,22 @@ export type SfxName =
   | 'tableSelect'
   | 'toggle'
   | 'tick'
-  | 'shuffle';
+  | 'shuffle'
+  | 'betWarn'
+  | 'betClosed';
 
 type MasterState = {
   enabled: boolean;
   volume: number; // 0..1
   ambient: boolean;
+  /** 베팅 마감 5초 카운트 사운드 */
+  betCountdown: boolean;
 };
 
 const KEY_ENABLED = 'bacara_sfx_enabled';
 const KEY_VOLUME = 'bacara_sfx_volume';
 const KEY_AMBIENT = 'bacara_sfx_ambient';
+const KEY_BET_COUNTDOWN = 'bacara_sfx_bet_countdown';
 
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
@@ -46,14 +51,16 @@ function readState(): MasterState {
   const enabledRaw = localStorage.getItem(KEY_ENABLED);
   const volRaw = localStorage.getItem(KEY_VOLUME);
   const ambientRaw = localStorage.getItem(KEY_AMBIENT);
+  const betCdRaw = localStorage.getItem(KEY_BET_COUNTDOWN);
   return {
     enabled: enabledRaw === null ? true : enabledRaw === 'true',
     volume: volRaw === null ? 0.55 : Math.min(1, Math.max(0, Number(volRaw) || 0.55)),
     ambient: ambientRaw === 'true',
+    betCountdown: betCdRaw === null ? true : betCdRaw === 'true',
   };
 }
 
-let state: MasterState = typeof localStorage !== 'undefined' ? readState() : { enabled: true, volume: 0.55, ambient: false };
+let state: MasterState = typeof localStorage !== 'undefined' ? readState() : { enabled: true, volume: 0.55, ambient: false, betCountdown: true };
 
 function notify() {
   listeners.forEach((fn) => fn());
@@ -90,6 +97,16 @@ export function setAmbientEnabled(ambient: boolean) {
   if (ambient && state.enabled) startAmbient();
   else stopAmbient();
   notify();
+}
+
+export function setBetCountdownSoundEnabled(betCountdown: boolean) {
+  state = { ...state, betCountdown };
+  localStorage.setItem(KEY_BET_COUNTDOWN, betCountdown ? 'true' : 'false');
+  notify();
+}
+
+export function isBetCountdownSoundEnabled() {
+  return state.enabled && state.betCountdown;
 }
 
 function ensureCtx() {
@@ -219,6 +236,17 @@ function playPattern(name: SfxName) {
       noiseBurst(t, 0.03, { gain: 0.06, freq: 4200, q: 4 });
       tone(2400, t, 0.025, { type: 'square', gain: 0.03, decay: 0.025, filterFreq: 5000 });
       break;
+    case 'betWarn':
+      // 기본형 — playBetCountdownTick 이 초별로 더 정확히 재생
+      noiseBurst(t, 0.035, { gain: 0.08, freq: 3800, q: 5 });
+      tone(1600, t, 0.04, { type: 'square', gain: 0.05, decay: 0.04, filterFreq: 4500 });
+      break;
+    case 'betClosed':
+      tone(880, t, 0.06, { type: 'square', gain: 0.07, decay: 0.06, filterFreq: 2400 });
+      tone(440, t + 0.07, 0.1, { type: 'square', gain: 0.08, decay: 0.1, filterFreq: 1800 });
+      tone(220, t + 0.16, 0.22, { type: 'triangle', gain: 0.1, decay: 0.24 });
+      noiseBurst(t + 0.05, 0.12, { gain: 0.1, freq: 900, q: 1.2, type: 'lowpass' });
+      break;
     case 'chip':
       noiseBurst(t, 0.06, { gain: 0.18, freq: 3200, q: 2.5 });
       tone(1400, t, 0.08, { type: 'triangle', gain: 0.1, decay: 0.08 });
@@ -318,7 +346,7 @@ function playPattern(name: SfxName) {
 const lastPlayed = new Map<SfxName, number>();
 
 export function playSfx(name: SfxName, opts?: { throttleMs?: number }) {
-  const throttle = opts?.throttleMs ?? (name === 'chip' || name === 'tick' || name === 'ui' ? 40 : 0);
+  const throttle = opts?.throttleMs ?? (name === 'chip' || name === 'tick' || name === 'ui' || name === 'betWarn' ? 40 : 0);
   const now = performance.now();
   if (throttle > 0) {
     const prev = lastPlayed.get(name) || 0;
@@ -330,6 +358,48 @@ export function playSfx(name: SfxName, opts?: { throttleMs?: number }) {
   } catch {
     /* ignore audio errors */
   }
+}
+
+/**
+ * 베팅 마감 카운트 틱 (5→1). remainingSec 가 작을수록 음이 높아짐.
+ */
+export function playBetCountdownTick(remainingSec: number) {
+  if (!state.enabled || !state.betCountdown || state.volume <= 0.001) return;
+  const sec = Math.max(1, Math.min(5, Math.floor(remainingSec)));
+  try {
+    const c = ensureCtx();
+    if (c.state === 'suspended') void c.resume();
+    const t = c.currentTime + 0.01;
+    const urgent = sec <= 2;
+    const freq = 1100 + (5 - sec) * 320;
+    const gain = urgent ? 0.09 : 0.055 + (5 - sec) * 0.008;
+    noiseBurst(t, urgent ? 0.045 : 0.03, {
+      gain: urgent ? 0.11 : 0.07,
+      freq: 3200 + (5 - sec) * 400,
+      q: 5,
+    });
+    tone(freq, t, urgent ? 0.055 : 0.035, {
+      type: 'square',
+      gain,
+      decay: urgent ? 0.055 : 0.035,
+      filterFreq: 5200,
+    });
+    if (sec === 1) {
+      tone(freq * 1.5, t + 0.04, 0.05, {
+        type: 'triangle',
+        gain: 0.06,
+        decay: 0.05,
+        filterFreq: 6000,
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function playBetClosed() {
+  if (!state.enabled || !state.betCountdown || state.volume <= 0.001) return;
+  playSfx('betClosed', { throttleMs: 800 });
 }
 
 function startAmbient() {

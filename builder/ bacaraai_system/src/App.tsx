@@ -32,7 +32,8 @@ import useLiveTable from './hooks/useLiveTable';
 import useCompactLayout from './hooks/useCompactLayout';
 import { getBettingRemainingSecForTable } from './hooks/useBettingWindow';
 import useWallet from './hooks/useWallet';
-import { installAudioUnlock, playSfx } from './audio/sfxEngine';
+import { installAudioUnlock, playBetClosed, playBetCountdownTick, playSfx } from './audio/sfxEngine';
+import { isBetCountdownSoundEnabled, subscribeSoundState } from './audio/sfxEngine';
 import {
   findMatchingPatternCase,
   normalizePatternCases,
@@ -128,7 +129,11 @@ export default function App() {
   >([]);
   const [winCombo, setWinCombo] = useState(0);
   const lastResultIdForComboRef = useRef<string | null>(null);
-  const betWindowWarnedRef = useRef<string | null>(null);
+  /** 베팅 마감 카운트 사운드: 초당 1회 키 */
+  const betCountdownSoundKeyRef = useRef<string>('');
+  const [betCountdownSoundOn, setBetCountdownSoundOn] = useState(
+    () => isBetCountdownSoundEnabled(),
+  );
 
   const pushTicker = (
     text: string,
@@ -155,10 +160,73 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    return subscribeSoundState(() => {
+      setBetCountdownSoundOn(isBetCountdownSoundEnabled());
+    });
+  }, []);
+
+  useEffect(() => {
     if (session.status !== 'running' || session.mode !== 'live') return;
     const id = window.setInterval(() => setAutoEventTick((n) => n + 1), 500);
     return () => window.clearInterval(id);
   }, [session.status, session.mode]);
+
+  // 베팅 마감 5초 카운트 사운드 (선택 테이블 · 이미 접수면 생략)
+  useEffect(() => {
+    if (!betCountdownSoundOn) return;
+    if (!selectedTableId) return;
+
+    const tick = () => {
+      if (!isBetCountdownSoundEnabled()) return;
+      const table = tables.find((t) => t.id === selectedTableId);
+      if (!table?.live) return;
+
+      const hasPending = session.pendingBets.some((b) => b.tableId === table.id);
+      // 이미 접수한 테이블은 마감 틱 생략
+      if (hasPending) {
+        betCountdownSoundKeyRef.current = '';
+        return;
+      }
+
+      const sec = getBettingRemainingSecForTable(table);
+      const round = table.live.latestId ?? 0;
+      if (sec <= 0) {
+        const closedKey = `${table.id}:${round}:closed`;
+        if (betCountdownSoundKeyRef.current !== closedKey) {
+          const prev = betCountdownSoundKeyRef.current;
+          const m = prev.match(new RegExp(`^${table.id}:${round}:(\\d+)$`));
+          const lastSec = m ? Number(m[1]) : 0;
+          // 5~1 카운트 중에 마감된 경우만 마감음
+          if (lastSec >= 1 && lastSec <= 5) {
+            playBetClosed();
+          }
+          betCountdownSoundKeyRef.current = closedKey;
+        }
+        return;
+      }
+
+      if (sec > 5) {
+        betCountdownSoundKeyRef.current = `${table.id}:${round}:idle`;
+        return;
+      }
+
+      const key = `${table.id}:${round}:${sec}`;
+      if (betCountdownSoundKeyRef.current === key) return;
+      betCountdownSoundKeyRef.current = key;
+      playBetCountdownTick(sec);
+    };
+
+    tick();
+    const id = window.setInterval(tick, 200);
+    return () => window.clearInterval(id);
+  }, [
+    betCountdownSoundOn,
+    selectedTableId,
+    tables,
+    session.pendingBets,
+    liveTable.live?.latestId,
+    liveTable.live?.latestDetectedAt,
+  ]);
 
   const riskAlerts = useMemo(
     () =>
@@ -217,20 +285,6 @@ export default function App() {
     const top = riskAlerts[0];
     pushTicker(top.title, top.level === 'critical' ? 'risk' : 'info');
   }, [riskAlerts]);
-
-  // 베팅 마감 10초 경고 SFX (선택 테이블)
-  useEffect(() => {
-    if (!selectedTableId) return;
-    const table = tables.find((t) => t.id === selectedTableId);
-    if (!table) return;
-    const sec = getBettingRemainingSecForTable(table);
-    const roundKey = `${table.id}:${table.live?.latestId ?? 0}`;
-    if (sec > 0 && sec <= 10 && betWindowWarnedRef.current !== roundKey) {
-      betWindowWarnedRef.current = roundKey;
-      playSfx('tick');
-    }
-    if (sec <= 0) betWindowWarnedRef.current = null;
-  }, [selectedTableId, tables, liveTable.live?.latestId, liveTable.stats.recentResults.length]);
 
   const openStopReview = (type: 'wincut' | 'losscut' | 'error' | 'manual', pnl?: number) => {
     session.pauseSession();

@@ -24,6 +24,8 @@ const PREVIEW_SOUNDS: { id: SfxName; label: string }[] = [
   { id: 'risk', label: '위험' },
   { id: 'win', label: '윈컷' },
   { id: 'loss', label: '로스컷' },
+  { id: 'betWarn', label: '마감 틱' },
+  { id: 'betClosed', label: '베팅 마감' },
   { id: 'shuffle', label: '셔플' },
   { id: 'sessionStop', label: '오토베팅 종료' },
 ];
@@ -125,6 +127,32 @@ export default function SettingsView({
                   }`}
                 >
                   {sound.ambient ? '켜짐' : '꺼짐'}
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center py-2 border-b border-zinc-800/50">
+                <div>
+                  <div className="text-sm font-medium text-zinc-200">베팅 마감 카운트</div>
+                  <div className="text-xs text-zinc-500 mt-1">
+                    선택 테이블 남은 5초부터 초마다 틱 · 마감음 (이미 접수한 테이블은 생략)
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sound.toggleBetCountdown();
+                    if (!sound.betCountdown) {
+                      previewSfx('betWarn');
+                    }
+                  }}
+                  disabled={!sound.enabled}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-colors disabled:opacity-40 ${
+                    sound.betCountdown
+                      ? 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                      : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                  }`}
+                >
+                  {sound.betCountdown ? '켜짐' : '꺼짐'}
                 </button>
               </div>
             </div>
