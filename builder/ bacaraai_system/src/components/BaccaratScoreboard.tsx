@@ -122,6 +122,7 @@ function PadGrid<T>({
   rows = ROAD_ROWS,
   cellSize,
   gap = 1,
+  fillWidth = false,
   renderCell,
 }: {
   columns: Array<Array<T | null | undefined>>;
@@ -130,6 +131,7 @@ function PadGrid<T>({
   rows?: number;
   cellSize: number;
   gap?: number;
+  fillWidth?: boolean;
   renderCell: (cell: T | null | undefined, col: number, row: number) => ReactNode;
 }) {
   const totalCols = Math.max(minCols, columns.length + trailing);
@@ -140,10 +142,13 @@ function PadGrid<T>({
     <div
       className="grid rounded-[2px] overflow-hidden"
       style={{
-        width,
+        width: fillWidth ? '100%' : width,
+        minWidth: fillWidth ? undefined : width,
         gap,
         backgroundColor: BOARD.line,
-        gridTemplateColumns: `repeat(${totalCols}, ${cellSize}px)`,
+        gridTemplateColumns: fillWidth
+          ? `repeat(${totalCols}, minmax(${cellSize}px, 1fr))`
+          : `repeat(${totalCols}, ${cellSize}px)`,
         boxShadow: 'inset 0 0 0 1px rgba(28,25,23,0.06)',
       }}
     >
@@ -155,14 +160,13 @@ function PadGrid<T>({
           <div
             key={colIdx}
             className="grid"
-            style={{ gap, gridTemplateRows: `repeat(${rows}, ${cellSize}px)` }}
+            style={{ gap, gridTemplateRows: `repeat(${rows}, minmax(${cellSize}px, ${cellSize}px))` }}
           >
             {Array.from({ length: rows }).map((_, rowIdx) => (
               <div
                 key={rowIdx}
-                className="flex items-center justify-center relative"
+                className="flex items-center justify-center relative w-full"
                 style={{
-                  width: cellSize,
                   height: cellSize,
                   backgroundColor: BOARD.cell,
                 }}
@@ -388,26 +392,26 @@ export default function BaccaratScoreboard({ results }: BaccaratScoreboardProps)
           <div
             ref={beadScroll.scrollRef}
             {...beadScroll.handlers}
-            className={`shrink-0 border-b xl:border-b-0 xl:border-r overflow-x-auto scoreboard-scroll ${
+            className={`shrink-0 border-b xl:border-b-0 xl:border-r overflow-x-auto scoreboard-scroll w-full xl:w-[240px] ${
               beadScroll.dragging ? 'cursor-grabbing' : 'cursor-grab'
             }`}
             style={{
               touchAction: 'pan-x',
               borderColor: BOARD.line,
-              maxWidth: '100%',
-              width: 'min(100%, 196px)',
               background: 'linear-gradient(180deg, #f7f4ee 0%, #efebe3 100%)',
             }}
             title="드래그하여 좌우로 이동"
           >
-            <div className="px-2 pt-2 pb-1">
+            <div className="px-2.5 pt-2 pb-1">
               <RoadLabel>Bead</RoadLabel>
             </div>
-            <div className="px-2 pb-2.5">
+            <div className="px-2.5 pb-2.5">
               <PadGrid
                 columns={beads}
-                minCols={5}
-                cellSize={28}
+                trailing={0}
+                minCols={Math.max(beads.length, 1)}
+                cellSize={34}
+                fillWidth
                 renderCell={(cell) => (cell ? <BeadMark cell={cell} /> : null)}
               />
             </div>
