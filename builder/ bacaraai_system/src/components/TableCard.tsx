@@ -109,9 +109,13 @@ export default function TableCard({
   }, [table.stats.currentStreak, reduced]);
 
   useEffect(() => {
+    if (!table.live) {
+      setBetSec(0);
+      return;
+    }
     const tick = () => setBetSec(getBettingRemainingSecForTable(table));
     tick();
-    const id = window.setInterval(tick, 500);
+    const id = window.setInterval(tick, 250);
     return () => window.clearInterval(id);
   }, [table]);
 
@@ -336,7 +340,7 @@ export default function TableCard({
                 </span>
               )}
 
-              {betSec > 0 ? (
+              {table.live && betSec > 0 ? (
                 <span
                   title="베팅 가능 남은 시간"
                   className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 font-mono tabular-nums ${
@@ -349,7 +353,7 @@ export default function TableCard({
                   {betSec}
                   <span className="opacity-70 font-sans text-[9px]">s</span>
                 </span>
-              ) : lastResultLabel ? (
+              ) : table.live && lastResultLabel ? (
                 <span className="text-[10px] font-mono text-zinc-600">마감</span>
               ) : null}
             </div>
