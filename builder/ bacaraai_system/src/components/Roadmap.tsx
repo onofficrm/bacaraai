@@ -7,12 +7,8 @@ import {
   type PointerEvent,
 } from 'react';
 import { GameResult } from '../types';
-import { useFxIntensity } from '../hooks/useFxIntensity';
 import { playSfx } from '../audio/sfxEngine';
-import {
-  buildBigRoadGrid,
-  ROAD_ROWS,
-} from '../utils/baccaratRoads';
+import { buildBigRoadGrid, ROAD_ROWS } from '../utils/baccaratRoads';
 
 interface RoadmapProps {
   data: GameResult[][];
@@ -22,12 +18,11 @@ interface RoadmapProps {
 }
 
 type Cell = {
-  result: 'P' | 'B' | 'T';
+  result: 'P' | 'B';
   ties: number;
   isNewest?: boolean;
 };
 
-const TRAILING_EMPTY_COLS = 3;
 const DRAG_THRESHOLD_PX = 4;
 
 function flattenRoadmap(data: GameResult[][]): GameResult[] {
@@ -40,17 +35,16 @@ function flattenRoadmap(data: GameResult[][]): GameResult[] {
 
 function resultsSignature(results: GameResult[]): string {
   if (!results.length) return '0';
-  return `${results.length}:${results.slice(-8).join('')}`;
+  return `${results.length}:${results[results.length - 1]}:${results.slice(-6).join('')}`;
 }
 
 const SIZE = {
-  sm: { cell: 22, stroke: 2.25, minCols: 12 },
+  sm: { cell: 22, stroke: 2.25, minCols: 10 },
   md: { cell: 26, stroke: 2.5, minCols: 12 },
-  lg: { cell: 32, stroke: 2.75, minCols: 16 },
+  lg: { cell: 32, stroke: 2.75, minCols: 14 },
 } as const;
 
 export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
-  const { reduced } = useFxIntensity();
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -61,63 +55,70 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
   const didDragRef = useRef(false);
   const prevSigRef = useRef<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [dropActive, setDropActive] = useState(false);
-  const [dropKey, setDropKey] = useState(0);
 
   const flatResults = useMemo(() => {
     if (results && results.length > 0) return results;
-    return flattenRoadmap(data);
+    return flattenRoadmap(data || []);
   }, [results, data]);
 
   const dataSignature = resultsSignature(flatResults);
   const { cell, stroke, minCols } = SIZE[size];
   const rows = ROAD_ROWS;
 
-  const visualGrid = useMemo(() => buildBigRoadGrid(flatResults), [flatResults]);
+  const visualGrid = useMemo(() => {
+    try {
+      return buildBigRoadGrid(flatResults) as Array<Array<Cell | null>>;
+    } catch {
+      return [] as Array<Array<Cell | null>>;
+    }
+  }, [flatResults]);
+
+  // 데이터 열 + 오른쪽 여유 2열만 (빈 칸으로 스크롤이 밀리지 않게)
+  const displayCols = useMemo(() => {
+    const dataCols = visualGrid.length > 0 ? visualGrid : [];
+    const pad = Math.max(0, minCols - dataCols.length - 2);
+    const leftPad = Array.from({ length: pad }, () =>
+      Array.from({ length: rows }, () => null as Cell | null),
+    );
+    const trail = Array.from({ length: 2 }, () =>
+      Array.from({ length: rows }, () => null as Cell | null),
+    );
+    return [...leftPad, ...dataCols, ...trail];
+  }, [visualGrid, minCols, rows]);
+
+  const totalCols = displayCols.length;
+  const gridWidth = totalCols * cell + Math.max(0, totalCols - 1);
+  const leftPadCount = Math.max(0, minCols - visualGrid.length - 2);
+
+  // 새 결과 → 최신 데이터 열이 보이도록 스크롤 (trailing 빈칸이 아니라)
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const scrollToLatest = () => {
+      const dataEndCol = leftPadCount + visualGrid.length;
+      const target =
+        dataEndCol * (cell + 1) - el.clientWidth + cell * 3;
+      el.scrollLeft = Math.max(0, target);
+    };
+
+    scrollToLatest();
+    const raf = window.requestAnimationFrame(scrollToLatest);
+    return () => window.cancelAnimationFrame(raf);
+  }, [dataSignature, size, leftPadCount, visualGrid.length, cell]);
 
   useLayoutEffect(() => {
     if (prevSigRef.current === null) {
       prevSigRef.current = dataSignature;
       return;
     }
-    if (prevSigRef.current !== dataSignature) {
+    if (prevSigRef.current !== dataSignature && flatResults.length > 0) {
       prevSigRef.current = dataSignature;
-      setDropKey((k) => k + 1);
-      setDropActive(true);
-      if (!reduced) playSfx('tick', { throttleMs: 400 });
-      const t = window.setTimeout(() => setDropActive(false), 520);
-      return () => window.clearTimeout(t);
+      playSfx('tick', { throttleMs: 500 });
+    } else {
+      prevSigRef.current = dataSignature;
     }
-  }, [dataSignature, reduced]);
-
-  const trailingEmpty = Array.from({ length: TRAILING_EMPTY_COLS }, () =>
-    Array.from({ length: rows }, () => null as Cell | null),
-  );
-  const withTrailing = [
-    ...visualGrid.map((col) => col as Array<Cell | null>),
-    ...trailingEmpty,
-  ];
-  const totalCols = Math.max(minCols, withTrailing.length);
-  const leftPad = totalCols - withTrailing.length;
-  const displayCols = [
-    ...Array.from({ length: leftPad }, () =>
-      Array.from({ length: rows }, () => null as Cell | null),
-    ),
-    ...withTrailing,
-  ];
-
-  const gridWidth = totalCols * cell + (totalCols - 1);
-
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const scrollToEnd = () => {
-      el.scrollLeft = el.scrollWidth;
-    };
-    scrollToEnd();
-    const raf = window.requestAnimationFrame(scrollToEnd);
-    return () => window.cancelAnimationFrame(raf);
-  }, [dataSignature, size]);
+  }, [dataSignature, flatResults.length]);
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -138,14 +139,12 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
     const drag = dragRef.current;
     const el = scrollRef.current;
     if (!drag || !el || drag.pointerId !== e.pointerId) return;
-
     const dx = e.clientX - drag.startX;
     if (!drag.moved && Math.abs(dx) >= DRAG_THRESHOLD_PX) {
       drag.moved = true;
       didDragRef.current = true;
     }
     if (!drag.moved) return;
-
     el.scrollLeft = drag.startScroll - dx;
     e.preventDefault();
   };
@@ -183,11 +182,11 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
       style={{ touchAction: 'pan-x' }}
       title="드래그하여 좌우로 이동"
     >
-      <div className="p-2 sm:p-2.5 min-w-0">
+      <div className="p-2 sm:p-2.5">
         {flatResults.length === 0 ? (
           <div
             className="flex items-center justify-center text-[11px] text-zinc-400 bg-zinc-50 rounded border border-dashed border-zinc-200"
-            style={{ height: rows * cell + (rows - 1) }}
+            style={{ minHeight: rows * cell }}
           >
             결과 대기 중
           </div>
@@ -196,7 +195,6 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
             className="grid gap-px bg-zinc-200"
             style={{
               width: gridWidth,
-              minWidth: '100%',
               gridTemplateColumns: `repeat(${totalCols}, ${cell}px)`,
             }}
           >
@@ -208,22 +206,15 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
               >
                 {Array.from({ length: rows }).map((_, rowIdx) => {
                   const cellData = col[rowIdx];
-                  const shouldDrop =
-                    Boolean(cellData?.isNewest) && dropActive && !reduced;
                   return (
                     <div
                       key={`${colIdx}-${rowIdx}`}
-                      className="bg-white flex items-center justify-center relative overflow-visible pointer-events-none"
+                      className="bg-white flex items-center justify-center"
                       style={{ width: cell, height: cell }}
                     >
-                      {cellData && (
-                        <ResultIndicator
-                          cell={cellData}
-                          strokeWidth={stroke}
-                          animateDrop={shouldDrop}
-                          dropKey={dropKey}
-                        />
-                      )}
+                      {cellData ? (
+                        <Bead cell={cellData} strokeWidth={stroke} />
+                      ) : null}
                     </div>
                   );
                 })}
@@ -232,52 +223,19 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
           </div>
         )}
       </div>
-      <style>{`
-        .roadmap-drop {
-          animation: roadmapReelDrop 0.48s cubic-bezier(0.18, 1.25, 0.32, 1) forwards;
-          opacity: 1;
-        }
-        @keyframes roadmapReelDrop {
-          0% { transform: translateY(-10px) scale(0.75); opacity: 0.35; }
-          100% { transform: translateY(0) scale(1); opacity: 1; }
-        }
-      `}</style>
     </div>
   );
 }
 
-function ResultIndicator({
-  cell,
-  strokeWidth,
-  animateDrop,
-  dropKey,
-}: {
-  cell: Cell;
-  strokeWidth: number;
-  animateDrop?: boolean;
-  dropKey?: number;
-}) {
-  const strokeClass =
-    cell.result === 'B'
-      ? 'text-red-500'
-      : cell.result === 'P'
-        ? 'text-blue-600'
-        : 'text-emerald-500';
-  const showTieCount = cell.ties > 0 || cell.result === 'T';
-  const tieCount = cell.result === 'T' ? Math.max(1, cell.ties) : cell.ties;
+/** 단순 비드 — 애니메이션/필터 없이 항상 보이게 */
+function Bead({ cell, strokeWidth }: { cell: Cell; strokeWidth: number }) {
+  const color =
+    cell.result === 'B' ? '#ef4444' : cell.result === 'P' ? '#2563eb' : '#059669';
+  const showTie = cell.ties > 0;
 
   return (
-    <div
-      className={`relative w-[82%] h-[82%] max-w-full max-h-full ${strokeClass} ${
-        cell.isNewest && !animateDrop ? 'animate-pulse' : ''
-      } ${animateDrop ? 'roadmap-drop' : ''}`}
-      data-drop={animateDrop ? dropKey : undefined}
-    >
-      <svg
-        viewBox="0 0 32 32"
-        className="w-full h-full block overflow-visible"
-        aria-hidden
-      >
+    <div className="relative" style={{ width: '82%', height: '82%' }}>
+      <svg viewBox="0 0 32 32" className="w-full h-full block" aria-hidden>
         {cell.isNewest && (
           <circle
             cx="16"
@@ -285,8 +243,8 @@ function ResultIndicator({
             r="14.5"
             fill="none"
             stroke="#a1a1aa"
-            strokeWidth="1.25"
-            opacity="0.55"
+            strokeWidth="1.2"
+            opacity="0.5"
           />
         )}
         <circle
@@ -294,28 +252,27 @@ function ResultIndicator({
           cy="16"
           r="12"
           fill="none"
-          stroke="currentColor"
+          stroke={color}
           strokeWidth={strokeWidth}
-          strokeLinecap="round"
         />
-        {animateDrop && cell.ties > 0 && (
+        {showTie && (
           <line
-            x1="8"
-            y1="24"
-            x2="24"
-            y2="8"
+            x1="9"
+            y1="23"
+            x2="23"
+            y2="9"
             stroke="#059669"
-            strokeWidth="2.5"
+            strokeWidth="2.4"
             strokeLinecap="round"
           />
         )}
       </svg>
-      {showTieCount && (
+      {showTie && (
         <span
-          className="absolute inset-0 flex items-center justify-center z-10 text-[9px] sm:text-[10px] font-black leading-none text-emerald-600 select-none"
-          aria-label={`타이 ${tieCount}회`}
+          className="absolute inset-0 flex items-center justify-center text-[9px] font-black text-emerald-600 leading-none"
+          aria-label={`타이 ${cell.ties}회`}
         >
-          {tieCount}
+          {cell.ties}
         </span>
       )}
     </div>
