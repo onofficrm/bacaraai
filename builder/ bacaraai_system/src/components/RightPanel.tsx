@@ -32,6 +32,7 @@ import ChipBetStage, {
   type Flyer,
   type StackChip,
 } from './ChipBetStage';
+import AiSlotReveal from './AiSlotReveal';
 
 type PanelMode = 'manual' | 'auto';
 
@@ -511,7 +512,6 @@ export default function RightPanel({
     );
   }
 
-  const opinionLabel = getOpinionText(table.ai.finalOpinion, beginnerMode);
   const isRisk = table.status === 'risk_blocked';
   const cfg = sessionConfig;
   const stageNow = cfg ? Math.min(Math.max(1, martinStage), cfg.maxMartin) : martinStage;
@@ -713,9 +713,11 @@ export default function RightPanel({
                   </div>
                   <div className="px-3 py-3 flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className={`text-lg font-bold ${getOpinionColor(table.ai.finalOpinion)}`}>
-                        {opinionLabel}
-                      </p>
+                      <AiSlotReveal
+                        opinion={table.ai.finalOpinion}
+                        consensus={table.ai.consensus}
+                        confidence={table.ai.finalConfidence}
+                      />
                       <p className="text-[11px] text-zinc-500 mt-0.5">
                         {isPassive
                           ? '지금은 관망 추천입니다'

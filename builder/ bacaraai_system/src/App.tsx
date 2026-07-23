@@ -14,6 +14,7 @@ import TableZoomModal from './components/TableZoomModal';
 import RuleCreationModal from './components/RuleCreationModal';
 import StopSessionModal from './components/StopSessionModal';
 import WinCelebration from './components/WinCelebration';
+import GameFxChrome from './components/GameFxChrome';
 import RuleLabView from "./components/RuleLabView";
 import DataInsightCenter from './components/DataInsightCenter';
 import OnboardingModal from './components/OnboardingModal';
@@ -109,6 +110,21 @@ export default function App() {
     baselineLatestId: number;
     baselineResultCount: number;
   } | null>(null);
+  const [autoHitTableId, setAutoHitTableId] = useState<string | null>(null);
+  const [fxTickers, setFxTickers] = useState<
+    { id: string; text: string; tone?: 'win' | 'risk' | 'info' }[]
+  >([]);
+  const [winCombo, setWinCombo] = useState(0);
+  const lastResultIdForComboRef = useRef<string | null>(null);
+  const betWindowWarnedRef = useRef<string | null>(null);
+
+  const pushTicker = (
+    text: string,
+    tone: 'win' | 'risk' | 'info' = 'info',
+  ) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setFxTickers((prev) => [...prev.slice(-4), { id, text, tone }]);
+  };
 
   useEffect(() => {
     installAudioUnlock();
@@ -133,6 +149,58 @@ export default function App() {
       session.lastBetResult,
     ],
   );
+
+  const riskLevel: 'none' | 'warn' | 'critical' = useMemo(() => {
+    if (riskAlerts.some((a) => a.level === 'critical')) return 'critical';
+    if (riskAlerts.some((a) => a.level === 'warn')) return 'warn';
+    return 'none';
+  }, [riskAlerts]);
+
+  // 연속 적중 콤보 + 티커
+  useEffect(() => {
+    const last = session.lastBetResult;
+    if (!last || last.id === lastResultIdForComboRef.current) return;
+    lastResultIdForComboRef.current = last.id;
+    if (last.won === true) {
+      setWinCombo((c) => c + 1);
+      pushTicker(
+        `${last.tableName} 적중 · ${last.pnlDelta > 0 ? '+' : ''}${last.pnlDelta.toLocaleString()}원`,
+        'win',
+      );
+      if (last.source === 'auto') {
+        setAutoHitTableId(last.tableId);
+        window.setTimeout(() => setAutoHitTableId(null), 2200);
+      }
+    } else if (last.won === false) {
+      setWinCombo(0);
+      pushTicker(`${last.tableName} 미적중`, 'info');
+    }
+  }, [session.lastBetResult]);
+
+  // 위험 알림 티커
+  const riskTickerKeyRef = useRef<string>('');
+  useEffect(() => {
+    if (!riskAlerts.length) return;
+    const key = riskAlerts.map((a) => a.id).join('|');
+    if (key === riskTickerKeyRef.current) return;
+    riskTickerKeyRef.current = key;
+    const top = riskAlerts[0];
+    pushTicker(top.title, top.level === 'critical' ? 'risk' : 'info');
+  }, [riskAlerts]);
+
+  // 베팅 마감 10초 경고 SFX (선택 테이블)
+  useEffect(() => {
+    if (!selectedTableId) return;
+    const table = tables.find((t) => t.id === selectedTableId);
+    if (!table) return;
+    const sec = getBettingRemainingSecForTable(table);
+    const roundKey = `${table.id}:${table.live?.latestId ?? 0}`;
+    if (sec > 0 && sec <= 10 && betWindowWarnedRef.current !== roundKey) {
+      betWindowWarnedRef.current = roundKey;
+      playSfx('tick');
+    }
+    if (sec <= 0) betWindowWarnedRef.current = null;
+  }, [selectedTableId, tables, liveTable.live?.latestId, liveTable.stats.recentResults.length]);
 
   const openStopReview = (type: 'wincut' | 'losscut' | 'error' | 'manual', pnl?: number) => {
     session.pauseSession();
@@ -418,6 +486,10 @@ export default function App() {
             };
           }
           playSfx('betConfirm');
+          pushTicker(
+            `AUTO · ${target.name} ${candidate.side === 'PLAYER' ? 'P' : candidate.side === 'BANKER' ? 'B' : 'T'}`,
+            'info',
+          );
         }
       });
   }, [
@@ -630,6 +702,7 @@ export default function App() {
           config={session.config}
           pnl={session.pnl}
           martinStage={session.martinStage}
+          winCombo={winCombo}
           riskAlerts={riskAlerts}
         />
       )}
@@ -649,7 +722,22 @@ export default function App() {
               />
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 content-start pb-8">
                 <AnimatePresence>
-                  {filteredAndSortedTables.map(table => (
+                  {filteredAndSortedTables.map(table => {
+                    const autoWatching =
+                      session.status === 'running' &&
+                      session.mode === 'live' &&
+                      (table.live != null || table.id === 't1' || table.gameCode === 'MD2729');
+                    const autoLockOn =
+                      autoWatching &&
+                      (session.pendingBets.some(
+                        (b) => b.source === 'auto' && b.tableId === table.id,
+                      ) ||
+                        patternRunRef.current?.tableId === table.id ||
+                        (table.ai.autoBetAllowed &&
+                          (table.ai.finalOpinion === 'PLAYER' ||
+                            table.ai.finalOpinion === 'BANKER') &&
+                          getBettingRemainingSecForTable(table) > 0));
+                    return (
                     <motion.div
                       key={table.id}
                       initial={{ opacity: 0, scale: 0.95 }}
@@ -662,12 +750,16 @@ export default function App() {
                         isSelected={table.id === selectedTableId}
                         isFavorite={favorites.has(table.id)}
                         beginnerMode={beginnerMode}
+                        autoWatching={autoWatching}
+                        autoLockOn={Boolean(autoLockOn)}
+                        autoHit={autoHitTableId === table.id}
                         onSelect={handleTableSelect}
                         onZoom={setZoomedTableId}
                         onToggleFavorite={toggleFavorite}
                       />
                     </motion.div>
-                  ))}
+                    );
+                  })}
                   {filteredAndSortedTables.length === 0 && (
                     <div className="col-span-full flex flex-col items-center justify-center h-64 text-zinc-500 gap-2">
                       <Activity size={32} className="opacity-50" />
@@ -803,6 +895,7 @@ export default function App() {
           session.clearWinCelebration(session.winCelebration?.id);
         }}
       />
+      <GameFxChrome riskLevel={riskLevel} tickers={fxTickers} />
       
       <OnboardingModal 
         isOpen={showOnboarding} 

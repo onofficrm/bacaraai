@@ -1,8 +1,10 @@
 import React from 'react';
-import { Settings, RefreshCw, PowerOff, Play, MonitorPlay, Sparkles, Volume2 } from 'lucide-react';
+import { Settings, RefreshCw, PowerOff, Play, MonitorPlay, Sparkles, Volume2, Aperture } from 'lucide-react';
 import ScreenHelpBanner from './ScreenHelpBanner';
 import useSoundSettings from '../hooks/useSoundSettings';
 import { previewSfx, type SfxName } from '../audio/sfxEngine';
+import { useFxIntensity, type FxIntensity } from '../hooks/useFxIntensity';
+import { playSfx } from '../audio/sfxEngine';
 
 interface SettingsViewProps {
   onReplayOnboarding: () => void;
@@ -33,6 +35,12 @@ export default function SettingsView({
   onToggleBeginnerMode,
 }: SettingsViewProps) {
   const sound = useSoundSettings();
+  const fx = useFxIntensity();
+  const fxLevels: { id: FxIntensity; label: string; hint: string }[] = [
+    { id: 'low', label: '적음', hint: '필수 피드백만' },
+    { id: 'medium', label: '보통', hint: '추천 기본값' },
+    { id: 'high', label: '화려함', hint: '파티클·레이더 최대' },
+  ];
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-zinc-950">
@@ -132,6 +140,36 @@ export default function SettingsView({
                   className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 disabled:opacity-40 transition-colors"
                 >
                   {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+            <h3 className="font-bold text-lg text-zinc-100 mb-4 flex items-center gap-2">
+              <Aperture className="text-amber-500" size={20} />
+              연출 강도
+            </h3>
+            <p className="text-sm text-zinc-400 mb-5 leading-relaxed">
+              테이블 히트, AI 슬롯, 레이더, 위험 글로우 등 시각 연출의 세기입니다. 사운드와는 별개로 조절됩니다.
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {fxLevels.map((level) => (
+                <button
+                  key={level.id}
+                  type="button"
+                  onClick={() => {
+                    fx.setIntensity(level.id);
+                    playSfx('toggle');
+                  }}
+                  className={`px-3 py-3 rounded-xl border text-center transition-colors ${
+                    fx.intensity === level.id
+                      ? 'bg-amber-500/15 border-amber-400/50 text-amber-200'
+                      : 'bg-zinc-950 border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                  }`}
+                >
+                  <div className="text-sm font-bold">{level.label}</div>
+                  <div className="text-[10px] mt-1 opacity-80">{level.hint}</div>
                 </button>
               ))}
             </div>

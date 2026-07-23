@@ -6,6 +6,8 @@ import {
   type PointerEvent,
 } from 'react';
 import { GameResult } from '../types';
+import { useFxIntensity } from '../hooks/useFxIntensity';
+import { playSfx } from '../audio/sfxEngine';
 
 interface RoadmapProps {
   data: GameResult[][];
@@ -89,6 +91,7 @@ const SIZE = {
 } as const;
 
 export default function Roadmap({ data, size = 'md' }: RoadmapProps) {
+  const { reduced } = useFxIntensity();
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -97,12 +100,27 @@ export default function Roadmap({ data, size = 'md' }: RoadmapProps) {
     moved: boolean;
   } | null>(null);
   const didDragRef = useRef(false);
+  const prevSigRef = useRef<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [dropKey, setDropKey] = useState(0);
 
   const processedColumns = processBigRoad(data);
   const { cell, stroke, minCols } = SIZE[size];
   const rows = 6;
   const dataSignature = roadmapSignature(data);
+
+  // 최신 결과 착수 SFX (한 번만)
+  useLayoutEffect(() => {
+    if (prevSigRef.current === null) {
+      prevSigRef.current = dataSignature;
+      return;
+    }
+    if (prevSigRef.current !== dataSignature) {
+      prevSigRef.current = dataSignature;
+      setDropKey((k) => k + 1);
+      if (!reduced) playSfx('tick', { throttleMs: 400 });
+    }
+  }, [dataSignature, reduced]);
 
   const trailingEmpty = Array.from({ length: TRAILING_EMPTY_COLS }, () => [] as BigRoadCell[]);
   const withTrailing = [...processedColumns, ...trailingEmpty];
@@ -217,7 +235,17 @@ export default function Roadmap({ data, size = 'md' }: RoadmapProps) {
                     style={{ width: '100%', height: cell }}
                   >
                     {cellData && (
-                      <ResultIndicator cell={cellData} strokeWidth={stroke} />
+                      <ResultIndicator
+                        cell={cellData}
+                        strokeWidth={stroke}
+                        animateDrop={cellData.isNewest && dropKey > 0 && !reduced}
+                        dropKey={dropKey}
+                        streakLen={
+                          cellData.isNewest
+                            ? col.filter((c) => c.result === cellData.result).length
+                            : 0
+                        }
+                      />
                     )}
                   </div>
                 );
@@ -233,9 +261,15 @@ export default function Roadmap({ data, size = 'md' }: RoadmapProps) {
 function ResultIndicator({
   cell,
   strokeWidth,
+  animateDrop,
+  dropKey,
+  streakLen,
 }: {
   cell: BigRoadCell;
   strokeWidth: number;
+  animateDrop?: boolean;
+  dropKey?: number;
+  streakLen?: number;
 }) {
   const strokeClass =
     cell.result === 'B'
@@ -245,13 +279,16 @@ function ResultIndicator({
         : 'text-emerald-500';
   const showTieCount = cell.ties > 0 || cell.result === 'T';
   const tieCount = cell.result === 'T' ? Math.max(1, cell.ties) : cell.ties;
+  const streakBreak = Boolean(animateDrop && streakLen === 1 && cell.result !== 'T');
+  const tieSlash = Boolean(animateDrop && (cell.result === 'T' || cell.ties > 0));
 
   // SVG로 원을 그려 태블릿/Safari에서 border+rounded-full 클리핑을 피함
   return (
     <div
+      key={animateDrop ? `drop-${dropKey}` : undefined}
       className={`relative w-[82%] h-[82%] max-w-full max-h-full ${strokeClass} ${
-        cell.isNewest ? 'animate-pulse' : ''
-      }`}
+        cell.isNewest && !animateDrop ? 'animate-pulse' : ''
+      } ${animateDrop ? 'roadmap-drop' : ''} ${streakBreak ? 'roadmap-crack' : ''}`}
     >
       <svg
         viewBox="0 0 32 32"
@@ -278,6 +315,18 @@ function ResultIndicator({
           strokeWidth={strokeWidth}
           strokeLinecap="round"
         />
+        {tieSlash && (
+          <line
+            className="roadmap-tie-slash"
+            x1="8"
+            y1="24"
+            x2="24"
+            y2="8"
+            stroke="#059669"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+        )}
       </svg>
       {showTieCount && (
         <span
@@ -287,6 +336,32 @@ function ResultIndicator({
           {tieCount}
         </span>
       )}
+      <style>{`
+        .roadmap-drop {
+          animation: roadmapDrop 0.42s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+        }
+        @keyframes roadmapDrop {
+          from { transform: translateY(-10px) scale(0.7); opacity: 0; }
+          to { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        .roadmap-crack {
+          animation: roadmapCrack 0.45s ease-out both;
+        }
+        @keyframes roadmapCrack {
+          0% { transform: translateX(0); }
+          25% { transform: translateX(-2px) rotate(-3deg); }
+          50% { transform: translateX(2px) rotate(3deg); }
+          100% { transform: translateX(0); }
+        }
+        .roadmap-tie-slash {
+          stroke-dasharray: 24;
+          stroke-dashoffset: 24;
+          animation: tieSlash 0.35s ease-out forwards;
+        }
+        @keyframes tieSlash {
+          to { stroke-dashoffset: 0; }
+        }
+      `}</style>
     </div>
   );
 }
