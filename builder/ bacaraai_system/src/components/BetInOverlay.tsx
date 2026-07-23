@@ -23,32 +23,37 @@ type PlacedChip = {
 };
 
 /** 금액 → 총 칩 장수 (산처럼 보이도록 넉넉히) */
-function betInChipCount(amount: number): number {
+function betInChipCount(amount: number, compact?: boolean): number {
   const n = Math.max(0, Math.floor(amount));
-  if (n >= 5_000_000) return 28;
-  if (n >= 2_000_000) return 24;
-  if (n >= 1_000_000) return 22;
-  if (n >= 700_000) return 18;
-  if (n >= 500_000) return 16;
-  if (n >= 200_000) return 14;
-  if (n >= 100_000) return 12;
-  if (n >= 50_000) return 10;
-  if (n >= 20_000) return 8;
-  if (n >= 10_000) return 6;
-  return 4;
+  let count = 4;
+  if (n >= 5_000_000) count = 28;
+  else if (n >= 2_000_000) count = 24;
+  else if (n >= 1_000_000) count = 22;
+  else if (n >= 700_000) count = 18;
+  else if (n >= 500_000) count = 16;
+  else if (n >= 200_000) count = 14;
+  else if (n >= 100_000) count = 12;
+  else if (n >= 50_000) count = 10;
+  else if (n >= 20_000) count = 8;
+  else if (n >= 10_000) count = 6;
+  // 모바일: 로드맵 높이에 맞게 장수·기둥 축소
+  if (compact) count = Math.max(5, Math.round(count * 0.72));
+  return count;
 }
 
-function columnCount(amount: number): number {
+function columnCount(amount: number, compact?: boolean): number {
   const n = Math.max(0, Math.floor(amount));
-  if (n >= 1_000_000) return 5;
-  if (n >= 500_000) return 4;
-  if (n >= 100_000) return 3;
-  return 2;
+  let cols = 2;
+  if (n >= 1_000_000) cols = 5;
+  else if (n >= 500_000) cols = 4;
+  else if (n >= 100_000) cols = 3;
+  if (compact) cols = Math.min(cols, 4);
+  return cols;
 }
 
-function paletteFor(amount: number): number[] {
+function paletteFor(amount: number, compact?: boolean): number[] {
   const n = Math.max(0, Math.floor(amount));
-  const ideal = Math.max(1_000, Math.round(n / Math.max(1, betInChipCount(n))));
+  const ideal = Math.max(1_000, Math.round(n / Math.max(1, betInChipCount(n, compact))));
   const unit = [...DENOMS].sort((a, b) => Math.abs(a - ideal) - Math.abs(b - ideal))[0];
   const list = DENOMS.filter((d) => d <= Math.max(unit * 5, 100_000) && d >= Math.min(unit, 10_000));
   return list.length > 0 ? [...list] : [unit];
@@ -57,25 +62,25 @@ function paletteFor(amount: number): number[] {
 /**
  * 여러 기둥 + 전경 기울기 칩으로 "산" 형태의 파일 구성
  */
-function buildChipPile(amount: number): PlacedChip[] {
-  const total = betInChipCount(amount);
-  const cols = columnCount(amount);
-  const palette = paletteFor(amount);
+function buildChipPile(amount: number, compact?: boolean): PlacedChip[] {
+  const total = betInChipCount(amount, compact);
+  const cols = columnCount(amount, compact);
+  const palette = paletteFor(amount, compact);
   const out: PlacedChip[] = [];
   let order = 0;
   let seq = 0;
 
-  // 기둥별 높이 비율 (가운데가 가장 높음)
   const weights = Array.from({ length: cols }, (_, i) => {
     const mid = (cols - 1) / 2;
     return 1.15 - Math.abs(i - mid) * 0.22;
   });
   const wSum = weights.reduce((a, b) => a + b, 0);
-  const leanCount = Math.min(4, Math.max(2, Math.floor(cols * 0.8)));
+  const leanCount = compact
+    ? Math.min(2, Math.max(1, Math.floor(cols * 0.6)))
+    : Math.min(3, Math.max(2, Math.floor(cols * 0.7)));
   const stackBudget = Math.max(cols * 2, total - leanCount);
 
   const heights = weights.map((w) => Math.max(2, Math.round((w / wSum) * stackBudget)));
-  // 합이 stackBudget에 가깝게 보정
   let hSum = heights.reduce((a, b) => a + b, 0);
   while (hSum > stackBudget && heights.some((h) => h > 2)) {
     const i = heights.indexOf(Math.max(...heights));
@@ -102,8 +107,7 @@ function buildChipPile(amount: number): PlacedChip[] {
     }
   }
 
-  // 전경 기울어진 칩 (볼륨감)
-  const leanAngles = [-38, -18, 22, 40];
+  const leanAngles = compact ? [-28, 26] : [-36, -16, 24, 38];
   for (let i = 0; i < leanCount; i++) {
     out.push({
       id: `l${seq++}`,
@@ -235,22 +239,22 @@ function ChipPile({
   compact?: boolean;
   animate: boolean;
 }) {
-  const chips = useMemo(() => buildChipPile(amount), [amount]);
-  const cols = columnCount(amount);
-  const chipSize = compact ? 26 : 34;
-  const colGap = compact ? 16 : 22;
-  const stepY = compact ? 4.2 : 5.2;
-  const pileW = chipSize + (cols - 1) * colGap + chipSize * 0.55;
+  const chips = useMemo(() => buildChipPile(amount, compact), [amount, compact]);
+  const cols = columnCount(amount, compact);
+  // 로드맵(sm≈132px) 안에 들어가도록 — 데스크톱도 과도하게 키우지 않음
+  const chipSize = compact ? 20 : 26;
+  const colGap = compact ? 12 : 16;
+  const stepY = compact ? 3.4 : 4.2;
+  const pileW = chipSize + (cols - 1) * colGap + chipSize * 0.5;
   const maxLevel = chips.reduce((m, c) => (c.role === 'stack' ? Math.max(m, c.level) : m), 0);
-  const pileH = chipSize * 0.75 + maxLevel * stepY + chipSize * 0.85;
+  const pileH = chipSize * 0.7 + maxLevel * stepY + chipSize * 0.7;
 
   return (
     <div
       className="relative shrink-0"
-      style={{ width: pileW, height: pileH }}
+      style={{ width: pileW, height: Math.min(pileH, compact ? 88 : 108) }}
       aria-hidden
     >
-      {/* 바닥 그림자 */}
       <div
         className="absolute left-1/2 -translate-x-1/2 rounded-[50%] bg-black/40 blur-md"
         style={{
@@ -263,7 +267,7 @@ function ChipPile({
       {chips
         .filter((c) => c.role === 'stack')
         .map((chip) => {
-          const x = chip.col * colGap + (chip.level % 2 === 0 ? 0 : 1.2);
+          const x = chip.col * colGap + (chip.level % 2 === 0 ? 0 : 1);
           const y = chip.level * stepY;
           return (
             <ThickChip
@@ -275,7 +279,7 @@ function ChipPile({
               face={chip.level === maxLevel && chip.col === Math.floor(cols / 2)}
               style={{
                 left: x,
-                bottom: 10 + y,
+                bottom: 8 + y,
                 zIndex: 10 + chip.col + chip.level,
               }}
             />
@@ -286,20 +290,18 @@ function ChipPile({
         .filter((c) => c.role === 'lean')
         .map((chip, i) => {
           const x =
-            i * (chipSize * 0.55) +
-            (cols > 2 ? chipSize * 0.15 : 0) -
-            chipSize * 0.1;
+            i * (chipSize * 0.5) + (cols > 2 ? chipSize * 0.1 : 0) - chipSize * 0.08;
           return (
             <ThickChip
               key={chip.id}
               value={chip.value}
-              size={chipSize * 0.92}
+              size={chipSize * 0.9}
               animate={animate}
               delay={chip.order * (DROP_MS / 1000)}
               leanDeg={chip.leanDeg ?? 0}
               face
               style={{
-                left: Math.max(-4, Math.min(pileW - chipSize, x)),
+                left: Math.max(-2, Math.min(pileW - chipSize, x)),
                 bottom: 0,
                 zIndex: 40 + i,
               }}
@@ -349,7 +351,7 @@ function BetInRow({
 }) {
   const amount = banner.amount ?? 0;
   const isAuto = banner.badge.includes('오토');
-  const chips = useMemo(() => buildChipPile(amount), [amount]);
+  const chips = useMemo(() => buildChipPile(amount, compact), [amount, compact]);
   const durationMs = Math.min(1100, chips.length * DROP_MS + 160);
   const displayAmount = useCountUp(amount, animate, durationMs, banner.id);
   const side = banner.side || '';
@@ -359,7 +361,6 @@ function BetInRow({
     const timers: number[] = [];
     const list = chips.length > 0 ? chips : [{ order: 0, value: 10_000, id: 'x' } as PlacedChip];
 
-    // 사운드는 2장마다 + 마지막 (너무 촘촘하지 않게)
     list.forEach((chip, i) => {
       if (i % 2 !== 0 && i !== list.length - 1) return;
       timers.push(
@@ -381,26 +382,26 @@ function BetInRow({
 
   return (
     <motion.div
-      className="flex flex-col items-center gap-1"
-      initial={animate ? { y: -12, scale: 0.88, opacity: 0 } : false}
-      animate={{ y: 0, scale: 1, opacity: 1 }}
+      className="flex items-end gap-1.5 sm:gap-2 max-w-full origin-center"
+      initial={animate ? { y: -10, scale: 0.9, opacity: 0, rotate: -6 } : false}
+      animate={{ y: 0, scale: compact ? 0.9 : 1, opacity: 1, rotate: -4 }}
       transition={{ type: 'spring', stiffness: 320, damping: 18, delay: index * 0.05 }}
     >
       <ChipPile amount={amount} compact={compact} animate={animate} />
-      <div className="flex flex-col items-center gap-0.5 -mt-0.5">
+      <div className="flex flex-col items-start gap-0.5 min-w-0 pb-0.5">
         <motion.span
-          className={`font-black tracking-widest border-2 px-2.5 py-0.5 rounded-md bg-black/65 shadow-lg -rotate-6 ${
+          className={`font-black tracking-widest border-2 px-2 py-0.5 rounded-md bg-black/65 shadow-lg ${
             isAuto ? 'text-amber-200 border-amber-400/70' : 'text-sky-100 border-sky-400/70'
-          } ${compact ? 'text-[11px]' : 'text-sm sm:text-base'}`}
-          initial={animate ? { scale: 1.3, opacity: 0, rotate: -14 } : false}
-          animate={{ scale: 1, opacity: 1, rotate: -6 }}
-          transition={{ type: 'spring', stiffness: 380, damping: 16, delay: animate ? 0.08 : 0 }}
+          } ${compact ? 'text-[10px]' : 'text-xs sm:text-sm'}`}
+          initial={animate ? { scale: 1.25, opacity: 0 } : false}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 16, delay: animate ? 0.06 : 0 }}
         >
           BET IN
         </motion.span>
         <span
-          className={`font-mono font-bold px-1.5 py-0.5 rounded bg-black/60 border border-white/10 tabular-nums ${
-            compact ? 'text-[10px]' : 'text-[11px] sm:text-xs'
+          className={`font-mono font-bold px-1.5 py-0.5 rounded bg-black/60 border border-white/10 tabular-nums truncate max-w-[11rem] sm:max-w-[14rem] ${
+            compact ? 'text-[9px]' : 'text-[10px] sm:text-[11px]'
           } ${isAuto ? 'text-amber-200' : 'text-sky-100'}`}
         >
           {animate
@@ -445,7 +446,7 @@ export default function BetInOverlay({ banners, compact = false }: Props) {
     <AnimatePresence>
       <motion.div
         key={runKey}
-        className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden rounded-lg"
+        className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden rounded-lg px-1"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}

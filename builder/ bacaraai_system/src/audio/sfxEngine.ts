@@ -511,8 +511,11 @@ export function installAudioUnlock() {
   const unlock = () => {
     void unlockAudio();
     window.removeEventListener('pointerdown', unlock);
+    window.removeEventListener('touchstart', unlock);
     window.removeEventListener('keydown', unlock);
   };
+  // iOS Safari: touchstart 가 더 안정적으로 AudioContext 잠금 해제
   window.addEventListener('pointerdown', unlock, { once: true });
+  window.addEventListener('touchstart', unlock, { once: true, passive: true });
   window.addEventListener('keydown', unlock, { once: true });
 }

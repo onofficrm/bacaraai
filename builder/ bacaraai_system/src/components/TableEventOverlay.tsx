@@ -68,7 +68,9 @@ export default function TableEventOverlay({ event = null, settle = null, compact
           } backdrop-blur-[1px]`}
         />
         <motion.div
-          className={`relative flex flex-col items-center gap-1 -rotate-6 ${compact ? 'max-w-[92%]' : 'max-w-[90%]'}`}
+          className={`relative flex flex-col items-center gap-1 -rotate-6 px-1 ${
+            compact ? 'max-w-[96%]' : 'max-w-[90%]'
+          }`}
           initial={reduced ? false : { scale: 1.2, y: -10, opacity: 0 }}
           animate={{ scale: 1, y: 0, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 360, damping: 18 }}
