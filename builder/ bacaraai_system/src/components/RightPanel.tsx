@@ -138,7 +138,9 @@ export default function RightPanel({
   const [quickBet, setQuickBet] = useState(true);
   const [showAiRec, setShowAiRec] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [highConfirmOpen, setHighConfirmOpen] = useState(false);
+  /** 고액 베팅 안내 토스트 (재확인 클릭 없음) */
+  const [highBetNotice, setHighBetNotice] = useState<string | null>(null);
+  const highBetNoticeTimerRef = React.useRef<number | null>(null);
   const isDesktop = useIsDesktopXl();
   const bettingWindow = useBettingWindow(table);
   const submittingRef = React.useRef(false);
@@ -176,7 +178,11 @@ export default function RightPanel({
     setRoadmapOpen(isDesktop);
     setQuickBet(!isDesktop);
     setShowAiRec(isDesktop);
-    setHighConfirmOpen(false);
+    setHighBetNotice(null);
+    if (highBetNoticeTimerRef.current) {
+      window.clearTimeout(highBetNoticeTimerRef.current);
+      highBetNoticeTimerRef.current = null;
+    }
     setSubmitting(false);
     submittingRef.current = false;
     roundKeyRef.current = table
@@ -184,6 +190,14 @@ export default function RightPanel({
       : null;
     settledResultIdRef.current = null;
   }, [table?.id, isDesktop]);
+
+  React.useEffect(() => {
+    return () => {
+      if (highBetNoticeTimerRef.current) {
+        window.clearTimeout(highBetNoticeTimerRef.current);
+      }
+    };
+  }, []);
 
   const prepareNextRoundBet = React.useCallback(
     (t: TableData) => {
@@ -372,8 +386,23 @@ export default function RightPanel({
     betAmount > 0 && availableBankroll > 0 && betAmount > availableBankroll * 0.3
       ? `잔액의 ${Math.round((betAmount / availableBankroll) * 100)}%를 걸게 됩니다`
       : null;
-  // 고액 베팅 확인 알림: 100만 원 이상
-  const needsHighConfirm = betAmount >= 1_000_000;
+  // 고액 베팅 안내 기준: 100만 원 이상 (알림만, 추가 확인 없음)
+  const isHighBet = betAmount >= 1_000_000;
+
+  const showHighBetNotice = (side: BetSide, amount: number) => {
+    const text = `고액 베팅 · ${
+      side === 'PLAYER' ? 'Player' : side === 'BANKER' ? 'Banker' : 'Tie'
+    } ${amount.toLocaleString()}원`;
+    setHighBetNotice(text);
+    playSfx('notification', { throttleMs: 600 });
+    if (highBetNoticeTimerRef.current) {
+      window.clearTimeout(highBetNoticeTimerRef.current);
+    }
+    highBetNoticeTimerRef.current = window.setTimeout(() => {
+      setHighBetNotice(null);
+      highBetNoticeTimerRef.current = null;
+    }, 2200);
+  };
 
   const placeManualBet = async () => {
     if (!table || !onPlaceBet) return;
@@ -420,7 +449,6 @@ export default function RightPanel({
         return;
       }
 
-      setHighConfirmOpen(false);
       playSfx('betConfirm');
       setChipCelebrating(true);
       window.setTimeout(() => setChipCelebrating(false), 900);
@@ -452,10 +480,8 @@ export default function RightPanel({
       playSfx('error');
       return;
     }
-    if (needsHighConfirm && !highConfirmOpen) {
-      setHighConfirmOpen(true);
-      playSfx('ui');
-      return;
+    if (isHighBet) {
+      showHighBetNotice(selectedSide, betAmount);
     }
     await placeManualBet();
   };
@@ -1029,9 +1055,9 @@ export default function RightPanel({
                       {balanceWarn && (
                         <p className="mt-2 text-[11px] text-amber-300 text-center">{balanceWarn}</p>
                       )}
-                      {needsHighConfirm && (
+                      {isHighBet && (
                         <p className="mt-1 text-[10px] text-rose-300/90 text-center">
-                          고액 베팅 — 확정 시 한 번 더 확인합니다
+                          고액 베팅 · 확정 시 안내만 표시됩니다
                         </p>
                       )}
                     </div>
@@ -1058,7 +1084,11 @@ export default function RightPanel({
                           <button
                             type="button"
                             onClick={() => void handleConfirmBet()}
-                            className="py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none"
+                            className={`py-3 rounded-lg text-sm font-bold transition-colors shadow-lg disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none ${
+                              isHighBet
+                                ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/20'
+                                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/20'
+                            }`}
                             disabled={
                               betAmount <= 0 ||
                               submitting ||
@@ -1070,7 +1100,9 @@ export default function RightPanel({
                               ? '접수 중…'
                               : !bettingWindow.canPlaceBet
                                 ? '시간 마감'
-                                : '베팅 확정'}
+                                : isHighBet
+                                  ? `고액 확정 · ${betAmount.toLocaleString()}원`
+                                  : '베팅 확정'}
                           </button>
                         </>
                       )}
@@ -1608,14 +1640,18 @@ export default function RightPanel({
                       submitting ||
                       !bettingWindow.canPlaceBet
                     }
-                    className="min-h-[52px] py-3.5 bg-blue-600 active:bg-blue-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-600/25 disabled:opacity-45 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none touch-manipulation"
+                    className={`min-h-[52px] py-3.5 rounded-xl text-sm font-bold shadow-lg disabled:opacity-45 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none touch-manipulation ${
+                      isHighBet
+                        ? 'bg-rose-600 active:bg-rose-500 text-white shadow-rose-600/25'
+                        : 'bg-blue-600 active:bg-blue-500 text-white shadow-blue-600/25'
+                    }`}
                   >
                     {submitting
                       ? '접수 중…'
                       : !bettingWindow.canPlaceBet
                         ? '시간 마감'
-                        : needsHighConfirm
-                          ? '확인 후 확정'
+                        : isHighBet
+                          ? `고액 확정 · ${betAmount.toLocaleString()}원`
                           : '베팅 확정'}
                   </button>
                 </div>
@@ -1628,16 +1664,8 @@ export default function RightPanel({
   if (isDesktop) {
     return (
       <>
-        {highConfirmOpen && (
-          <HighBetConfirmModal
-            side={selectedSide}
-            amount={betAmount}
-            balanceWarn={balanceWarn}
-            submitting={submitting}
-            onCancel={() => setHighConfirmOpen(false)}
-            onConfirm={() => void placeManualBet()}
-            sideLabel={sideShortLabel(selectedSide)}
-          />
+        {highBetNotice && (
+          <HighBetNoticeToast message={highBetNotice} />
         )}
         <div className="hidden xl:flex z-50 w-80 2xl:w-[420px] h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex-col shrink-0">
           {panelInner}
@@ -1652,16 +1680,8 @@ export default function RightPanel({
       <div className="fixed inset-x-0 bottom-0 z-[70] w-full max-h-[min(92dvh,900px)] rounded-t-2xl border-t border-x border-zinc-800 bg-zinc-950 shadow-2xl flex flex-col">
         {panelInner}
       </div>
-      {highConfirmOpen && (
-        <HighBetConfirmModal
-          side={selectedSide}
-          amount={betAmount}
-          balanceWarn={balanceWarn}
-          submitting={submitting}
-          onCancel={() => setHighConfirmOpen(false)}
-          onConfirm={() => void placeManualBet()}
-          sideLabel={sideShortLabel(selectedSide)}
-        />
+      {highBetNotice && (
+        <HighBetNoticeToast message={highBetNotice} />
       )}
     </>,
     document.body,
@@ -1730,59 +1750,12 @@ function BetResultCard({
   );
 }
 
-function HighBetConfirmModal({
-  sideLabel,
-  amount,
-  balanceWarn,
-  submitting,
-  onCancel,
-  onConfirm,
-}: {
-  side: BetSide;
-  sideLabel: string;
-  amount: number;
-  balanceWarn: string | null;
-  submitting: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
+function HighBetNoticeToast({ message }: { message: string }) {
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div
-        className="w-full max-w-sm rounded-2xl border border-rose-500/40 bg-zinc-950 shadow-2xl p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="text-[11px] font-bold tracking-wide text-rose-300 uppercase mb-1">고액 베팅 확인</p>
-        <h3 className="text-lg font-bold text-white mb-2">이 금액으로 베팅할까요?</h3>
-        <p className="text-sm text-zinc-300 text-center py-3 rounded-xl bg-zinc-900 border border-zinc-800">
-          <span className="font-bold">{sideLabel}</span>
-          <span className="text-zinc-600 mx-2">·</span>
-          <span className="font-mono font-bold text-amber-300">{amount.toLocaleString()}원</span>
-        </p>
-        {balanceWarn && (
-          <p className="mt-2 text-[12px] text-amber-300 text-center">{balanceWarn}</p>
-        )}
-        <p className="mt-2 text-[11px] text-zinc-500 text-center leading-relaxed">
-          실수로 큰 금액을 거는 것을 막기 위한 확인입니다.
-        </p>
-        <div className="grid grid-cols-2 gap-2 mt-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={submitting}
-            className="min-h-[48px] rounded-xl bg-zinc-800 text-zinc-200 text-sm font-bold touch-manipulation disabled:opacity-50"
-          >
-            취소
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={submitting}
-            className="min-h-[48px] rounded-xl bg-rose-500 text-white text-sm font-bold touch-manipulation disabled:opacity-50"
-          >
-            {submitting ? '접수 중…' : '그래도 베팅'}
-          </button>
-        </div>
+    <div className="fixed top-[max(1rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-[130] w-[min(92vw,380px)] pointer-events-none">
+      <div className="rounded-xl border border-rose-400/45 bg-zinc-950/95 px-4 py-3 shadow-2xl shadow-rose-900/30 backdrop-blur-md">
+        <p className="text-[11px] font-black tracking-wide text-rose-300 mb-0.5">고액 베팅</p>
+        <p className="text-sm font-bold text-zinc-100 text-center">{message}</p>
       </div>
     </div>,
     document.body,
