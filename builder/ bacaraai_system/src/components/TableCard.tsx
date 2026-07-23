@@ -10,6 +10,7 @@ import { getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
 import { useFxIntensity } from '../hooks/useFxIntensity';
 import { playSfx } from '../audio/sfxEngine';
 import WinFlipOverlay from './WinFlipOverlay';
+import BetInOverlay from './BetInOverlay';
 import {
   autoEventBarClass,
   autoEventCardClass,
@@ -271,31 +272,6 @@ export default function TableCard({
       </AnimatePresence>
 
       <AnimatePresence>
-        {autoBetIn && !autoHit && (
-          <motion.div
-            className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <motion.span
-              className="absolute w-7 h-7 rounded-full bg-amber-400 border-2 border-amber-200 shadow-lg"
-              initial={{ y: -40, x: 30, scale: 0.4, opacity: 0 }}
-              animate={{ y: 0, x: 0, scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 16 }}
-            />
-            <motion.span
-              className="text-lg font-black tracking-widest text-sky-200 border-2 border-sky-400/70 px-2.5 py-0.5 rounded-md bg-black/55 -rotate-6"
-              initial={{ scale: 1.3, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-            >
-              BET IN
-            </motion.span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
         {autoHit && (
           <motion.div
             className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
@@ -310,7 +286,7 @@ export default function TableCard({
         )}
       </AnimatePresence>
 
-      {autoLockOn && !autoBetIn && !autoEvent && (
+      {autoLockOn && betBanners.length === 0 && !autoHit && !autoEvent && (
         <div className="absolute top-2 right-10 z-10 text-[9px] font-black tracking-wider text-sky-300 bg-sky-500/15 border border-sky-400/40 px-1.5 py-0.5 rounded animate-pulse">
           LOCK ON
         </div>
@@ -353,29 +329,6 @@ export default function TableCard({
               </span>
             </motion.div>
           )}
-
-          {!settleBanner &&
-            betBanners.map((banner) => (
-              <motion.div
-                key={banner.id}
-                layout
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -2 }}
-                transition={{ duration: 0.18 }}
-                className={`rounded-lg border px-2 py-1.5 flex items-center gap-1.5 min-w-0 ${autoEventBarClass(banner.tone)}`}
-              >
-                <span className="shrink-0 text-[9px] font-black tracking-wide px-1 py-0.5 rounded bg-black/25 border border-white/10">
-                  {banner.badge}
-                </span>
-                <span className="min-w-0 flex-1 text-[10px] sm:text-[11px] font-bold truncate leading-tight">
-                  {banner.label}
-                </span>
-                {banner.hint && (
-                  <span className="shrink-0 text-[9px] font-bold opacity-80">{banner.hint}</span>
-                )}
-              </motion.div>
-            ))}
 
           {!settleBanner &&
             betBanners.length === 0 &&
@@ -573,6 +526,9 @@ export default function TableCard({
 
       <div className="relative z-[2]">
         <Roadmap data={table.roadmap} results={table.stats.recentResults} size="sm" />
+        {!showWinFlip && !autoHit && betBanners.length > 0 && (
+          <BetInOverlay banners={betBanners} compact={compact} />
+        )}
       </div>
 
       <div className={`grid grid-cols-2 relative z-[2] ${compact ? 'gap-1.5' : 'gap-2'}`}>

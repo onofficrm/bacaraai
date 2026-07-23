@@ -40,6 +40,8 @@ export type TableBetBanner = {
   badge: string;
   label: string;
   hint?: string;
+  amount?: number;
+  side?: string;
 };
 
 export type ResolveTableCardEventInput = {
@@ -82,6 +84,8 @@ function pendingBanner(bet: PendingBet, strategy: AutoBetStrategy): TableBetBann
     badge: isAuto ? (strategy === 'pattern' ? '오토·패턴' : '오토') : '직접',
     label: `${sideShort(bet.side)} · ${formatWon(bet.amount)}`,
     hint: '결과 대기',
+    amount: bet.amount,
+    side: sideShort(bet.side),
   };
 }
 
