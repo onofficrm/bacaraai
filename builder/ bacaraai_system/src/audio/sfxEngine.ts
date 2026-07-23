@@ -242,35 +242,29 @@ function playPattern(name: SfxName) {
       tone(1600, t, 0.04, { type: 'square', gain: 0.05, decay: 0.04, filterFreq: 4500 });
       break;
     case 'betClosed': {
-      // 청량한 띵~ (밝은 종소리, 짧게 울리다가 여운)
-      tone(2093.0, t, 0.65, {
+      // 띠잉~~ — 맑은 단음 + 긴 여운, 카운트 틱보다 크게
+      const fund = 1567.98; // G6
+      tone(fund, t, 1.05, {
         type: 'sine',
-        gain: 0.16,
-        attack: 0.004,
+        gain: 0.32,
+        attack: 0.0015,
+        decay: 0.95,
+        filterFreq: 8500,
+      });
+      tone(fund * 2, t, 0.7, {
+        type: 'sine',
+        gain: 0.12,
+        attack: 0.002,
         decay: 0.62,
-        filterFreq: 9000,
+        filterFreq: 11000,
       });
-      tone(3139.5, t, 0.45, {
+      // 살짝 위로 열리는 느낌 (띠잉)
+      tone(fund * 1.498, t + 0.018, 0.45, {
         type: 'sine',
-        gain: 0.055,
-        attack: 0.005,
-        decay: 0.42,
-        filterFreq: 10000,
-      });
-      tone(4186.0, t + 0.008, 0.32, {
-        type: 'sine',
-        gain: 0.03,
+        gain: 0.07,
         attack: 0.004,
-        decay: 0.3,
-        filterFreq: 12000,
-      });
-      // 아주 약한 하이 쉬머
-      tone(5274.0, t + 0.012, 0.18, {
-        type: 'sine',
-        gain: 0.016,
-        attack: 0.003,
-        decay: 0.16,
-        filterFreq: 14000,
+        decay: 0.4,
+        filterFreq: 9500,
       });
       break;
     }
@@ -397,39 +391,20 @@ export function playBetCountdownTick(remainingSec: number) {
     const c = ensureCtx();
     if (c.state === 'suspended') void c.resume();
     const t = c.currentTime + 0.01;
-
-    // 마지막 1초: 청량한 짧은 띵
-    if (sec === 1) {
-      tone(2093, t, 0.28, {
-        type: 'sine',
-        gain: 0.11,
-        attack: 0.004,
-        decay: 0.26,
-        filterFreq: 9000,
-      });
-      tone(3139.5, t, 0.18, {
-        type: 'sine',
-        gain: 0.04,
-        attack: 0.004,
-        decay: 0.16,
-        filterFreq: 10000,
-      });
-      return;
-    }
-
+    // 5~1 은 짧은 틱만 — 마감음(띠잉)은 playBetClosed 에서만
     const urgent = sec <= 2;
-    const freq = 1100 + (5 - sec) * 320;
-    const gain = urgent ? 0.09 : 0.055 + (5 - sec) * 0.008;
-    noiseBurst(t, urgent ? 0.045 : 0.03, {
-      gain: urgent ? 0.11 : 0.07,
-      freq: 3200 + (5 - sec) * 400,
+    const freq = 1100 + (5 - sec) * 280;
+    const gain = urgent ? 0.07 : 0.045 + (5 - sec) * 0.005;
+    noiseBurst(t, urgent ? 0.035 : 0.025, {
+      gain: urgent ? 0.08 : 0.055,
+      freq: 3000 + (5 - sec) * 350,
       q: 5,
     });
-    tone(freq, t, urgent ? 0.055 : 0.035, {
+    tone(freq, t, urgent ? 0.045 : 0.03, {
       type: 'square',
       gain,
-      decay: urgent ? 0.055 : 0.035,
-      filterFreq: 5200,
+      decay: urgent ? 0.045 : 0.03,
+      filterFreq: 4800,
     });
   } catch {
     /* ignore */
