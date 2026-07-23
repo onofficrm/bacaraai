@@ -68,12 +68,16 @@ function ChipDisc({
   value,
   size = 44,
   className = '',
+  /** full: 선택 팔레트 / mini: 스택 맨 앞 / none: 색만 */
+  label = 'full',
 }: {
   value: number;
   size?: number;
   className?: string;
+  label?: 'full' | 'mini' | 'none';
 }) {
   const t = toneFor(value);
+  const borderW = size >= 40 ? 3 : 2;
   return (
     <div
       className={`relative rounded-full shadow-lg ${className}`}
@@ -82,15 +86,29 @@ function ChipDisc({
         height: size,
         background: `radial-gradient(circle at 30% 28%, rgba(255,255,255,0.35), transparent 42%), ${t.fill}`,
         boxShadow: `0 2px 0 ${t.rim}, 0 6px 14px rgba(0,0,0,0.35)`,
-        border: `3px dashed ${t.rim}`,
+        border: `${borderW}px dashed ${t.rim}`,
       }}
     >
-      <span
-        className="absolute inset-0 flex items-center justify-center text-[10px] font-black leading-none"
-        style={{ color: t.text }}
-      >
-        {t.label}
-      </span>
+      {label !== 'none' && (
+        <span
+          className={`absolute inset-0 flex items-center justify-center font-black leading-none pointer-events-none ${
+            label === 'mini'
+              ? 'text-[7px] opacity-90'
+              : size >= 44
+                ? 'text-[10px]'
+                : 'text-[9px]'
+          }`}
+          style={{
+            color: t.text,
+            textShadow:
+              label === 'mini'
+                ? '0 1px 2px rgba(0,0,0,0.45)'
+                : undefined,
+          }}
+        >
+          {t.label}
+        </span>
+      )}
     </div>
   );
 }
@@ -217,8 +235,15 @@ export default function ChipBetStage({
       </AnimatePresence>
 
       <div className="flex items-center gap-3">
-        <div ref={stackRef} className="relative w-[72px] h-[64px] shrink-0">
-          <div className="absolute inset-x-0 bottom-0 h-2 rounded-full bg-black/40 blur-[2px]" />
+        {/* 가로 팬 스택 — 칩끼리 살짝 겹침 */}
+        <div
+          ref={stackRef}
+          className="relative h-[52px] shrink-0"
+          style={{
+            width: Math.max(56, 36 + Math.max(0, visibleStack.length - 1) * 14),
+          }}
+        >
+          <div className="absolute left-2 right-2 bottom-0.5 h-1.5 rounded-full bg-black/35 blur-[1.5px]" />
           <AnimatePresence initial={false}>
             {visibleStack.length === 0 ? (
               <motion.div
@@ -228,35 +253,46 @@ export default function ChipBetStage({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
               >
-                <div className="w-11 h-11 rounded-full border border-dashed border-zinc-700 bg-zinc-900/80" />
+                <div className="w-10 h-10 rounded-full border border-dashed border-zinc-700 bg-zinc-900/80" />
               </motion.div>
             ) : (
-              visibleStack.map((chip, index) => (
-                <motion.div
-                  key={chip.id}
-                  className="absolute left-1/2 -translate-x-1/2"
-                  style={{ zIndex: index + 1 }}
-                  initial={
-                    reduce
-                      ? false
-                      : { y: -28, scale: 0.6, opacity: 0, rotate: -18 }
-                  }
-                  animate={{
-                    y: -index * 5,
-                    scale: 1,
-                    opacity: 1,
-                    rotate: (index % 2 === 0 ? -1 : 1) * Math.min(index, 3),
-                  }}
-                  exit={
-                    reduce
-                      ? { opacity: 0 }
-                      : { y: 24, opacity: 0, scale: 0.7, rotate: 12 }
-                  }
-                  transition={{ type: 'spring', stiffness: 380, damping: 18 }}
-                >
-                  <ChipDisc value={chip.value} size={46} />
-                </motion.div>
-              ))
+              visibleStack.map((chip, index) => {
+                const isFront = index === visibleStack.length - 1;
+                const fanX = index * 14;
+                const fanY = Math.abs(index - (visibleStack.length - 1) / 2) * 0.6;
+                const fanRot = (index - (visibleStack.length - 1) / 2) * 4;
+                return (
+                  <motion.div
+                    key={chip.id}
+                    className="absolute left-0 top-1/2 -translate-y-1/2"
+                    style={{ zIndex: index + 1 }}
+                    initial={
+                      reduce
+                        ? false
+                        : { x: fanX + 28, y: -18, scale: 0.55, opacity: 0, rotate: fanRot - 20 }
+                    }
+                    animate={{
+                      x: fanX,
+                      y: fanY,
+                      scale: isFront ? 1 : 0.94,
+                      opacity: 1,
+                      rotate: fanRot,
+                    }}
+                    exit={
+                      reduce
+                        ? { opacity: 0 }
+                        : { x: fanX + 12, y: 16, opacity: 0, scale: 0.65, rotate: fanRot + 14 }
+                    }
+                    transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                  >
+                    <ChipDisc
+                      value={chip.value}
+                      size={isFront ? 42 : 38}
+                      label={isFront ? 'mini' : 'none'}
+                    />
+                  </motion.div>
+                );
+              })
             )}
           </AnimatePresence>
         </div>
@@ -311,13 +347,13 @@ export type ChipClickPayload = {
   clientY: number;
 };
 
-/** 스택 앵커(화면 좌표) 계산용 */
+/** 스택 앵커(화면 좌표) — 가로 팬의 맨 앞 칩 위치 */
 export function getStackAnchor(el: HTMLElement | null): { x: number; y: number } {
   if (!el) {
     return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   }
   const r = el.getBoundingClientRect();
-  return { x: r.left + r.width / 2 - 20, y: r.top + r.height / 2 - 28 };
+  return { x: r.right - 28, y: r.top + r.height / 2 - 20 };
 }
 
 export function createFlyer(
