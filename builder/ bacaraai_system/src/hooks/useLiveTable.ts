@@ -155,7 +155,7 @@ export default function useLiveTable(
       if (requestActive.current) return;
       requestActive.current = true;
       try {
-        const query = new URLSearchParams({ table_name: tableName, limit: '120' });
+        const query = new URLSearchParams({ table_name: tableName, limit: '200' });
         const response = await fetch(`${PLATFORM_LINKS.liveResults}?${query.toString()}`, {
           credentials: 'same-origin',
           headers: { Accept: 'application/json' },
