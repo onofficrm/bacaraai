@@ -1,30 +1,5 @@
 import { TableData, GameResult, AiModelAnalysis, RuleData, GameHistoryEntry, Notification } from './types';
 
-// Helper to generate a random roadmap column
-const generateColumn = (length: number, primary: GameResult, secondary: GameResult): GameResult[] => {
-  const col: GameResult[] = [];
-  for (let i = 0; i < length; i++) {
-    col.push(Math.random() > 0.2 ? primary : secondary);
-  }
-  return col;
-};
-
-// Simplified mock roadmap generation
-const generateMockRoadmap = (): GameResult[][] => {
-  const columns: GameResult[][] = [];
-  for (let i = 0; i < 12; i++) {
-    const isPlayer = Math.random() > 0.5;
-    const length = Math.floor(Math.random() * 4) + 1;
-    const col: GameResult[] = [];
-    for(let j = 0; j < length; j++) {
-      if (Math.random() > 0.9) col.push('T');
-      else col.push(isPlayer ? 'P' : 'B');
-    }
-    columns.push(col);
-  }
-  return columns;
-};
-
 const defaultAi = {
   gpt: { status: '분석 완료', opinion: 'PLAYER', confidence: 57, responseTime: 1.2, reasons: ['사용자 규칙 1이 발동했습니다.', 'Player가 2회 연속 출현했습니다.', '현재 설정된 위험 한도 안에 있습니다.'] } as AiModelAnalysis,
   gemini: { status: '실시간 관찰 정상', opinion: 'PLAYER', confidence: 52, responseTime: 0.8, reasons: ['최근 화면 결과가 정상 인식되었습니다.', '베팅 마감까지 9초 남았습니다.', 'Player 연속 조건이 충족되었습니다.'] } as AiModelAnalysis,
@@ -36,10 +11,132 @@ const defaultAi = {
   appliedRule: '규칙 1'
 };
 
-const defaultStats = {
-  player: 9, banker: 3, tie: 2, currentStreak: 'Player 2연속', shoeProgress: 18,
-  shoeNumber: 'SHOE-128', currentRound: 37, recentResults: ['P', 'B', 'P', 'P', 'T', 'P', 'B', 'B', 'P', 'P'] as GameResult[]
-};
+/** seeded pseudo-random so each mock table keeps a stable unique road */
+function mulberry32(seed: number) {
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function buildRoadmap(results: GameResult[]): GameResult[][] {
+  const columns: GameResult[][] = [];
+  results.forEach((result) => {
+    if (result === 'T') {
+      if (!columns.length) columns.push(['T']);
+      else columns[columns.length - 1].push('T');
+      return;
+    }
+    const last = columns[columns.length - 1];
+    const lastDecisive = last?.find((item) => item !== 'T');
+    if (!last || !lastDecisive || lastDecisive !== result) {
+      columns.push([result]);
+    } else {
+      last.push(result);
+    }
+  });
+  return columns.slice(-18);
+}
+
+/**
+ * P/B/T 카운트·끝 스트릭과 일치하는 결과열 생성.
+ * Roadmap 은 recentResults 를 우선 쓰므로 테이블마다 반드시 달라야 함.
+ */
+function buildMockShoe(opts: {
+  seed: number;
+  player: number;
+  banker: number;
+  tie: number;
+  streakSide: 'P' | 'B' | 'T';
+  streakCount: number;
+}): { recentResults: GameResult[]; roadmap: GameResult[][]; currentStreak: string; shoeProgress: number; currentRound: number } {
+  const { seed, player, banker, tie, streakSide, streakCount } = opts;
+  const rand = mulberry32(seed);
+  const rem = { P: player, B: banker, T: tie };
+
+  const tail: GameResult[] = [];
+  if (streakSide === 'T') {
+    const n = Math.min(streakCount, rem.T);
+    for (let i = 0; i < n; i += 1) {
+      tail.push('T');
+      rem.T -= 1;
+    }
+  } else {
+    const n = Math.min(streakCount, rem[streakSide]);
+    for (let i = 0; i < n; i += 1) {
+      tail.push(streakSide);
+      rem[streakSide] -= 1;
+    }
+  }
+
+  const head: GameResult[] = [];
+  (['P', 'B', 'T'] as const).forEach((side) => {
+    for (let i = 0; i < rem[side]; i += 1) head.push(side);
+  });
+  for (let i = head.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    [head[i], head[j]] = [head[j], head[i]];
+  }
+
+  // 머리 끝이 스트릭과 같으면 스트릭이 합쳐지므로 다른 쪽으로 교체
+  if (streakSide !== 'T' && head.length > 0 && head[head.length - 1] === streakSide) {
+    const swapAt = head.findIndex((r) => r !== streakSide && r !== 'T');
+    if (swapAt >= 0) {
+      const last = head.length - 1;
+      [head[swapAt], head[last]] = [head[last], head[swapAt]];
+    } else {
+      // 교체할 결정적 결과가 없으면 타이 삽입 시도
+      const tieAt = head.findIndex((r) => r === 'T');
+      if (tieAt >= 0) {
+        const last = head.length - 1;
+        [head[tieAt], head[last]] = [head[last], head[tieAt]];
+      }
+    }
+  }
+
+  const recentResults = [...head, ...tail];
+  const total = recentResults.length;
+  const streakLabel =
+    streakSide === 'T'
+      ? `Tie ${tail.length}연속`
+      : `${streakSide === 'P' ? 'Player' : 'Banker'} ${tail.length}연속`;
+
+  return {
+    recentResults,
+    roadmap: buildRoadmap(recentResults),
+    currentStreak: streakLabel,
+    shoeProgress: Math.min(100, Math.round((total / 80) * 100)),
+    currentRound: total,
+  };
+}
+
+function mockTableStats(
+  seed: number,
+  player: number,
+  banker: number,
+  tie: number,
+  streakSide: 'P' | 'B' | 'T',
+  streakCount: number,
+  shoeNumber: string,
+) {
+  const shoe = buildMockShoe({ seed, player, banker, tie, streakSide, streakCount });
+  return {
+    stats: {
+      player,
+      banker,
+      tie,
+      currentStreak: shoe.currentStreak,
+      shoeProgress: shoe.shoeProgress,
+      shoeNumber,
+      currentRound: shoe.currentRound,
+      recentResults: shoe.recentResults,
+    },
+    roadmap: shoe.roadmap,
+  };
+}
 
 export const MOCK_RULES: RuleData[] = [
   {
@@ -77,6 +174,15 @@ export const MOCK_RULES: RuleData[] = [
   }
 ];
 
+const t1 = mockTableStats(101, 9, 3, 2, 'P', 2, 'SHOE-128');
+const t2 = mockTableStats(202, 1, 1, 0, 'B', 1, 'SHOE-041');
+const t3 = mockTableStats(303, 22, 35, 3, 'B', 3, 'SHOE-082');
+const t4 = mockTableStats(404, 3, 10, 1, 'B', 5, 'SHOE-055');
+const t5 = mockTableStats(505, 9, 8, 2, 'P', 1, 'SHOE-063');
+const t6 = mockTableStats(606, 5, 5, 1, 'T', 1, 'SHOE-019');
+const t7 = mockTableStats(707, 13, 15, 1, 'B', 2, 'SHOE-071');
+const t8 = mockTableStats(808, 7, 6, 1, 'P', 3, 'SHOE-044');
+
 export const MOCK_TABLES: TableData[] = [
   {
     id: 't1',
@@ -84,8 +190,8 @@ export const MOCK_TABLES: TableData[] = [
     gameCode: 'MD2729',
     status: 'rule_triggered',
     timer: 15,
-    roadmap: generateMockRoadmap(),
-    stats: { ...defaultStats, player: 9, banker: 3, tie: 2, currentStreak: 'Player 2연속', shoeProgress: 18 },
+    roadmap: t1.roadmap,
+    stats: t1.stats,
     ai: { ...defaultAi }
   },
   {
@@ -94,8 +200,8 @@ export const MOCK_TABLES: TableData[] = [
     gameCode: 'MD2710',
     status: 'analyzing',
     timer: 8,
-    roadmap: generateMockRoadmap(),
-    stats: { ...defaultStats, player: 1, banker: 1, tie: 0, currentStreak: 'Banker 1연속', shoeProgress: 4 },
+    roadmap: t2.roadmap,
+    stats: t2.stats,
     ai: { ...defaultAi, finalOpinion: 'SKIP', consensus: '0/3', skipReasons: ['초기 데이터(4회) 부족으로 패턴을 분석하기 어렵습니다.', 'AI 세 가지 모델 모두 관망(SKIP)을 추천했습니다.'], gpt: { ...defaultAi.gpt, opinion: 'SKIP' }, gemini: { ...defaultAi.gemini, opinion: 'SKIP' }, claude: { ...defaultAi.claude, opinion: 'SKIP' } }
   },
   {
@@ -104,8 +210,8 @@ export const MOCK_TABLES: TableData[] = [
     gameCode: 'MD2711',
     status: 'waiting_user',
     timer: 22,
-    roadmap: generateMockRoadmap(),
-    stats: { ...defaultStats, player: 22, banker: 35, tie: 3, currentStreak: 'Banker 3연속', shoeProgress: 68 },
+    roadmap: t3.roadmap,
+    stats: t3.stats,
     ai: { ...defaultAi, finalOpinion: 'BANKER', consensus: '3/3', gpt: { ...defaultAi.gpt, opinion: 'BANKER' }, gemini: { ...defaultAi.gemini, opinion: 'BANKER' }, claude: { ...defaultAi.claude, opinion: 'BANKER' } }
   },
   {
@@ -114,8 +220,8 @@ export const MOCK_TABLES: TableData[] = [
     gameCode: 'MD2712',
     status: 'observing',
     timer: 5,
-    roadmap: generateMockRoadmap(),
-    stats: { ...defaultStats, player: 3, banker: 10, tie: 1, currentStreak: 'Banker 5연속', shoeProgress: 24 },
+    roadmap: t4.roadmap,
+    stats: t4.stats,
     ai: { 
       ...defaultAi, 
       finalOpinion: 'SKIP', 
@@ -130,8 +236,8 @@ export const MOCK_TABLES: TableData[] = [
     gameCode: 'MD2713',
     status: 'checking_result',
     timer: 12,
-    roadmap: generateMockRoadmap(),
-    stats: { ...defaultStats, player: 9, banker: 8, tie: 2, currentStreak: 'Player 1연속', shoeProgress: 32 },
+    roadmap: t5.roadmap,
+    stats: t5.stats,
     ai: { ...defaultAi }
   },
   {
@@ -140,8 +246,8 @@ export const MOCK_TABLES: TableData[] = [
     gameCode: 'MD2714',
     status: 'risk_blocked',
     timer: 3,
-    roadmap: generateMockRoadmap(),
-    stats: { ...defaultStats, player: 5, banker: 5, tie: 1, currentStreak: 'Tie 1연속', shoeProgress: 15 },
+    roadmap: t6.roadmap,
+    stats: t6.stats,
     ai: { ...defaultAi, finalOpinion: 'STOP', skipReasons: ['현재 설정된 로스컷 한도에 도달할 위험이 높습니다.', '연속 패배로 인해 시스템이 베팅을 강제 차단했습니다.'] }
   },
   {
@@ -150,8 +256,8 @@ export const MOCK_TABLES: TableData[] = [
     gameCode: 'MD2715',
     status: 'error',
     timer: 19,
-    roadmap: generateMockRoadmap(),
-    stats: { ...defaultStats, player: 13, banker: 15, tie: 1, currentStreak: 'Banker 2연속', shoeProgress: 42 },
+    roadmap: t7.roadmap,
+    stats: t7.stats,
     ai: { ...defaultAi, finalOpinion: 'DATA_ERROR', skipReasons: ['화면 인식 결과에서 이전 회차와 충돌이 발생했습니다.', 'API 연결 지연으로 실시간 분석을 완료하지 못했습니다.'] }
   },
   {
@@ -160,8 +266,8 @@ export const MOCK_TABLES: TableData[] = [
     gameCode: 'MD2716',
     status: 'paused',
     timer: 2,
-    roadmap: generateMockRoadmap(),
-    stats: { ...defaultStats, player: 7, banker: 6, tie: 1, currentStreak: 'Player 3연속', shoeProgress: 20 },
+    roadmap: t8.roadmap,
+    stats: t8.stats,
     ai: { ...defaultAi, finalOpinion: 'PAUSE', skipReasons: ['사용자가 일시정지를 요청했습니다.', '위험 관리 시스템 점검 중입니다.'] }
   }
 ];
