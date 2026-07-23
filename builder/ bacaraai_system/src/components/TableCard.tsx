@@ -9,6 +9,7 @@ import TableAiSlot from './TableAiSlot';
 import { getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
 import { useFxIntensity } from '../hooks/useFxIntensity';
 import { playSfx } from '../audio/sfxEngine';
+import WinFlipOverlay from './WinFlipOverlay';
 import {
   autoEventBarClass,
   autoEventCardClass,
@@ -190,9 +191,28 @@ export default function TableCard({
       : 'text-emerald-400 border-emerald-400/40 bg-emerald-500/10';
 
   const particleCount = intensity === 'high' ? 10 : intensity === 'medium' ? 6 : 0;
+  const showWinFlip = Boolean(settleBanner && settleBanner.tone === 'hit' && !reduced);
+  const showMissFlash = Boolean(settleBanner && settleBanner.tone === 'miss');
+  const winFlipIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!showWinFlip || !settleBanner) return;
+    if (winFlipIdRef.current === settleBanner.id) return;
+    winFlipIdRef.current = settleBanner.id;
+    playSfx('win', { throttleMs: 1200 });
+  }, [showWinFlip, settleBanner]);
 
   return (
-    <div className={cardClass} onClick={() => onSelect?.(table.id)}>
+    <div
+      className={`${cardClass}${showMissFlash && !reduced ? ' auto-event-shake' : ''}`}
+      onClick={() => onSelect?.(table.id)}
+      style={showWinFlip ? { perspective: 900 } : undefined}
+    >
+      <AnimatePresence>
+        {showWinFlip && settleBanner && (
+          <WinFlipOverlay key={settleBanner.id} banner={settleBanner} compact={compact} />
+        )}
+      </AnimatePresence>
       {betSec > 0 && (
         <div
           className="pointer-events-none absolute inset-0 rounded-xl z-[1]"
@@ -316,7 +336,7 @@ export default function TableCard({
 
       <div className={`relative z-[2] flex flex-col ${compact ? 'gap-1.5' : 'gap-2'}`}>
         <AnimatePresence mode="popLayout">
-          {settleBanner && (
+          {settleBanner && !showWinFlip && (
             <motion.div
               key={settleBanner.id}
               initial={{ opacity: 0, y: -4 }}

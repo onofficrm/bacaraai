@@ -71,6 +71,8 @@ function formatWon(amount: number): string {
 }
 
 const RESULT_FLASH_MS = 4500;
+/** 승리 플립 유지 시간 */
+const WIN_FLIP_MS = 1650;
 
 function pendingBanner(bet: PendingBet, strategy: AutoBetStrategy): TableBetBanner {
   const isAuto = bet.source === 'auto';
@@ -131,7 +133,7 @@ export function resolveTableBetBanners(
     .map((b) => pendingBanner(b, strategy));
 }
 
-/** 최근 정산 플래시 (직접·오토) */
+/** 최근 정산 플래시 (직접·오토) — 승리는 플립용으로 짧게 */
 export function resolveTableSettleBanner(
   input: Pick<
     ResolveTableCardEventInput,
@@ -147,11 +149,19 @@ export function resolveTableSettleBanner(
   } = input;
 
   const candidates = [lastManualResult, lastAutoResult].filter(
-    (r): r is LastBetResult =>
-      Boolean(r && r.tableId === table.id && now - r.at < RESULT_FLASH_MS),
+    (r): r is LastBetResult => {
+      if (!r || r.tableId !== table.id) return false;
+      const windowMs = r.won === true ? WIN_FLIP_MS : RESULT_FLASH_MS;
+      return now - r.at < windowMs;
+    },
   );
   if (candidates.length === 0) {
-    if (autoHit && lastAutoResult?.tableId === table.id) {
+    if (
+      autoHit &&
+      lastAutoResult?.tableId === table.id &&
+      lastAutoResult.won === true &&
+      now - lastAutoResult.at < WIN_FLIP_MS
+    ) {
       return settleBanner(lastAutoResult);
     }
     return null;

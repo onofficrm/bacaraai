@@ -171,6 +171,21 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [session.status, session.mode]);
 
+  // 정산 플립/배지 타이머 (오토 미실행 시에도 만료되도록)
+  useEffect(() => {
+    const results = [session.lastManualResult, session.lastAutoResult].filter(Boolean);
+    if (results.length === 0) return;
+    const newest = Math.max(...results.map((r) => r!.at));
+    const remain = 5000 - (Date.now() - newest);
+    if (remain <= 0) return;
+    const id = window.setInterval(() => setAutoEventTick((n) => n + 1), 250);
+    const stop = window.setTimeout(() => window.clearInterval(id), remain + 50);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(stop);
+    };
+  }, [session.lastManualResult, session.lastAutoResult]);
+
   // 베팅 마감 5초 카운트 사운드 (선택 테이블 · 이미 접수면 생략)
   useEffect(() => {
     if (!betCountdownSoundOn) return;
