@@ -276,6 +276,57 @@ export function findMatchingPatternCase(
   return null;
 }
 
+/**
+ * 현재 매칭된 패턴 인스턴스 지문.
+ * 같은 연속(예: BB)로 이미 베팅한 뒤 Tie 등으로 끝이 그대로면 재진입을 막기 위함.
+ * 매칭이 아니면 null.
+ */
+export function patternMatchFingerprint(
+  recentResults: GameResult[],
+  segments: PatternSegment[],
+): string | null {
+  if (!matchesPattern(recentResults, segments)) return null;
+  const hasTie = segments.some((s) => s.side === 'T');
+  const hist = hasTie ? recentResults : recentResults.filter((r) => r !== 'T');
+  const n = patternTotalGames(segments);
+  if (hist.length < n) return null;
+  // 끝에서 패턴 길이만큼 + 전체 길이 — 새 구슬이 쌓이거나 끝이 바뀌면 지문 변경
+  const suffix = hist.slice(-Math.max(n, 1)).join('');
+  return `${hist.length}:${suffix}:${patternSignalKey(segments)}`;
+}
+
+/**
+ * 활성 경우 중 매칭되며, consumed 지문과 다른 첫 경우.
+ * consumed: `${tableId}:${caseId}` → fingerprint (호출측 Map)
+ */
+export function findFreshMatchingPatternCase(
+  recentResults: GameResult[],
+  cases: PatternCase[],
+  opts?: {
+    tableId?: string;
+    consumed?: Map<string, string> | Record<string, string> | null;
+  },
+): { matched: PatternCase; fingerprint: string } | null {
+  const tableId = opts?.tableId || '';
+  const consumed = opts?.consumed || null;
+  const getConsumed = (key: string): string | undefined => {
+    if (!consumed) return undefined;
+    if (consumed instanceof Map) return consumed.get(key);
+    return consumed[key];
+  };
+
+  for (const c of cases) {
+    if (!c.enabled) continue;
+    if (patternTotalGames(c.patternSegments) < 1) continue;
+    const fp = patternMatchFingerprint(recentResults, c.patternSegments);
+    if (!fp) continue;
+    const key = `${tableId}:${c.id}`;
+    if (getConsumed(key) === fp) continue;
+    return { matched: c, fingerprint: fp };
+  }
+  return null;
+}
+
 export function formatPatternCaseSummary(c: PatternCase): string {
   return `${c.label}: ${formatPattern(c.patternSegments)} → ${patternSideLabel(c.patternBetSide)}`;
 }

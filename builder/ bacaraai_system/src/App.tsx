@@ -35,9 +35,8 @@ import useWallet from './hooks/useWallet';
 import { installAudioUnlock, playBetClosed, playBetCountdownTick, playSfx } from './audio/sfxEngine';
 import { isBetCountdownSoundEnabled, subscribeSoundState } from './audio/sfxEngine';
 import {
-  findMatchingPatternCase,
+  findFreshMatchingPatternCase,
   normalizePatternCases,
-  patternSignalKey,
 } from './utils/patternMatch';
 import { resolveAutoTableEvent, resolveTableBetBanners, resolveTableSettleBanner } from './utils/autoTableEvent';
 import { buildRiskCoachAlerts } from './utils/riskCoach';
@@ -101,7 +100,7 @@ export default function App() {
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [isAutoReordered, setIsAutoReordered] = useState(false);
   const autoBetSignalRef = useRef<string | null>(null);
-  /** 패턴 진입 후 마틴 진행 중인 테이블 (승이 나면 해제) */
+  /** 패턴 진입 후 정산 대기 표시용 (연속 재베팅에는 쓰지 않음) */
   const patternRunRef = useRef<{
     tableId: string;
     side: 'PLAYER' | 'BANKER' | 'TIE';
@@ -114,6 +113,12 @@ export default function App() {
     caseId?: string;
     caseLabel?: string;
   } | null>(null);
+  /**
+   * 이미 베팅에 사용한 패턴 인스턴스 지문.
+   * 같은 BB/PP 로 한 번 간 뒤 Tie 등으로 끝이 그대로면 재진입 금지.
+   * key = `${tableId}:${caseId}` → fingerprint
+   */
+  const patternConsumedRef = useRef<Map<string, string>>(new Map());
   const handledBetResultIdRef = useRef<string | null>(null);
   /** 취소한 베팅과 같은 회차에서 오토베팅이 즉시 재진입하지 않도록 차단 */
   const cancelledAutoUntilRef = useRef<{
@@ -365,6 +370,7 @@ export default function App() {
       if (session.status === 'idle') {
         autoBetSignalRef.current = null;
         setPatternRunState(null);
+        patternConsumedRef.current.clear();
         handledBetResultIdRef.current = null;
         cancelledAutoUntilRef.current = null;
       }
@@ -389,12 +395,11 @@ export default function App() {
       }
     }
 
-    // 패턴 런: 해당 런의 승이 확정되면 다시 패턴 대기
+    // 패턴 런: 정산(승·패·무)되면 표시용 런 해제 — 재베팅은 새 패턴 매칭만
     const last = session.lastAutoResult || session.lastBetResult;
     if (last && last.id !== handledBetResultIdRef.current) {
       handledBetResultIdRef.current = last.id;
       if (
-        last.won === true &&
         last.source === 'auto' &&
         patternRunRef.current?.tableId === last.tableId
       ) {
@@ -424,6 +429,7 @@ export default function App() {
       fromPatternEntry: boolean;
       caseId?: string;
       caseLabel?: string;
+      patternFingerprint?: string;
     };
 
     let candidate: Candidate | null = null;
@@ -447,52 +453,37 @@ export default function App() {
     if (strategy === 'pattern') {
       const { patternCases } = normalizePatternCases(session.config);
 
-      // 이미 패턴으로 진입한 테이블 → 마틴 이어가기 (같은 사이드)
-      if (patternRunRef.current) {
-        const run = patternRunRef.current;
-        const t = watchTables.find((x) => x.id === run.tableId);
-        if (
-          t &&
-          t.status !== 'risk_blocked' &&
-          !isCancelledRound(t) &&
-          getBettingRemainingSecForTable(t) > 0
-        ) {
-          const signal = `${t.id}:${roundKeyOf(t)}:run:${run.side}:${session.martinStage}`;
-          if (autoBetSignalRef.current !== signal) {
-            candidate = {
-              table: t,
-              side: run.side,
-              signal,
-              fromPatternEntry: false,
-              caseId: run.caseId,
-            };
-          }
-        } else if (!t || t.status === 'risk_blocked') {
-          setPatternRunState(null);
-        }
-      }
+      // 정산 대기 중 테이블은 신규 진입 제외 (표시용 patternRun)
+      const pendingRunTableId = patternRunRef.current?.tableId ?? null;
 
-      // 신규 진입: 켜 둔 경우들 중 매칭되는 첫 경우
-      if (!candidate && !patternRunRef.current) {
-        for (const t of watchTables) {
-          if (t.status === 'risk_blocked') continue;
-          if (isCancelledRound(t)) continue;
-          if (getBettingRemainingSecForTable(t) <= 0) continue;
-          const matched = findMatchingPatternCase(t.stats.recentResults || [], patternCases);
-          if (!matched) continue;
-          const betSide = matched.patternBetSide;
-          const signal = `${t.id}:${roundKeyOf(t)}:pattern:${matched.id}:${patternSignalKey(matched.patternSegments)}:${betSide}`;
-          if (autoBetSignalRef.current === signal) continue;
-          candidate = {
-            table: t,
-            side: betSide,
-            signal,
-            fromPatternEntry: true,
-            caseId: matched.id,
-            caseLabel: matched.label,
-          };
-          break;
-        }
+      // 신규 진입: 켜 둔 경우들 중 매칭 + 아직 소비하지 않은 패턴 인스턴스만
+      // (BBB처럼 끝이 길어진 동일 연속으로는 exact BB 가 안 맞음 → 재진입 안 함)
+      // (BB 후 Tie 로 끝이 그대로면 fingerprint 로 재진입 차단)
+      for (const t of watchTables) {
+        if (pendingRunTableId && t.id === pendingRunTableId) continue;
+        if (t.status === 'risk_blocked') continue;
+        if (isCancelledRound(t)) continue;
+        if (getBettingRemainingSecForTable(t) <= 0) continue;
+        const fresh = findFreshMatchingPatternCase(
+          t.stats.recentResults || [],
+          patternCases,
+          { tableId: t.id, consumed: patternConsumedRef.current },
+        );
+        if (!fresh) continue;
+        const { matched, fingerprint } = fresh;
+        const betSide = matched.patternBetSide;
+        const signal = `${t.id}:${roundKeyOf(t)}:pattern:${matched.id}:${fingerprint}:${betSide}`;
+        if (autoBetSignalRef.current === signal) continue;
+        candidate = {
+          table: t,
+          side: betSide,
+          signal,
+          fromPatternEntry: true,
+          caseId: matched.id,
+          caseLabel: matched.label,
+          patternFingerprint: fingerprint,
+        };
+        break;
       }
     } else {
       // AI 전략: 서버가 auto_bet_allowed=true 인 테이블만 자동 베팅
@@ -577,7 +568,13 @@ export default function App() {
         if (!result.ok) {
           autoBetSignalRef.current = null;
         } else {
-          if (candidate.fromPatternEntry || strategy === 'pattern') {
+          if (strategy === 'pattern' && candidate.fromPatternEntry) {
+            if (candidate.caseId && candidate.patternFingerprint) {
+              patternConsumedRef.current.set(
+                `${target.id}:${candidate.caseId}`,
+                candidate.patternFingerprint,
+              );
+            }
             setPatternRunState({
               tableId: target.id,
               side: candidate.side,

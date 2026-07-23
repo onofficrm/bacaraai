@@ -250,6 +250,7 @@ export function resolveAutoTableEvent(
 
   if (strategy === 'pattern') {
     const onRun = patternRunTableId === table.id;
+    // 정산 대기 중이면 신호 표시. 신규 매칭은 아직 소비되지 않은 패턴만.
     const matched =
       !onRun && patternCases.length > 0
         ? findMatchingPatternCase(table.stats.recentResults || [], patternCases)
