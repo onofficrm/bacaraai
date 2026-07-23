@@ -1404,3 +1404,300 @@ if (!function_exists('bacara_ai_analyze_table')) {
         }
     }
 }
+
+if (!function_exists('bacara_ai_build_session_stats')) {
+    function bacara_ai_build_session_stats(array $payload)
+    {
+        $bets = isset($payload['bets']) && is_array($payload['bets']) ? $payload['bets'] : array();
+        $bets = array_slice($bets, 0, 40);
+
+        $wins = 0;
+        $losses = 0;
+        $ties = 0;
+        $auto_w = 0;
+        $auto_l = 0;
+        $manual_w = 0;
+        $manual_l = 0;
+        $ai_hits = 0;
+        $ai_miss = 0;
+        $max_martin = 1;
+        $streak = 0;
+        $best_streak = 0;
+        $worst_streak = 0;
+        $cur_win = 0;
+        $cur_loss = 0;
+
+        foreach ($bets as $b) {
+            $pnl = isset($b['pnl']) ? (int) $b['pnl'] : 0;
+            $src = isset($b['source']) ? (string) $b['source'] : '';
+            $martin = isset($b['martin']) ? (int) $b['martin'] : 1;
+            if ($martin > $max_martin) {
+                $max_martin = $martin;
+            }
+            if ($pnl > 0) {
+                $wins++;
+                $cur_win++;
+                $cur_loss = 0;
+                if ($cur_win > $best_streak) {
+                    $best_streak = $cur_win;
+                }
+                if ($src === 'auto') {
+                    $auto_w++;
+                } elseif ($src === 'manual') {
+                    $manual_w++;
+                }
+            } elseif ($pnl < 0) {
+                $losses++;
+                $cur_loss++;
+                $cur_win = 0;
+                if ($cur_loss > $worst_streak) {
+                    $worst_streak = $cur_loss;
+                }
+                if ($src === 'auto') {
+                    $auto_l++;
+                } elseif ($src === 'manual') {
+                    $manual_l++;
+                }
+            } else {
+                $ties++;
+            }
+
+            $final = isset($b['final_opinion']) ? strtoupper((string) $b['final_opinion']) : '';
+            $actual = isset($b['result']) ? strtoupper((string) $b['result']) : '';
+            if (($final === 'PLAYER' || $final === 'BANKER') && ($actual === 'P' || $actual === 'B')) {
+                $mapped = $final === 'PLAYER' ? 'P' : 'B';
+                if ($mapped === $actual) {
+                    $ai_hits++;
+                } else {
+                    $ai_miss++;
+                }
+            }
+        }
+
+        return array(
+            'pnl' => isset($payload['pnl']) ? (int) $payload['pnl'] : 0,
+            'stop_type' => isset($payload['stop_type']) ? (string) $payload['stop_type'] : 'manual',
+            'strategy' => isset($payload['strategy']) ? (string) $payload['strategy'] : '',
+            'martin_stage' => isset($payload['martin_stage']) ? (int) $payload['martin_stage'] : 1,
+            'max_martin' => isset($payload['max_martin']) ? (int) $payload['max_martin'] : 6,
+            'win_cut' => isset($payload['win_cut']) ? (int) $payload['win_cut'] : 0,
+            'loss_cut' => isset($payload['loss_cut']) ? (int) $payload['loss_cut'] : 0,
+            'bet_count' => count($bets),
+            'wins' => $wins,
+            'losses' => $losses,
+            'ties' => $ties,
+            'auto_wins' => $auto_w,
+            'auto_losses' => $auto_l,
+            'manual_wins' => $manual_w,
+            'manual_losses' => $manual_l,
+            'ai_hits' => $ai_hits,
+            'ai_miss' => $ai_miss,
+            'peak_martin' => $max_martin,
+            'best_win_streak' => $best_streak,
+            'worst_loss_streak' => $worst_streak,
+            'bets' => $bets,
+        );
+    }
+}
+
+if (!function_exists('bacara_ai_session_retrospective')) {
+    /**
+     * 세션 복기: 서버 통계 + (가능하면) 1개 LLM 요약
+     */
+    function bacara_ai_session_retrospective(array $payload)
+    {
+        $stats = bacara_ai_build_session_stats($payload);
+
+        $summary_lines = array();
+        $summary_lines[] = '세션 손익 ' . number_format($stats['pnl']) . '원';
+        $summary_lines[] = '승 ' . $stats['wins'] . ' / 패 ' . $stats['losses'] . ' (총 ' . $stats['bet_count'] . '건)';
+        if ($stats['auto_wins'] + $stats['auto_losses'] > 0) {
+            $summary_lines[] = '오토 승패 ' . $stats['auto_wins'] . ':' . $stats['auto_losses'];
+        }
+        if ($stats['manual_wins'] + $stats['manual_losses'] > 0) {
+            $summary_lines[] = '직접 승패 ' . $stats['manual_wins'] . ':' . $stats['manual_losses'];
+        }
+        if ($stats['ai_hits'] + $stats['ai_miss'] > 0) {
+            $hit_rate = round($stats['ai_hits'] / max(1, $stats['ai_hits'] + $stats['ai_miss']) * 100);
+            $summary_lines[] = 'AI 방향 적중 ' . $stats['ai_hits'] . '/' . ($stats['ai_hits'] + $stats['ai_miss']) . ' (' . $hit_rate . '%)';
+        }
+        $summary_lines[] = '최고 마틴 ' . $stats['peak_martin'] . '단계 · 최장 연패 ' . $stats['worst_loss_streak'];
+
+        $tips = array();
+        if ($stats['stop_type'] === 'losscut') {
+            $tips[] = '로스컷으로 종료되었습니다. 다음 세션은 초기 금액 또는 최대 마틴을 낮춰 보세요.';
+        } elseif ($stats['stop_type'] === 'wincut') {
+            $tips[] = '윈컷 달성입니다. 같은 한도로 짧게 운영하는 습관을 유지하세요.';
+        }
+        if ($stats['worst_loss_streak'] >= 3) {
+            $tips[] = '연패가 ' . $stats['worst_loss_streak'] . '회까지 이어졌습니다. 연속 패배 시 관망 규칙을 추가하세요.';
+        }
+        if ($stats['peak_martin'] >= max(3, (int) ceil($stats['max_martin'] * 0.7))) {
+            $tips[] = '마틴이 높게 올라갔습니다. 최대 단계를 줄이거나 패턴 조건을 더 엄격히 하세요.';
+        }
+        if ($stats['auto_losses'] > $stats['auto_wins'] && ($stats['auto_wins'] + $stats['auto_losses']) >= 4) {
+            $tips[] = '오토 성과가 저조합니다. AI 추천과 패턴 전략을 비교해 보세요.';
+        }
+        if ($stats['ai_hits'] + $stats['ai_miss'] >= 5) {
+            $rate = $stats['ai_hits'] / max(1, $stats['ai_hits'] + $stats['ai_miss']);
+            if ($rate < 0.45) {
+                $tips[] = '이번 세션 AI 방향 적중률이 낮습니다. 자동 베팅보다 참고용으로만 쓰는 것이 안전합니다.';
+            } elseif ($rate >= 0.55) {
+                $tips[] = 'AI 방향 적중률이 양호했습니다. 다만 표본이 적으면 다음 세션에도 검증이 필요합니다.';
+            }
+        }
+        if (!$tips) {
+            $tips[] = '기록이 충분해지면 더 구체적인 개선안을 제안할 수 있습니다.';
+        }
+
+            $ai_text = '';
+            $ai_provider = '';
+            if (bacara_ai_config_is_enabled() && $stats['bet_count'] > 0) {
+            $prompt_stats = $stats;
+            unset($prompt_stats['bets']);
+            $prompt_stats['recent_bets'] = array_slice($stats['bets'], 0, 15);
+
+            $system = 'You are a baccarat session coach for Korean users. '
+                . 'Be concise, practical, and cautious. Do not promise future wins. '
+                . 'Return ONLY JSON: {"headline":"...","analysis":["..."],"next_actions":["..."]} '
+                . 'Use Korean. Max 3 analysis bullets and 3 next_actions.';
+            $user = "SESSION_STATS:\n" . json_encode($prompt_stats, JSON_UNESCAPED_UNICODE);
+
+            $call = null;
+            if (bacara_ai_config_has_key('openai')) {
+                $key = bacara_ai_config_get('openai_api_key');
+                $model = bacara_ai_config_get('openai_model', 'gpt-4o-mini');
+                $body = json_encode(array(
+                    'model' => $model,
+                    'temperature' => 0.3,
+                    'response_format' => array('type' => 'json_object'),
+                    'messages' => array(
+                        array('role' => 'system', 'content' => $system),
+                        array('role' => 'user', 'content' => $user),
+                    ),
+                ), JSON_UNESCAPED_UNICODE);
+                $res = bacara_ai_http_json(
+                    'https://api.openai.com/v1/chat/completions',
+                    array('Content-Type: application/json', 'Authorization: Bearer ' . $key),
+                    $body,
+                    20
+                );
+                if ($res['ok']) {
+                    $json = json_decode($res['raw'], true);
+                    $text = isset($json['choices'][0]['message']['content']) ? $json['choices'][0]['message']['content'] : '';
+                    $parsed = json_decode($text, true);
+                    if (!is_array($parsed) && preg_match('/\{.*\}/s', $text, $m)) {
+                        $parsed = json_decode($m[0], true);
+                    }
+                    if (is_array($parsed)) {
+                        $call = $parsed;
+                        $ai_provider = 'openai';
+                    }
+                }
+            } elseif (bacara_ai_config_has_key('anthropic')) {
+                $key = bacara_ai_config_get('anthropic_api_key');
+                $model = bacara_ai_config_get('anthropic_model', 'claude-sonnet-4-20250514');
+                $body = json_encode(array(
+                    'model' => $model,
+                    'max_tokens' => 500,
+                    'temperature' => 0.3,
+                    'system' => $system,
+                    'messages' => array(array('role' => 'user', 'content' => $user)),
+                ), JSON_UNESCAPED_UNICODE);
+                $res = bacara_ai_http_json(
+                    'https://api.anthropic.com/v1/messages',
+                    array(
+                        'Content-Type: application/json',
+                        'x-api-key: ' . $key,
+                        'anthropic-version: 2023-06-01',
+                    ),
+                    $body,
+                    20
+                );
+                if ($res['ok']) {
+                    $json = json_decode($res['raw'], true);
+                    $text = '';
+                    if (!empty($json['content']) && is_array($json['content'])) {
+                        foreach ($json['content'] as $block) {
+                            if (isset($block['text'])) {
+                                $text .= $block['text'];
+                            }
+                        }
+                    }
+                    $parsed = json_decode($text, true);
+                    if (!is_array($parsed) && preg_match('/\{.*\}/s', $text, $m)) {
+                        $parsed = json_decode($m[0], true);
+                    }
+                    if (is_array($parsed)) {
+                        $call = $parsed;
+                        $ai_provider = 'claude';
+                    }
+                }
+            } elseif (bacara_ai_config_has_key('gemini')) {
+                $key = bacara_ai_config_get('gemini_api_key');
+                $model = bacara_ai_config_get('gemini_model', 'gemini-2.0-flash');
+                $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+                    . rawurlencode($model) . ':generateContent?key=' . rawurlencode($key);
+                $body = json_encode(array(
+                    'systemInstruction' => array('parts' => array(array('text' => $system))),
+                    'contents' => array(array('role' => 'user', 'parts' => array(array('text' => $user)))),
+                    'generationConfig' => array('temperature' => 0.3, 'responseMimeType' => 'application/json'),
+                ), JSON_UNESCAPED_UNICODE);
+                $res = bacara_ai_http_json($url, array('Content-Type: application/json'), $body, 20);
+                if ($res['ok']) {
+                    $json = json_decode($res['raw'], true);
+                    $text = isset($json['candidates'][0]['content']['parts'][0]['text'])
+                        ? $json['candidates'][0]['content']['parts'][0]['text']
+                        : '';
+                    $parsed = json_decode($text, true);
+                    if (!is_array($parsed) && preg_match('/\{.*\}/s', $text, $m)) {
+                        $parsed = json_decode($m[0], true);
+                    }
+                    if (is_array($parsed)) {
+                        $call = $parsed;
+                        $ai_provider = 'gemini';
+                    }
+                }
+            }
+
+            if (is_array($call)) {
+                if (!empty($call['headline'])) {
+                    $ai_text = trim((string) $call['headline']);
+                }
+                if (!empty($call['analysis']) && is_array($call['analysis'])) {
+                    foreach ($call['analysis'] as $line) {
+                        $line = trim((string) $line);
+                        if ($line !== '') {
+                            $summary_lines[] = $line;
+                        }
+                    }
+                }
+                if (!empty($call['next_actions']) && is_array($call['next_actions'])) {
+                    $tips = array();
+                    foreach ($call['next_actions'] as $line) {
+                        $line = trim((string) $line);
+                        if ($line !== '') {
+                            $tips[] = $line;
+                        }
+                    }
+                    if (!$tips) {
+                        $tips[] = '다음 세션도 손절·익절 한도를 지켜 주세요.';
+                    }
+                }
+            }
+        }
+
+        return array(
+            'ok' => true,
+            'headline' => $ai_text !== '' ? $ai_text : (
+                $stats['pnl'] > 0 ? '수익으로 마감한 세션입니다' : (
+                    $stats['pnl'] < 0 ? '손실로 마감한 세션입니다' : '손익 없는 세션입니다'
+                )
+            ),
+            'summary' => array_slice($summary_lines, 0, 8),
+            'tips' => array_slice($tips, 0, 4),
+            'stats' => $stats,
+            'provider' => $ai_provider,
+        );
+    }
+}

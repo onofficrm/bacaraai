@@ -1,4 +1,4 @@
-import { Lock, Square, Settings2 } from 'lucide-react';
+import { Lock, Square, Settings2, ShieldAlert } from 'lucide-react';
 import HelpTooltip from './HelpTooltip';
 import { playSfx } from '../audio/sfxEngine';
 import type { SessionConfig } from '../types';
@@ -8,6 +8,7 @@ import {
   resolveBetAmount,
   type SessionStatus,
 } from '../hooks/useSession';
+import type { RiskCoachAlert } from '../utils/riskCoach';
 
 interface SessionBarProps {
   onOpenSettings: () => void;
@@ -19,6 +20,7 @@ interface SessionBarProps {
   config: SessionConfig;
   pnl: number;
   martinStage: number;
+  riskAlerts?: RiskCoachAlert[];
 }
 
 export default function SessionBar({
@@ -29,6 +31,7 @@ export default function SessionBar({
   config,
   pnl,
   martinStage,
+  riskAlerts = [],
 }: SessionBarProps) {
   const isRunning = status === 'running';
   const isPaused = status === 'paused';
@@ -180,6 +183,29 @@ export default function SessionBar({
           </div>
         </div>
       </div>
+      {riskAlerts.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1.5">
+          {riskAlerts.map((alert) => (
+            <div
+              key={alert.id}
+              className={`flex items-start gap-2 rounded-lg border px-2.5 py-2 text-[11px] leading-snug ${
+                alert.level === 'critical'
+                  ? 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+                  : alert.level === 'warn'
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-100'
+                    : 'border-sky-500/30 bg-sky-500/10 text-sky-100'
+              }`}
+            >
+              <ShieldAlert size={14} className="shrink-0 mt-0.5 opacity-90" />
+              <div className="min-w-0">
+                <span className="font-bold">{alert.title}</span>
+                <span className="text-zinc-400 mx-1">·</span>
+                <span className="text-zinc-300">{alert.message}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

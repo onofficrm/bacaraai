@@ -644,7 +644,9 @@ export default function RightPanel({
                       <p className="text-[11px] text-zinc-500 mt-0.5">
                         {isPassive
                           ? '지금은 관망 추천입니다'
-                          : `추천 금액 ${(table.ai.recommendedAmount || 0).toLocaleString()}원`}
+                          : table.ai.recommendedAmount > 0
+                            ? `추천 금액 ${table.ai.recommendedAmount.toLocaleString()}원`
+                            : '참고용 추천입니다'}
                       </p>
                     </div>
                     {recommendedSide && !isRisk && (
@@ -660,6 +662,55 @@ export default function RightPanel({
                       </button>
                     )}
                   </div>
+                  {(table.ai.appliedRule ||
+                    table.ai.discussionSummary ||
+                    (table.ai.skipReasons && table.ai.skipReasons.length > 0) ||
+                    table.ai.gpt.reasons?.length ||
+                    table.ai.claude.reasons?.length ||
+                    table.ai.gemini.reasons?.length) && (
+                    <div className="px-3 pb-3 border-t border-zinc-800/80 pt-2.5 space-y-2">
+                      {table.ai.appliedRule && (
+                        <p className="text-[11px] text-zinc-300 leading-relaxed">
+                          <span className="text-zinc-500 font-bold">결정 근거 · </span>
+                          {table.ai.appliedRule}
+                        </p>
+                      )}
+                      {table.ai.discussionSummary && (
+                        <p className="text-[11px] text-zinc-500 leading-relaxed">
+                          {table.ai.discussionSummary}
+                        </p>
+                      )}
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {(
+                          [
+                            ['GPT', table.ai.gpt],
+                            ['Claude', table.ai.claude],
+                            ['Gemini', table.ai.gemini],
+                          ] as const
+                        ).map(([name, model]) => {
+                          const reason = model.reasons?.[0];
+                          if (!reason && model.opinion === 'WAIT') return null;
+                          return (
+                            <div
+                              key={name}
+                              className="rounded-lg bg-zinc-950/80 border border-zinc-800 px-2 py-1.5 text-[10px] leading-snug"
+                            >
+                              <span className="font-bold text-zinc-400">{name}</span>
+                              <span className={`ml-1.5 font-bold ${getOpinionColor(model.opinion)}`}>
+                                {getOpinionText(model.opinion)}
+                              </span>
+                              {typeof model.confidence === 'number' && model.confidence > 0 && (
+                                <span className="ml-1 text-zinc-600">{model.confidence}%</span>
+                              )}
+                              {reason && (
+                                <p className="text-zinc-400 mt-0.5">{reason}</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {quickBet && !isDesktop && !showAiRec && (

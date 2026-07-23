@@ -1,18 +1,32 @@
-import { AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { playSfx } from '../audio/sfxEngine';
+import { PLATFORM_LINKS } from '../constants';
 import { getResultColor, getResultLabel } from '../utils/colors';
 import { inferBetSource, loadBetHistory } from '../utils/betHistory';
-import type { GameHistoryEntry } from '../types';
+import type { GameHistoryEntry, SessionConfig } from '../types';
+
+export type StopSessionType = 'wincut' | 'losscut' | 'error' | 'manual' | null;
 
 interface StopSessionModalProps {
-  type: 'wincut' | 'losscut' | 'error' | null;
+  type: StopSessionType;
   sessionPnl?: number;
   /** 이번 세션 시작 시각 (epoch ms) — 이 시각 이후 기록만 표시 */
   sessionStartedAt?: number | null;
+  sessionConfig?: SessionConfig | null;
+  martinStage?: number;
   onViewHistory: () => void;
   onEndSession: () => void;
 }
+
+type ReviewResponse = {
+  ok: boolean;
+  message?: string;
+  headline?: string;
+  summary?: string[];
+  tips?: string[];
+  provider?: string;
+};
 
 function loadSessionRecords(sessionStartedAt: number | null): GameHistoryEntry[] {
   const all = loadBetHistory();
@@ -23,19 +37,23 @@ function loadSessionRecords(sessionStartedAt: number | null): GameHistoryEntry[]
     if (start > 0 && at > 0 && at < start) return false;
     return true;
   });
-  // 세션 구간이 있으면 그대로, 없으면 최근 오토 위주
-  if (start > 0) return filtered.slice(0, 20);
-  return filtered.filter((e) => inferBetSource(e) === 'auto').slice(0, 12);
+  if (start > 0) return filtered.slice(0, 40);
+  return filtered.filter((e) => inferBetSource(e) === 'auto').slice(0, 20);
 }
 
 export default function StopSessionModal({
   type,
   sessionPnl = 0,
   sessionStartedAt = null,
+  sessionConfig = null,
+  martinStage = 1,
   onViewHistory,
   onEndSession,
 }: StopSessionModalProps) {
   const [sessionRecords, setSessionRecords] = useState<GameHistoryEntry[]>([]);
+  const [review, setReview] = useState<ReviewResponse | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!type) return;
@@ -47,11 +65,12 @@ export default function StopSessionModal({
   useEffect(() => {
     if (!type) {
       setSessionRecords([]);
+      setReview(null);
+      setReviewError(null);
       return;
     }
     const refresh = () => setSessionRecords(loadSessionRecords(sessionStartedAt));
     refresh();
-    // 마지막 정산이 localStorage에 쓰인 뒤 다시 읽음
     const t1 = window.setTimeout(refresh, 80);
     const t2 = window.setTimeout(refresh, 250);
     const onHist = () => refresh();
@@ -62,6 +81,59 @@ export default function StopSessionModal({
       window.removeEventListener('bacara-bet-history', onHist);
     };
   }, [type, sessionStartedAt]);
+
+  useEffect(() => {
+    if (!type) return;
+    let cancelled = false;
+    const run = async () => {
+      setReviewLoading(true);
+      setReviewError(null);
+      try {
+        const records = loadSessionRecords(sessionStartedAt);
+        const bets = records.map((e) => ({
+          side: e.userSelection,
+          result: e.actualResult,
+          pnl: e.pnl,
+          source: inferBetSource(e),
+          rule: e.appliedRule,
+          martin: e.martingaleStage,
+          final_opinion: e.finalOpinion,
+          table: e.tableName,
+        }));
+        const response = await fetch(PLATFORM_LINKS.aiSessionReview, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pnl: sessionPnl,
+            stop_type: type,
+            strategy: sessionConfig?.strategy || '',
+            martin_stage: martinStage,
+            max_martin: sessionConfig?.maxMartin || 6,
+            win_cut: sessionConfig?.winCut || 0,
+            loss_cut: sessionConfig?.lossCut || 0,
+            bets,
+          }),
+        });
+        const data = (await response.json()) as ReviewResponse;
+        if (cancelled) return;
+        if (!response.ok || !data.ok) {
+          throw new Error(data.message || '세션 복기에 실패했습니다.');
+        }
+        setReview(data);
+      } catch (error) {
+        if (cancelled) return;
+        setReviewError(error instanceof Error ? error.message : '세션 복기 오류');
+      } finally {
+        if (!cancelled) setReviewLoading(false);
+      }
+    };
+    const timer = window.setTimeout(() => void run(), 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [type, sessionStartedAt, sessionPnl, sessionConfig, martinStage]);
 
   if (!type) return null;
 
@@ -83,6 +155,12 @@ export default function StopSessionModal({
     message = '손실 한도에 도달하여 진행이 중단되었습니다.';
     color = 'text-red-400';
     bgClass = 'bg-red-500/10 border-red-500/30';
+  } else if (type === 'manual') {
+    Icon = CheckCircle;
+    title = '오토베팅 종료';
+    message = '사용자가 오토베팅을 종료했습니다. 이번 세션을 복기해 보세요.';
+    color = 'text-zinc-200';
+    bgClass = 'bg-zinc-500/10 border-zinc-600/40';
   } else {
     Icon = AlertTriangle;
     title = '시스템 오류 발생';
@@ -150,6 +228,51 @@ export default function StopSessionModal({
           )}
         </div>
 
+        <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-3 mb-3 shrink-0">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Sparkles size={14} className="text-violet-300" />
+            <span className="text-[11px] font-bold text-violet-200">AI 세션 복기</span>
+            {review?.provider && (
+              <span className="text-[10px] text-zinc-500 ml-auto">{review.provider}</span>
+            )}
+          </div>
+          {reviewLoading && (
+            <p className="text-[11px] text-zinc-400 animate-pulse">세션을 분석하는 중…</p>
+          )}
+          {!reviewLoading && reviewError && (
+            <p className="text-[11px] text-amber-300/90">{reviewError}</p>
+          )}
+          {!reviewLoading && review && (
+            <div className="space-y-2">
+              {review.headline && (
+                <p className="text-sm font-bold text-zinc-100 leading-snug">{review.headline}</p>
+              )}
+              {review.summary && review.summary.length > 0 && (
+                <ul className="space-y-1">
+                  {review.summary.slice(0, 5).map((line, i) => (
+                    <li key={i} className="text-[11px] text-zinc-400 leading-relaxed flex gap-1.5">
+                      <span className="text-zinc-600">•</span>
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {review.tips && review.tips.length > 0 && (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-2.5 py-2">
+                  <p className="text-[10px] font-bold text-zinc-500 mb-1">다음 세션 제안</p>
+                  <ul className="space-y-1">
+                    {review.tips.slice(0, 3).map((tip, i) => (
+                      <li key={i} className="text-[11px] text-zinc-300 leading-relaxed">
+                        {tip}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar rounded-xl border border-zinc-800 bg-zinc-950/80 mb-4">
           {sessionRecords.length === 0 ? (
             <div className="px-4 py-8 text-center text-zinc-500 text-xs leading-relaxed">
@@ -159,7 +282,7 @@ export default function StopSessionModal({
             </div>
           ) : (
             <ul className="divide-y divide-zinc-800/80">
-              {sessionRecords.map((e) => {
+              {sessionRecords.slice(0, 20).map((e) => {
                 const src = inferBetSource(e);
                 return (
                   <li key={e.id} className="px-3 py-2.5 flex items-center gap-2 text-xs">
@@ -227,7 +350,9 @@ export default function StopSessionModal({
                 ? 'bg-emerald-500 hover:bg-emerald-600 text-zinc-950'
                 : type === 'losscut'
                   ? 'bg-red-500 hover:bg-red-600 text-white'
-                  : 'bg-amber-500 hover:bg-amber-600 text-zinc-950'
+                  : type === 'manual'
+                    ? 'bg-zinc-100 hover:bg-white text-zinc-950'
+                    : 'bg-amber-500 hover:bg-amber-600 text-zinc-950'
             }`}
           >
             {type === 'error' ? '확인' : '오토베팅 종료'}

@@ -180,15 +180,17 @@ export default function TableCard({
         </div>
 
         {beginnerMode ? (
-          <p className="text-[11px] text-zinc-500 px-0.5">
-            {isSelected
-              ? '하단 시트에서 금액을 확인하고 확정하세요.'
-              : '카드를 눌러 베팅 화면을 여세요.'}
+          <p className="text-[11px] text-zinc-500 px-0.5 leading-snug">
+            {table.ai.appliedRule
+              ? table.ai.appliedRule
+              : isSelected
+                ? '하단 시트에서 금액을 확인하고 확정하세요.'
+                : '카드를 눌러 베팅 화면을 여세요.'}
           </p>
         ) : (
-          <div className="flex justify-between text-[10px] px-1 text-zinc-500">
+          <div className="flex justify-between text-[10px] px-1 text-zinc-500 gap-2">
             <span>분석 신뢰도: {table.ai.finalConfidence}%</span>
-            <span className="text-amber-500/80">{table.ai.appliedRule}</span>
+            <span className="text-amber-500/80 truncate text-right">{table.ai.appliedRule}</span>
           </div>
         )}
 

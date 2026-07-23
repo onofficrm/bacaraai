@@ -36,6 +36,7 @@ import {
   normalizePatternCases,
   patternSignalKey,
 } from './utils/patternMatch';
+import { buildRiskCoachAlerts } from './utils/riskCoach';
 import {
   getCaseMartinStage,
   resolveAmountPlan,
@@ -67,7 +68,7 @@ export default function App() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
-  const [stopSessionType, setStopSessionType] = useState<'wincut' | 'losscut' | 'error' | null>(null);
+  const [stopSessionType, setStopSessionType] = useState<'wincut' | 'losscut' | 'error' | 'manual' | null>(null);
   const [stopSessionPnl, setStopSessionPnl] = useState(0);
   const [insightSourceFilter, setInsightSourceFilter] = useState<'all' | 'manual' | 'auto'>('all');
   const [autoResumeTick, setAutoResumeTick] = useState(0);
@@ -99,11 +100,38 @@ export default function App() {
     installAudioUnlock();
   }, []);
 
+  const riskAlerts = useMemo(
+    () =>
+      buildRiskCoachAlerts({
+        status: session.status,
+        pnl: session.pnl,
+        martinStage: session.martinStage,
+        config: session.config,
+        sessionStartedAt: sessionStartedAtRef.current,
+      }),
+    [
+      session.status,
+      session.pnl,
+      session.martinStage,
+      session.config,
+      session.lastAutoResult,
+      session.lastManualResult,
+      session.lastBetResult,
+    ],
+  );
+
+  const openStopReview = (type: 'wincut' | 'losscut' | 'error' | 'manual', pnl?: number) => {
+    session.pauseSession();
+    window.setTimeout(() => {
+      setStopSessionPnl(typeof pnl === 'number' ? pnl : session.pnl);
+      setStopSessionType(type);
+    }, 80);
+  };
+
   useEffect(() => {
     session.setCutHandler((type, pnl) => {
       playSfx(type === 'wincut' ? 'win' : 'loss');
       session.pauseSession();
-      // 정산 기록이 localStorage에 반영된 뒤 모달 표시
       window.setTimeout(() => {
         setStopSessionPnl(pnl);
         setStopSessionType(type);
@@ -519,8 +547,8 @@ export default function App() {
       <Header 
         onEmergencyStop={() => {
           playSfx('risk');
-          session.stopSession();
-          setStopSessionType('losscut');
+          setStopSessionPnl(session.pnl);
+          openStopReview('losscut', session.pnl);
         }} 
         activeViewLabel={VIEW_LABELS[activeView]}
         beginnerMode={beginnerMode}
@@ -581,14 +609,13 @@ export default function App() {
           }}
           onPause={session.pauseSession}
           onResume={session.resumeSession}
-          onStop={() => {
-            session.stopSession();
-          }}
+          onStop={() => openStopReview('manual')}
           beginnerMode={beginnerMode}
           status={session.status}
           config={session.config}
           pnl={session.pnl}
           martinStage={session.martinStage}
+          riskAlerts={riskAlerts}
         />
       )}
       
@@ -676,7 +703,7 @@ export default function App() {
               onClearBetResult={session.clearLastBetResult}
               onPauseAuto={session.pauseSession}
               onResumeAuto={session.resumeSession}
-              onStopAuto={session.stopSession}
+              onStopAuto={() => openStopReview('manual')}
             />
           </>
         ) : activeView === 'insight' ? (
@@ -741,6 +768,8 @@ export default function App() {
         type={stopSessionType}
         sessionPnl={stopSessionPnl}
         sessionStartedAt={sessionStartedAtRef.current}
+        sessionConfig={session.config}
+        martinStage={session.martinStage}
         onViewHistory={() => {
           setStopSessionType(null);
           session.stopSession();
