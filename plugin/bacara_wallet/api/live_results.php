@@ -2,13 +2,15 @@
 /**
  * 로그인 회원의 실시간 바카라 결과 JSON
  *
- * GET table_name=MD2729&limit=120
+ * GET table_name=MD2729&limit=200
  *
  * - 현재 슈(shoe) 결과만 반환
  * - game_no 는 회차 카운터(1,2,3… 후 리셋). 최신 game_no 로 필터하면
  *   과거 슈의 같은 회차까지 섞이므로, 마지막 game_no=1 이후 id 구간을 사용
+ * - 슈가 limit 보다 길면 **최신** limit 건만 반환 (ASC LIMIT 는 과거만 잘라 냄)
  * - score account 는 live config 의 account 우선, 없으면 로그인 ID,
  *   그래도 없으면 awesome / 테이블 전체 fallback
+ *   (여러 계정에 데이터가 있으면 가장 id 가 더 최신인 계정 선택)
  */
 include_once dirname(__FILE__) . '/../../../common.php';
 
@@ -36,8 +38,8 @@ if (!preg_match('/^[A-Z0-9_-]{1,40}$/', $table_name)) {
     exit;
 }
 
-$limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 120;
-$limit = max(1, min(300, $limit));
+$limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 200;
+$limit = max(1, min(400, $limit));
 
 $live_cfg_file = G5_DATA_PATH . '/bacaraai-live.config.php';
 $live_link = null;
@@ -146,19 +148,27 @@ function bacara_live_shoe_start_clause($account_clause, $safe_table_name, $limit
             )) ";
 }
 
+/**
+ * 슈 구간에서 최신 limit 건을 ASC 로 반환.
+ * (과거: ORDER BY id ASC LIMIT — 슈가 길면 최신 경과가 잘림)
+ */
 function bacara_live_query_for_account($account, $safe_table_name, $limit, $use_live_cfg, $live_link, &$query_error)
 {
     $safe_account = bacara_live_escape($account, $use_live_cfg, $live_link);
     $account_clause = "account = '{$safe_account}'";
     $shoe_clause = bacara_live_shoe_start_clause($account_clause, $safe_table_name, $limit);
     $sql = " select id, account, table_name, game_no, result, detected_at
-               from `bacaraai`
-              where {$account_clause}
-                and table_name = '{$safe_table_name}'
-                and result in ('P', 'B', 'T')
-                and {$shoe_clause}
-              order by id asc
-              limit {$limit} ";
+               from (
+                    select id, account, table_name, game_no, result, detected_at
+                      from `bacaraai`
+                     where {$account_clause}
+                       and table_name = '{$safe_table_name}'
+                       and result in ('P', 'B', 'T')
+                       and {$shoe_clause}
+                     order by id desc
+                     limit {$limit}
+               ) as recent_shoe
+              order by id asc ";
     return bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, $query_error);
 }
 
@@ -189,6 +199,15 @@ function bacara_live_trim_to_current_shoe($rows)
     return array_values(array_slice($rows, $start));
 }
 
+function bacara_live_latest_id($rows)
+{
+    if (!is_array($rows) || count($rows) === 0) {
+        return 0;
+    }
+    $last = $rows[count($rows) - 1];
+    return isset($last['id']) ? (int) $last['id'] : 0;
+}
+
 $account_candidates = array();
 if (!empty($live_cfg['account'])) {
     $account_candidates[] = (string) $live_cfg['account'];
@@ -200,9 +219,10 @@ $account_candidates = array_values(array_unique(array_filter($account_candidates
 $rows = array();
 $query_error = '';
 $used_account = null;
+$best_latest_id = -1;
 
 foreach ($account_candidates as $candidate) {
-    $rows = bacara_live_query_for_account(
+    $candidate_rows = bacara_live_query_for_account(
         $candidate,
         $safe_table_name,
         $limit,
@@ -213,9 +233,14 @@ foreach ($account_candidates as $candidate) {
     if ($query_error !== '') {
         break;
     }
-    if (count($rows) > 0) {
+    if (count($candidate_rows) === 0) {
+        continue;
+    }
+    $candidate_latest = bacara_live_latest_id($candidate_rows);
+    if ($candidate_latest > $best_latest_id) {
+        $rows = $candidate_rows;
+        $best_latest_id = $candidate_latest;
         $used_account = $candidate;
-        break;
     }
 }
 
@@ -224,12 +249,16 @@ if ($query_error === '' && count($rows) === 0) {
     $account_clause = '1=1';
     $shoe_clause = bacara_live_shoe_start_clause($account_clause, $safe_table_name, $limit);
     $sql = " select id, account, table_name, game_no, result, detected_at
-               from `bacaraai`
-              where table_name = '{$safe_table_name}'
-                and result in ('P', 'B', 'T')
-                and {$shoe_clause}
-              order by id asc
-              limit {$limit} ";
+               from (
+                    select id, account, table_name, game_no, result, detected_at
+                      from `bacaraai`
+                     where table_name = '{$safe_table_name}'
+                       and result in ('P', 'B', 'T')
+                       and {$shoe_clause}
+                     order by id desc
+                     limit {$limit}
+               ) as recent_shoe
+              order by id asc ";
     $rows = bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, $query_error);
     if (count($rows) > 0) {
         $used_account = $rows[0]['account'];
