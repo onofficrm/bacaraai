@@ -184,6 +184,7 @@ export default function ChipBetStage({
 }: ChipBetStageProps) {
   const reduce = useReducedMotion();
   const localStackRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const stackRef = stackAnchorRef || localStackRef;
   const [highlight, setHighlight] = useState(false);
   const prevAmount = useRef(amount);
@@ -199,9 +200,12 @@ export default function ChipBetStage({
 
   const visibleStack = useMemo(() => stack.slice(-MAX_STACK), [stack]);
 
+  const stageRect = () => stageRef.current?.getBoundingClientRect();
+
   return (
     <div
-      className={`relative bg-zinc-950 border rounded-xl px-3 py-3 overflow-hidden ${borderClassName} ${
+      ref={stageRef}
+      className={`relative isolate bg-zinc-950 border rounded-xl px-3 py-3 overflow-hidden ${borderClassName} ${
         celebrating ? 'shadow-[0_0_28px_rgba(59,130,246,0.35)]' : ''
       }`}
     >
@@ -314,28 +318,39 @@ export default function ChipBetStage({
         </div>
       </div>
 
-      {/* flying chips portal layer (relative to stage) */}
+      {/* flying chips — stage 내부 absolute (탭/헤더 위로 뜨지 않음) */}
       <AnimatePresence>
-        {flyers.map((f) => (
-          <motion.div
-            key={f.id}
-            className="pointer-events-none fixed z-[80]"
-            style={{ left: 0, top: 0 }}
-            initial={{ x: f.fromX, y: f.fromY, scale: 1, opacity: 1, rotate: -20 }}
-            animate={{
-              x: f.toX,
-              y: f.toY,
-              scale: 0.85,
-              opacity: 1,
-              rotate: 12,
-            }}
-            exit={{ opacity: 0, scale: 0.4 }}
-            transition={{ duration: reduce ? 0.01 : 0.42, ease: [0.2, 0.8, 0.2, 1] }}
-            onAnimationComplete={() => onFlyerDone(f.id)}
-          >
-            <ChipDisc value={f.value} size={40} />
-          </motion.div>
-        ))}
+        {flyers.map((f) => {
+          const rect = stageRect();
+          const ox = rect?.left ?? 0;
+          const oy = rect?.top ?? 0;
+          return (
+            <motion.div
+              key={f.id}
+              className="pointer-events-none absolute z-[5]"
+              style={{ left: 0, top: 0 }}
+              initial={{
+                x: f.fromX - ox,
+                y: f.fromY - oy,
+                scale: 1,
+                opacity: 1,
+                rotate: -20,
+              }}
+              animate={{
+                x: f.toX - ox,
+                y: f.toY - oy,
+                scale: 0.85,
+                opacity: 1,
+                rotate: 12,
+              }}
+              exit={{ opacity: 0, scale: 0.4 }}
+              transition={{ duration: reduce ? 0.01 : 0.42, ease: [0.2, 0.8, 0.2, 1] }}
+              onAnimationComplete={() => onFlyerDone(f.id)}
+            >
+              <ChipDisc value={f.value} size={36} label="mini" />
+            </motion.div>
+          );
+        })}
       </AnimatePresence>
     </div>
   );

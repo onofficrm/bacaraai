@@ -641,14 +641,15 @@ export default function RightPanel({
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar overscroll-contain scroll-touch">
         <div className="p-3 sm:p-4 flex flex-col gap-3 pb-3">
           {/* Mode tabs — 베팅 진입을 최상단 */}
-          <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-zinc-900 border border-zinc-800 sticky top-0 z-[5]">
+          <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-zinc-950 border border-zinc-800 sticky top-0 z-40 shadow-[0_8px_16px_rgba(0,0,0,0.45)]">
             <button
               type="button"
               onClick={() => {
                 playSfx('ui');
+                setFlyers([]);
                 setPanelMode('manual');
               }}
-              className={`min-h-[48px] py-3 rounded-lg text-sm font-bold transition-colors touch-manipulation ${
+              className={`min-h-[48px] py-3 rounded-lg text-sm font-bold transition-colors touch-manipulation relative z-[1] ${
                 panelMode === 'manual'
                   ? 'bg-blue-600 text-white shadow'
                   : 'text-zinc-400 hover:text-zinc-200'
@@ -660,9 +661,10 @@ export default function RightPanel({
               type="button"
               onClick={() => {
                 playSfx('ui');
+                setFlyers([]);
                 setPanelMode('auto');
               }}
-              className={`min-h-[48px] py-3 rounded-lg text-sm font-bold transition-colors touch-manipulation ${
+              className={`min-h-[48px] py-3 rounded-lg text-sm font-bold transition-colors touch-manipulation relative z-[1] ${
                 panelMode === 'auto'
                   ? 'bg-amber-500 text-zinc-950 shadow'
                   : 'text-zinc-400 hover:text-zinc-200'
