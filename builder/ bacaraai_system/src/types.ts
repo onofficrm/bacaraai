@@ -190,4 +190,9 @@ export interface SessionConfig {
   amountMode: AmountProgressMode;
   /** amountMode=custom 일 때 단계별 금액 (index 0 = 1단계) */
   customSteps: number[];
+  /**
+   * 오토 연속 미적중 시 자동 일시정지 (0이면 끔).
+   * 패턴/AI 공통 안전장치.
+   */
+  maxConsecutiveAutoLosses: number;
 }

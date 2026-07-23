@@ -136,6 +136,7 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
   patternAmountScope: 'shared',
   amountMode: 'martin',
   customSteps: [],
+  maxConsecutiveAutoLosses: 4,
 };
 
 const STORAGE_KEY = 'bacara_session_state_v1';
@@ -175,6 +176,20 @@ function normalizeConfig(partial?: Partial<SessionConfig>): SessionConfig {
       ? 'per_case'
       : 'shared';
 
+  const maxConsecutiveAutoLosses = Math.max(
+    0,
+    Math.min(
+      20,
+      Math.floor(
+        Number(
+          partial?.maxConsecutiveAutoLosses ??
+            merged.maxConsecutiveAutoLosses ??
+            DEFAULT_SESSION_CONFIG.maxConsecutiveAutoLosses,
+        ) || 0,
+      ),
+    ),
+  );
+
   return {
     ...merged,
     patternCases: normalized.patternCases,
@@ -183,6 +198,7 @@ function normalizeConfig(partial?: Partial<SessionConfig>): SessionConfig {
     patternTableScope: scope,
     patternTableIds: scope === 'selected' ? ids : [],
     patternAmountScope: amountScope,
+    maxConsecutiveAutoLosses,
   };
 }
 

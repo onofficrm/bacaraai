@@ -553,6 +553,13 @@ export default function SessionModal({
                 max={480}
                 onChange={(v) => setNum('maxTime', v)}
               />
+              <NumberInput
+                label="오토 연속 미적중 시 정지 (0=끔)"
+                value={config.maxConsecutiveAutoLosses ?? 4}
+                min={0}
+                max={20}
+                onChange={(v) => setNum('maxConsecutiveAutoLosses', v)}
+              />
             </div>
           </div>
         </div>

@@ -119,6 +119,10 @@ export default function App() {
    * key = `${tableId}:${caseId}` → fingerprint
    */
   const patternConsumedRef = useRef<Map<string, string>>(new Map());
+  /** 테이블별 이미 오토 접수한 회차 키 (중복 placeBet 방지) */
+  const autoPlacedRoundRef = useRef<Map<string, string>>(new Map());
+  /** 오토 연속 미적중 카운트 */
+  const autoLossStreakRef = useRef(0);
   const handledBetResultIdRef = useRef<string | null>(null);
   /** 취소한 베팅과 같은 회차에서 오토베팅이 즉시 재진입하지 않도록 차단 */
   const cancelledAutoUntilRef = useRef<{
@@ -371,6 +375,8 @@ export default function App() {
         autoBetSignalRef.current = null;
         setPatternRunState(null);
         patternConsumedRef.current.clear();
+        autoPlacedRoundRef.current.clear();
+        autoLossStreakRef.current = 0;
         handledBetResultIdRef.current = null;
         cancelledAutoUntilRef.current = null;
       }
@@ -404,6 +410,26 @@ export default function App() {
         patternRunRef.current?.tableId === last.tableId
       ) {
         setPatternRunState(null);
+      }
+
+      // 오토 연속 미적중 → 자동 일시정지
+      if (last.source === 'auto') {
+        if (last.won === false) {
+          autoLossStreakRef.current += 1;
+        } else if (last.won === true) {
+          autoLossStreakRef.current = 0;
+        }
+        const maxLosses = session.config.maxConsecutiveAutoLosses ?? 0;
+        if (
+          maxLosses > 0 &&
+          autoLossStreakRef.current >= maxLosses &&
+          session.status === 'running'
+        ) {
+          pushTicker(`오토 ${autoLossStreakRef.current}연패 · 자동 정지`, 'risk');
+          playSfx('risk');
+          openStopReview('error', session.pnl);
+          return;
+        }
       }
     }
 
@@ -464,6 +490,8 @@ export default function App() {
         if (t.status === 'risk_blocked') continue;
         if (isCancelledRound(t)) continue;
         if (getBettingRemainingSecForTable(t) <= 0) continue;
+        const roundKey = roundKeyOf(t);
+        if (autoPlacedRoundRef.current.get(t.id) === roundKey) continue;
         const fresh = findFreshMatchingPatternCase(
           t.stats.recentResults || [],
           patternCases,
@@ -472,7 +500,7 @@ export default function App() {
         if (!fresh) continue;
         const { matched, fingerprint } = fresh;
         const betSide = matched.patternBetSide;
-        const signal = `${t.id}:${roundKeyOf(t)}:pattern:${matched.id}:${fingerprint}:${betSide}`;
+        const signal = `${t.id}:${roundKey}:pattern:${matched.id}:${fingerprint}:${betSide}`;
         if (autoBetSignalRef.current === signal) continue;
         candidate = {
           table: t,
@@ -494,7 +522,9 @@ export default function App() {
         if (!t.ai.autoBetAllowed) continue;
         const opinion = t.ai.finalOpinion;
         if (opinion !== 'PLAYER' && opinion !== 'BANKER') continue;
-        const signal = `${t.id}:${roundKeyOf(t)}:ai:${opinion}`;
+        const roundKey = roundKeyOf(t);
+        if (autoPlacedRoundRef.current.get(t.id) === roundKey) continue;
+        const signal = `${t.id}:${roundKey}:ai:${opinion}`;
         if (autoBetSignalRef.current === signal) continue;
         candidate = {
           table: t,
@@ -514,12 +544,29 @@ export default function App() {
     if (wallet.loggedIn && amount > wallet.balance) return;
 
     const target = candidate.table;
+    const roundKey = roundKeyOf(target);
+    // 회차 락 + 패턴 지문 선소비 (effect 중복 실행 / 더블 클릭성 레이스 방지)
+    if (autoPlacedRoundRef.current.get(target.id) === roundKey) return;
+    autoPlacedRoundRef.current.set(target.id, roundKey);
     autoBetSignalRef.current = candidate.signal;
+    let consumedKey: string | null = null;
+    if (
+      strategy === 'pattern' &&
+      candidate.fromPatternEntry &&
+      candidate.caseId &&
+      candidate.patternFingerprint
+    ) {
+      consumedKey = `${target.id}:${candidate.caseId}`;
+      patternConsumedRef.current.set(consumedKey, candidate.patternFingerprint);
+    }
+
     const waitForLive =
       target.live != null || target.id === 't1' || target.gameCode === 'MD2729';
     // 라이브 결과가 없는 테이블에는 오토베팅하지 않음 (시뮬레이션 방지)
     if (!waitForLive) {
       autoBetSignalRef.current = null;
+      autoPlacedRoundRef.current.delete(target.id);
+      if (consumedKey) patternConsumedRef.current.delete(consumedKey);
       return;
     }
 
@@ -567,14 +614,10 @@ export default function App() {
       .then((result) => {
         if (!result.ok) {
           autoBetSignalRef.current = null;
+          autoPlacedRoundRef.current.delete(target.id);
+          if (consumedKey) patternConsumedRef.current.delete(consumedKey);
         } else {
           if (strategy === 'pattern' && candidate.fromPatternEntry) {
-            if (candidate.caseId && candidate.patternFingerprint) {
-              patternConsumedRef.current.set(
-                `${target.id}:${candidate.caseId}`,
-                candidate.patternFingerprint,
-              );
-            }
             setPatternRunState({
               tableId: target.id,
               side: candidate.side,
