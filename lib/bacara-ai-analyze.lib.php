@@ -479,13 +479,15 @@ if (!function_exists('bacara_ai_parse_model_json')) {
 if (!function_exists('bacara_ai_prompt_messages')) {
     function bacara_ai_prompt_messages(array $stats)
     {
-        $system = 'You are a baccarat decision assistant for a shadow-mode monitor. '
+        $system = 'You are a baccarat decision assistant for a Korean user-facing monitor. '
             . 'Hands are nearly independent; do not claim guaranteed prediction. '
             . 'Use ONLY the provided statistics. Prefer WAIT when sample is thin, rates are close, or risks are high. '
             . 'Return ONLY compact JSON: {"side":"PLAYER|BANKER|WAIT","confidence":0-100,"abstain":true|false,"reasons":["..."],"risks":["..."]}. '
-            . 'Never bet on TIE. side=WAIT when abstain=true.';
+            . 'Never bet on TIE. side=WAIT when abstain=true. '
+            . 'IMPORTANT: Write every string in reasons and risks in natural Korean (한국어). Do not use English in reasons/risks. '
+            . 'Keep each reason under 40 Korean characters when possible.';
 
-        $user = "Analyze next hand (not Tie).\nSTATS_JSON:\n" . json_encode($stats, JSON_UNESCAPED_UNICODE);
+        $user = "다음 판을 분석하세요 (타이 제외).\nSTATS_JSON:\n" . json_encode($stats, JSON_UNESCAPED_UNICODE);
         return array($system, $user);
     }
 }
@@ -1389,7 +1391,17 @@ if (!function_exists('bacara_ai_analyze_table')) {
             if (!$force) {
                 $cached = bacara_ai_get_cached_prediction($table_name, $source_id);
                 if ($cached) {
-                    return bacara_ai_row_to_public($cached, $stats, true);
+                    // 이전 영문 근거 캐시는 버리고 한국어로 재분석
+                    $reason_blob = (isset($cached['gpt_reasons']) ? $cached['gpt_reasons'] : '')
+                        . ' ' . (isset($cached['claude_reasons']) ? $cached['claude_reasons'] : '')
+                        . ' ' . (isset($cached['gemini_reasons']) ? $cached['gemini_reasons'] : '');
+                    $needs_ko = (bool) preg_match(
+                        '/\b(Sample|Recent|PLAYER|BANKER|streak|rates|moderate|patterns|decisive|overall)\b/i',
+                        $reason_blob
+                    );
+                    if (!$needs_ko) {
+                        return bacara_ai_row_to_public($cached, $stats, true);
+                    }
                 }
             }
 
