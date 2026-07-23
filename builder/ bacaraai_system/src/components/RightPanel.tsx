@@ -853,32 +853,6 @@ export default function RightPanel({
                 </button>
               )}
 
-              {isManualSettling && manualPending && (
-                <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-3 text-center">
-                  <p className="text-sm font-bold text-sky-300 animate-pulse">직접 베팅 접수 완료</p>
-                  <p className="text-[12px] text-zinc-300 mt-1">
-                    {sideShortLabel(manualPending.side)} · {formatMoney(manualPending.amount)}
-                  </p>
-                  <p className="text-[11px] text-zinc-500 mt-1 mb-3">
-                    {bettingWindow.canCancelBet
-                      ? '다음 게임 결과를 기다리는 중 · 남은 시간 안에만 취소 가능'
-                      : '베팅 마감 · 취소할 수 없습니다. 다음 결과를 기다립니다.'}
-                  </p>
-                  <button
-                    type="button"
-                    disabled={cancelling || !bettingWindow.canCancelBet}
-                    onClick={() => void handleCancelBet(manualPending.id)}
-                    className="w-full min-h-[48px] py-3 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
-                  >
-                    {cancelling
-                      ? '취소 중…'
-                      : bettingWindow.canCancelBet
-                        ? '직접 베팅 취소 (금액 반환)'
-                        : '취소 불가 (시간 마감)'}
-                  </button>
-                </div>
-              )}
-
               <BettingCountdown
                 remainingSec={bettingWindow.remainingSec}
                 progress={bettingWindow.progress}
@@ -1062,21 +1036,12 @@ export default function RightPanel({
                       )}
                     </div>
 
-                    {/* Desktop actions (mobile uses sticky bar) */}
+                    {/* Desktop actions (mobile uses sticky bar) · 취소는 상단「진행 중 베팅」에서 */}
                     <div className="hidden xl:grid grid-cols-2 gap-2">
                       {isManualSettling && manualPending ? (
-                        <button
-                          type="button"
-                          disabled={cancelling || !bettingWindow.canCancelBet}
-                          onClick={() => void handleCancelBet(manualPending.id)}
-                          className="col-span-2 py-3 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold hover:bg-rose-500/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {cancelling
-                            ? '취소 중…'
-                            : bettingWindow.canCancelBet
-                              ? '직접 베팅 취소 (금액 반환)'
-                              : '취소 불가 (시간 마감)'}
-                        </button>
+                        <p className="col-span-2 py-2.5 text-center text-[12px] text-zinc-500">
+                          직접 베팅 진행 중 · 취소는 위「진행 중 베팅」에서
+                        </p>
                       ) : (
                         <>
                           <button
@@ -1606,23 +1571,9 @@ export default function RightPanel({
         </div>
         </div>
 
-        {/* Mobile/tablet sticky bet bar */}
-        {panelMode === 'manual' && !isRisk && !isDesktop && (
+        {/* Mobile/tablet sticky bet bar · 취소는 상단「진행 중 베팅」에서 */}
+        {panelMode === 'manual' && !isRisk && !isDesktop && !(isManualSettling && manualPending) && (
           <div className="shrink-0 border-t border-zinc-800 bg-zinc-950 px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            {isManualSettling && manualPending ? (
-              <button
-                type="button"
-                disabled={cancelling || !bettingWindow.canCancelBet}
-                onClick={() => void handleCancelBet(manualPending.id)}
-                className="w-full min-h-[52px] py-3.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-300 text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
-              >
-                {cancelling
-                  ? '취소 중…'
-                  : bettingWindow.canCancelBet
-                    ? '베팅 취소 · 금액 반환'
-                    : '취소 불가 (시간 마감)'}
-              </button>
-            ) : (
               <div className="flex flex-col gap-2">
                 <p className="text-[11px] text-center text-zinc-400">
                   <span className={`font-bold ${sideColor(selectedSide)}`}>{sideShortLabel(selectedSide)}</span>
@@ -1669,7 +1620,6 @@ export default function RightPanel({
                   </button>
                 </div>
               </div>
-            )}
           </div>
         )}
       </>
