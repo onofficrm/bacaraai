@@ -1,7 +1,13 @@
 <?php
-$sub_menu = (isset($_SERVER['SCRIPT_NAME']) && basename($_SERVER['SCRIPT_NAME']) === 'ai_keys.php')
-    ? '200960'
-    : '200950';
+$sub_menu = '200950';
+if (isset($_SERVER['SCRIPT_NAME'])) {
+    $script = basename($_SERVER['SCRIPT_NAME']);
+    if ($script === 'ai_keys.php') {
+        $sub_menu = '200960';
+    } elseif ($script === 'ai_usage.php') {
+        $sub_menu = '200970';
+    }
+}
 
 if (!defined('G5_IS_ADMIN')) {
     define('G5_IS_ADMIN', true);
@@ -68,6 +74,7 @@ if (!function_exists('bacara_wallet_admin_nav')) {
             'charge' => array('charge.php', '머니 충전'),
             'log'    => array('log.php', '충전 내역'),
             'ai'     => array('ai_keys.php', 'AI API 설정'),
+            'usage'  => array('ai_usage.php', 'AI API 요금'),
         );
 
         echo '<nav class="bw-tabs" aria-label="가상머니 관리 메뉴">';

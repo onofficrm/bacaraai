@@ -7,6 +7,9 @@ if (!defined('_GNUBOARD_')) {
 }
 
 include_once G5_LIB_PATH . '/bacara-ai-config.lib.php';
+if (is_file(G5_LIB_PATH . '/bacara-ai-usage.lib.php')) {
+    include_once G5_LIB_PATH . '/bacara-ai-usage.lib.php';
+}
 
 if (!function_exists('bacara_ai_prediction_table')) {
     function bacara_ai_prediction_table()
@@ -820,6 +823,7 @@ if (!function_exists('bacara_ai_decide_final')) {
 if (!function_exists('bacara_ai_parse_provider_response')) {
     function bacara_ai_parse_provider_response($provider, array $res, $ms)
     {
+        $tokens = array('input' => 0, 'output' => 0, 'total' => 0);
         if (!$res['ok']) {
             $label = $provider === 'openai' ? 'OpenAI' : ($provider === 'anthropic' ? 'Claude' : 'Gemini');
             return array(
@@ -828,9 +832,14 @@ if (!function_exists('bacara_ai_parse_provider_response')) {
                 'reasons' => array(),
                 'ms' => $ms,
                 'error' => $res['error'] ?: ($label . ' 호출 실패'),
+                'tokens' => $tokens,
+                'raw_json' => null,
             );
         }
         $json = json_decode($res['raw'], true);
+        if (function_exists('bacara_ai_usage_extract_tokens')) {
+            $tokens = bacara_ai_usage_extract_tokens($provider, $json);
+        }
         $text = '';
         if ($provider === 'openai') {
             if (isset($json['choices'][0]['message']['content'])) {
@@ -851,7 +860,15 @@ if (!function_exists('bacara_ai_parse_provider_response')) {
         }
         $parsed = bacara_ai_parse_model_json($text);
         if (!$parsed) {
-            return array('opinion' => 'WAIT', 'confidence' => 0, 'reasons' => array(), 'ms' => $ms, 'error' => '응답 파싱 실패');
+            return array(
+                'opinion' => 'WAIT',
+                'confidence' => 0,
+                'reasons' => array(),
+                'ms' => $ms,
+                'error' => '응답 파싱 실패',
+                'tokens' => $tokens,
+                'raw_json' => $json,
+            );
         }
         if ($parsed['abstain']) {
             $parsed['opinion'] = 'WAIT';
@@ -862,6 +879,8 @@ if (!function_exists('bacara_ai_parse_provider_response')) {
             'reasons' => $parsed['reasons'],
             'ms' => $ms,
             'error' => '',
+            'tokens' => $tokens,
+            'raw_json' => $json,
         );
     }
 }
@@ -872,7 +891,7 @@ if (!function_exists('bacara_ai_call_models_parallel')) {
      *
      * @return array{gpt:array,claude:array,gemini:array}
      */
-    function bacara_ai_call_models_parallel(array $stats)
+    function bacara_ai_call_models_parallel(array $stats, $purpose = 'analyze', $table_name = '')
     {
         $empty = array('opinion' => 'WAIT', 'confidence' => 0, 'reasons' => array('키 없음'), 'ms' => 0, 'error' => 'API 키 없음');
         $out = array('gpt' => $empty, 'claude' => $empty, 'gemini' => $empty);
@@ -880,15 +899,17 @@ if (!function_exists('bacara_ai_call_models_parallel')) {
 
         $jobs = array();
         if (bacara_ai_config_has_key('openai')) {
+            $model = bacara_ai_config_get('openai_model', 'gpt-4o-mini');
             $jobs['gpt'] = array(
                 'provider' => 'openai',
+                'model' => $model,
                 'url' => 'https://api.openai.com/v1/chat/completions',
                 'headers' => array(
                     'Content-Type: application/json',
                     'Authorization: Bearer ' . bacara_ai_config_get('openai_api_key'),
                 ),
                 'body' => json_encode(array(
-                    'model' => bacara_ai_config_get('openai_model', 'gpt-4o-mini'),
+                    'model' => $model,
                     'temperature' => 0.2,
                     'response_format' => array('type' => 'json_object'),
                     'messages' => array(
@@ -899,8 +920,10 @@ if (!function_exists('bacara_ai_call_models_parallel')) {
             );
         }
         if (bacara_ai_config_has_key('anthropic')) {
+            $model = bacara_ai_config_get('anthropic_model', 'claude-sonnet-4-20250514');
             $jobs['claude'] = array(
                 'provider' => 'anthropic',
+                'model' => $model,
                 'url' => 'https://api.anthropic.com/v1/messages',
                 'headers' => array(
                     'Content-Type: application/json',
@@ -908,7 +931,7 @@ if (!function_exists('bacara_ai_call_models_parallel')) {
                     'anthropic-version: 2023-06-01',
                 ),
                 'body' => json_encode(array(
-                    'model' => bacara_ai_config_get('anthropic_model', 'claude-sonnet-4-20250514'),
+                    'model' => $model,
                     'max_tokens' => 400,
                     'temperature' => 0.2,
                     'system' => $system,
@@ -922,6 +945,7 @@ if (!function_exists('bacara_ai_call_models_parallel')) {
             $model = bacara_ai_config_get('gemini_model', 'gemini-2.0-flash');
             $jobs['gemini'] = array(
                 'provider' => 'gemini',
+                'model' => $model,
                 'url' => 'https://generativelanguage.googleapis.com/v1beta/models/'
                     . rawurlencode($model)
                     . ':generateContent?key='
@@ -990,7 +1014,23 @@ if (!function_exists('bacara_ai_call_models_parallel')) {
                 'raw' => $raw === false || $raw === null ? '' : $raw,
                 'error' => $errno ? $error : ($code >= 400 ? 'HTTP ' . $code : ''),
             );
-            $out[$name] = bacara_ai_parse_provider_response($jobs[$name]['provider'], $res, $ms);
+            $parsed = bacara_ai_parse_provider_response($jobs[$name]['provider'], $res, $ms);
+            $out[$name] = $parsed;
+
+            if (function_exists('bacara_ai_usage_log')) {
+                $tok = isset($parsed['tokens']) ? $parsed['tokens'] : array('input' => 0, 'output' => 0);
+                bacara_ai_usage_log(array(
+                    'provider' => $jobs[$name]['provider'],
+                    'model' => isset($jobs[$name]['model']) ? $jobs[$name]['model'] : '',
+                    'purpose' => $purpose,
+                    'table_name' => $table_name,
+                    'input_tokens' => isset($tok['input']) ? $tok['input'] : 0,
+                    'output_tokens' => isset($tok['output']) ? $tok['output'] : 0,
+                    'ms' => $ms,
+                    'ok' => $parsed['error'] === '' ? 1 : 0,
+                    'error' => $parsed['error'],
+                ));
+            }
         }
         curl_multi_close($mh);
 
@@ -1353,7 +1393,7 @@ if (!function_exists('bacara_ai_analyze_table')) {
                 }
             }
 
-            $models = bacara_ai_call_models_parallel($stats);
+            $models = bacara_ai_call_models_parallel($stats, 'analyze', $table_name);
             $gpt = $models['gpt'];
             $claude = $models['claude'];
             $gemini = $models['gemini'];
@@ -1582,6 +1622,9 @@ if (!function_exists('bacara_ai_session_retrospective')) {
                     $body,
                     20
                 );
+                if (function_exists('bacara_ai_usage_log_http')) {
+                    bacara_ai_usage_log_http('openai', $model, 'session_review', $res);
+                }
                 if ($res['ok']) {
                     $json = json_decode($res['raw'], true);
                     $text = isset($json['choices'][0]['message']['content']) ? $json['choices'][0]['message']['content'] : '';
@@ -1614,6 +1657,9 @@ if (!function_exists('bacara_ai_session_retrospective')) {
                     $body,
                     20
                 );
+                if (function_exists('bacara_ai_usage_log_http')) {
+                    bacara_ai_usage_log_http('anthropic', $model, 'session_review', $res);
+                }
                 if ($res['ok']) {
                     $json = json_decode($res['raw'], true);
                     $text = '';
@@ -1644,6 +1690,9 @@ if (!function_exists('bacara_ai_session_retrospective')) {
                     'generationConfig' => array('temperature' => 0.3, 'responseMimeType' => 'application/json'),
                 ), JSON_UNESCAPED_UNICODE);
                 $res = bacara_ai_http_json($url, array('Content-Type: application/json'), $body, 20);
+                if (function_exists('bacara_ai_usage_log_http')) {
+                    bacara_ai_usage_log_http('gemini', $model, 'session_review', $res);
+                }
                 if ($res['ok']) {
                     $json = json_decode($res['raw'], true);
                     $text = isset($json['candidates'][0]['content']['parts'][0]['text'])

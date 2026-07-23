@@ -15,6 +15,9 @@ if (is_file(G5_LIB_PATH . '/bacara-ai-config.lib.php')) {
 if (is_file(G5_LIB_PATH . '/bacara-ai-analyze.lib.php')) {
     include_once G5_LIB_PATH . '/bacara-ai-analyze.lib.php';
 }
+if (is_file(G5_LIB_PATH . '/bacara-ai-usage.lib.php')) {
+    include_once G5_LIB_PATH . '/bacara-ai-usage.lib.php';
+}
 
 if (!function_exists('bacara_wallet_admin_menu')) {
     function bacara_wallet_admin_menu($admin_menu)
@@ -37,6 +40,12 @@ if (!function_exists('bacara_wallet_admin_menu')) {
             'AI API 설정',
             G5_PLUGIN_URL . '/bacara_wallet/admin/ai_keys.php',
             'bacara_ai_keys',
+        );
+        $admin_menu['menu200'][] = array(
+            '200970',
+            'AI API 요금',
+            G5_PLUGIN_URL . '/bacara_wallet/admin/ai_usage.php',
+            'bacara_ai_usage',
         );
 
         return $admin_menu;
@@ -99,4 +108,7 @@ if (function_exists('add_event') && function_exists('bacara_wallet_install_table
 }
 if (function_exists('add_event') && function_exists('bacara_ai_install_tables')) {
     add_event('common_header', 'bacara_ai_install_tables', 6, 0);
+}
+if (function_exists('add_event') && function_exists('bacara_ai_usage_install_tables')) {
+    add_event('common_header', 'bacara_ai_usage_install_tables', 7, 0);
 }
