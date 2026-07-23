@@ -5,7 +5,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Header from './components/Header';
-import TopNav, { ViewType } from './components/TopNav';
+import type { ViewType } from './components/TopNav';
 import SessionBar from './components/SessionBar';
 import SessionModal from './components/SessionModal';
 import TableCard from './components/TableCard';
@@ -637,9 +637,14 @@ export default function App() {
           setStopSessionPnl(session.pnl);
           openStopReview('losscut', session.pnl);
         }} 
+        activeView={activeView}
         activeViewLabel={VIEW_LABELS[activeView]}
         beginnerMode={beginnerMode}
         onOpenSettings={() => setActiveView('settings')}
+        onChangeView={(view) => {
+          playSfx('nav');
+          setActiveView(view);
+        }}
         sessionStatus={session.status}
         sessionMode={session.mode}
         sessionElapsedMs={session.elapsedMs}
@@ -661,13 +666,6 @@ export default function App() {
             return;
           }
           session.setMode(mode);
-        }}
-      />
-      <TopNav
-        activeView={activeView}
-        onChangeView={(view) => {
-          playSfx('nav');
-          setActiveView(view);
         }}
       />
       {activeView === 'multitable' && session.status === 'idle' && (

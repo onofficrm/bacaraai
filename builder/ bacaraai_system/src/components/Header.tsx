@@ -1,5 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Activity, LogOut, Maximize2, Minimize2, Settings, ShieldAlert, Wallet } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Activity,
+  CircleHelp,
+  FlaskConical,
+  LayoutGrid,
+  LineChart,
+  LogOut,
+  Maximize2,
+  Menu,
+  Minimize2,
+  Settings,
+  ShieldAlert,
+  Wallet,
+  X,
+} from 'lucide-react';
 import NotificationCenter from './NotificationCenter';
 import { PLATFORM_LINKS } from '../constants';
 import useWallet from '../hooks/useWallet';
@@ -13,6 +27,7 @@ import {
   type SessionStatus,
 } from '../hooks/useSession';
 import { getTodayBetStats } from '../utils/betHistory';
+import type { ViewType } from './TopNav';
 
 export type HeaderLiveStatus = {
   connected: boolean;
@@ -22,11 +37,26 @@ export type HeaderLiveStatus = {
   tableLabel: string;
 };
 
+const NAV_ITEMS: {
+  id: ViewType;
+  label: string;
+  hint: string;
+  icon: typeof LayoutGrid;
+}[] = [
+  { id: 'multitable', label: '라이브 테이블', hint: '플레이 화면', icon: LayoutGrid },
+  { id: 'lab', label: '규칙 연구실', hint: '패턴·규칙', icon: FlaskConical },
+  { id: 'insight', label: '데이터 및 기록', hint: '기록·통계', icon: LineChart },
+  { id: 'settings', label: '설정', hint: '사운드·연출', icon: Settings },
+  { id: 'help', label: '도움말', hint: '사용 안내', icon: CircleHelp },
+];
+
 interface HeaderProps {
   onEmergencyStop?: () => void;
+  activeView?: ViewType;
   activeViewLabel?: string;
   beginnerMode?: boolean;
   onOpenSettings?: () => void;
+  onChangeView?: (view: ViewType) => void;
   sessionStatus?: SessionStatus;
   sessionMode?: SessionMode | null;
   sessionElapsedMs?: number;
@@ -78,9 +108,11 @@ function relativeUpdateLabel(iso: string | null | undefined): string {
 
 export default function Header({
   onEmergencyStop,
+  activeView = 'multitable',
   activeViewLabel,
   beginnerMode = true,
   onOpenSettings,
+  onChangeView,
   sessionStatus = 'idle',
   sessionMode = null,
   sessionElapsedMs = 0,
@@ -91,8 +123,11 @@ export default function Header({
   const wallet = useWallet();
   const moneyText = new Intl.NumberFormat('ko-KR').format(wallet.balance) + '원';
   const [fullscreen, setFullscreen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const isActive = sessionStatus === 'running' || sessionStatus === 'paused';
+  const isLiveView = activeView === 'multitable';
 
   const today = useMemo(() => getTodayBetStats(), [nowTick, isActive]);
 
@@ -117,6 +152,22 @@ export default function Header({
     };
   }, []);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
   const toggleFullscreen = async () => {
     try {
       if (isFullscreenActive()) {
@@ -129,6 +180,12 @@ export default function Header({
     } catch {
       playSfx('error');
     }
+  };
+
+  const goView = (view: ViewType) => {
+    playSfx('nav');
+    onChangeView?.(view);
+    setMenuOpen(false);
   };
 
   const liveLabel = !liveStatus
@@ -153,8 +210,7 @@ export default function Header({
     : relativeUpdateLabel(liveStatus?.latestDetectedAt);
 
   return (
-    <header className="relative z-[200] min-h-[68px] h-auto py-2 bg-zinc-950 border-b border-zinc-800 flex items-center gap-3 px-3 sm:px-6 text-zinc-300 shrink-0">
-      {/* Left — 줄어들어도 한 글자씩 세로 줄바꿈되지 않도록 */}
+    <header className="relative z-[200] min-h-[68px] h-auto py-2 bg-zinc-950 border-b border-zinc-800 flex items-center gap-2 sm:gap-3 px-3 sm:px-6 text-zinc-300 shrink-0">
       <div className="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
         <div className="flex items-center gap-2 text-amber-500 shrink-0">
           <Activity size={22} className="animate-pulse shrink-0" />
@@ -163,11 +219,73 @@ export default function Header({
           </h1>
         </div>
 
-        {activeViewLabel && (
-          <div className="hidden lg:flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0">
-            <span className="text-zinc-500">현재:</span>
-            <span className="text-zinc-200">{activeViewLabel}</span>
-          </div>
+        <div className="relative shrink-0" ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => {
+              playSfx('ui');
+              setMenuOpen((v) => !v);
+            }}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+              menuOpen || !isLiveView
+                ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:border-zinc-600'
+            }`}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            title="화면 메뉴"
+          >
+            {menuOpen ? <X size={14} /> : <Menu size={14} />}
+            <span className="max-w-[6.5rem] truncate">{activeViewLabel || '메뉴'}</span>
+          </button>
+
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute left-0 top-[calc(100%+6px)] z-[220] w-[min(18rem,calc(100vw-1.5rem))] rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl p-1.5"
+            >
+              <p className="px-2.5 py-1.5 text-[10px] font-bold text-zinc-500 tracking-wide">
+                화면 이동
+              </p>
+              {NAV_ITEMS.map((item) => {
+                const Icon = item.icon;
+                const active = activeView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => goView(item.id)}
+                    className={`w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg text-left transition-colors ${
+                      active
+                        ? 'bg-amber-500/15 text-amber-300'
+                        : 'text-zinc-300 hover:bg-zinc-800'
+                    }`}
+                  >
+                    <Icon size={16} className="shrink-0 opacity-90" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold">{item.label}</span>
+                      <span className="block text-[10px] text-zinc-500">{item.hint}</span>
+                    </span>
+                    {active && (
+                      <span className="text-[9px] font-black text-amber-400/80">현재</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {!isLiveView && (
+          <button
+            type="button"
+            onClick={() => goView('multitable')}
+            className="shrink-0 inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold hover:bg-emerald-500/15"
+          >
+            <LayoutGrid size={13} />
+            라이브로
+          </button>
         )}
 
         <select
@@ -193,7 +311,6 @@ export default function Header({
         </select>
       </div>
 
-      {/* Center - System Status */}
       <div className="hidden xl:flex flex-1 min-w-0 items-center justify-center">
         <div className="flex items-center gap-3 2xl:gap-5 text-sm bg-zinc-900/50 border border-zinc-800/50 px-3 2xl:px-4 py-1.5 rounded-full max-w-full overflow-x-auto custom-scrollbar whitespace-nowrap">
           <div className="flex items-center gap-1.5 bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded text-xs font-bold border border-amber-500/30 shrink-0">
@@ -291,7 +408,6 @@ export default function Header({
         </div>
       </div>
 
-      {/* Right */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
         <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs sm:text-sm font-bold whitespace-nowrap">
           <Wallet size={14} className="shrink-0" />
@@ -338,7 +454,7 @@ export default function Header({
           <LogOut size={16} />
           <span className="hidden sm:inline">로그아웃</span>
         </a>
-        <button 
+        <button
           onClick={onEmergencyStop}
           className="flex items-center gap-2 bg-red-950/40 text-red-400 hover:bg-red-900/50 border border-red-900/50 px-4 py-2 rounded-lg font-medium text-sm transition-colors"
         >
