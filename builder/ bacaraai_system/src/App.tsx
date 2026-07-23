@@ -29,6 +29,7 @@ import TableToolbar, { SortOption, FilterOption } from './components/TableToolba
 import useBeginnerMode from './hooks/useBeginnerMode';
 import useSession from './hooks/useSession';
 import useLiveTable from './hooks/useLiveTable';
+import useCompactLayout from './hooks/useCompactLayout';
 import { getBettingRemainingSecForTable } from './hooks/useBettingWindow';
 import useWallet from './hooks/useWallet';
 import { installAudioUnlock, playSfx } from './audio/sfxEngine';
@@ -55,6 +56,7 @@ const VIEW_LABELS: Record<ViewType, string> = {
 export default function App() {
   const [activeView, setActiveView] = useState<ViewType>('multitable');
   const { beginnerMode, toggleBeginnerMode, setBeginnerMode } = useBeginnerMode();
+  const compact = useCompactLayout();
   const session = useSession();
   const wallet = useWallet();
   const availableBankroll = wallet.loggedIn
@@ -708,7 +710,7 @@ export default function App() {
       <main className="flex-1 min-h-0 flex overflow-hidden">
         {activeView === 'multitable' ? (
           <>
-            <div className="flex-1 min-h-0 p-3 sm:p-4 lg:p-6 overflow-y-auto overscroll-y-contain scroll-touch custom-scrollbar flex flex-col">
+            <div className="flex-1 min-h-0 p-2.5 sm:p-4 lg:p-6 overflow-y-auto overscroll-y-contain scroll-touch custom-scrollbar flex flex-col">
               <ScreenHelpBanner screen="multitable" beginnerMode={beginnerMode} />
               <TableToolbar 
                 sortBy={sortBy} 
@@ -718,7 +720,7 @@ export default function App() {
                 filterCounts={filterCounts} 
                 isAutoReordered={isAutoReordered} 
               />
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 content-start pb-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-6 content-start pb-8">
                 <AnimatePresence>
                   {filteredAndSortedTables.map(table => {
                     const autoWatching =
@@ -749,6 +751,7 @@ export default function App() {
                         isSelected={table.id === selectedTableId}
                         isFavorite={favorites.has(table.id)}
                         beginnerMode={beginnerMode}
+                        compact={compact}
                         autoWatching={autoWatching}
                         autoLockOn={Boolean(autoLockOn)}
                         autoHit={autoHitTableId === table.id}

@@ -15,6 +15,8 @@ interface TableCardProps {
   isSelected?: boolean;
   isFavorite?: boolean;
   beginnerMode?: boolean;
+  /** 좁은 화면: 패딩·부수 정보 축소 */
+  compact?: boolean;
   autoWatching?: boolean;
   autoLockOn?: boolean;
   autoHit?: boolean;
@@ -35,6 +37,7 @@ export default function TableCard({
   isSelected,
   isFavorite,
   beginnerMode = true,
+  compact = false,
   autoWatching = false,
   autoLockOn = false,
   autoHit = false,
@@ -126,7 +129,9 @@ export default function TableCard({
           : '';
 
   let cardClass =
-    'bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-all group rounded-xl p-3 sm:p-3.5 flex flex-col gap-2.5 relative cursor-pointer overflow-hidden ';
+    `bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-all group rounded-xl flex flex-col relative cursor-pointer overflow-hidden ${
+      compact ? 'p-2.5 gap-2' : 'p-3 sm:p-3.5 gap-2.5'
+    } `;
   if (isSelected) {
     cardClass +=
       ' ring-2 ring-amber-500 border-amber-500/60 shadow-lg shadow-amber-900/20 selected-pulse ';
@@ -272,11 +277,11 @@ export default function TableCard({
         </div>
       )}
 
-      <div className="relative z-[2] flex flex-col gap-2">
+      <div className={`relative z-[2] flex flex-col ${compact ? 'gap-1.5' : 'gap-2'}`}>
         <div className="flex justify-between items-start gap-2">
-          <div className="flex flex-col gap-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-bold text-zinc-100">{table.name}</h3>
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h3 className={`font-bold text-zinc-100 ${compact ? 'text-sm' : ''}`}>{table.name}</h3>
               {isSelected && (
                 <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded">
                   선택됨
@@ -287,11 +292,11 @@ export default function TableCard({
                   RULE
                 </span>
               )}
-              {!beginnerMode && (
+              {!beginnerMode && !compact && (
                 <span className="text-xs text-zinc-500 font-mono">{table.gameCode}</span>
               )}
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {table.live ? (
                 <>
                   <span
@@ -311,10 +316,15 @@ export default function TableCard({
                     />
                     {table.live.connected ? 'LIVE' : table.live.loading ? '연결 중' : '연결 오류'}
                   </span>
-                  <span className="text-[10px] font-mono text-zinc-500">
-                    {table.live.gameNo != null ? `G${table.live.gameNo} · ` : ''}
-                    {formatDetectedAt(table.live.latestDetectedAt)}
-                  </span>
+                  {!compact && (
+                    <span className="text-[10px] font-mono text-zinc-500">
+                      {table.live.gameNo != null ? `G${table.live.gameNo} · ` : ''}
+                      {formatDetectedAt(table.live.latestDetectedAt)}
+                    </span>
+                  )}
+                  {compact && table.live.gameNo != null && (
+                    <span className="text-[10px] font-mono text-zinc-500">G{table.live.gameNo}</span>
+                  )}
                   {betSec > 0 && (
                     <span className="text-[10px] font-mono font-bold text-sky-300 animate-pulse">
                       BET {betSec}s
@@ -350,24 +360,24 @@ export default function TableCard({
           </div>
 
           <div
-            className={`flex items-center gap-1 shrink-0 transition-opacity z-20 ${
-              isFavorite ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            className={`flex items-center gap-0.5 shrink-0 transition-opacity z-20 ${
+              compact || isFavorite ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             }`}
           >
             <button
               type="button"
-              className={`p-1.5 rounded transition-colors ${
+              className={`p-1.5 rounded transition-colors touch-manipulation ${
                 isFavorite
                   ? 'text-amber-400 bg-amber-400/10'
                   : 'text-zinc-500 hover:text-amber-400 hover:bg-zinc-800'
               }`}
               onClick={(e) => onToggleFavorite?.(table.id, e)}
             >
-              <Star size={16} fill={isFavorite ? 'currentColor' : 'none'} />
+              <Star size={compact ? 15 : 16} fill={isFavorite ? 'currentColor' : 'none'} />
             </button>
             <button
               type="button"
-              className="p-1.5 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+              className="p-1.5 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded transition-colors touch-manipulation"
               onClick={(e) => {
                 e.stopPropagation();
                 onZoom?.(table.id);
@@ -375,7 +385,7 @@ export default function TableCard({
               aria-label="상세 보기"
               title="상세 보기"
             >
-              <Maximize2 size={16} />
+              <Maximize2 size={compact ? 15 : 16} />
             </button>
           </div>
         </div>
@@ -389,7 +399,8 @@ export default function TableCard({
           analyzing={analyzing}
         />
 
-        {(table.ai.appliedRule || (!beginnerMode && table.ai.finalConfidence > 0)) && (
+        {!compact &&
+          (table.ai.appliedRule || (!beginnerMode && table.ai.finalConfidence > 0)) && (
           <p className="text-[10px] text-zinc-500 px-0.5 leading-snug truncate -mt-0.5">
             {table.ai.appliedRule
               ? table.ai.appliedRule
@@ -397,7 +408,7 @@ export default function TableCard({
           </p>
         )}
 
-        {!beginnerMode && (
+        {!beginnerMode && !compact && (
           <div className="hidden sm:flex justify-between items-center text-[10px] -mt-0.5">
             <div className="flex gap-1.5">
               <AiBadge model="GPT" opinion={table.ai.gpt.opinion} />
@@ -412,18 +423,18 @@ export default function TableCard({
         <Roadmap data={table.roadmap} results={table.stats.recentResults} size="sm" />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 relative z-[2]">
-        <div className="flex items-center gap-3 text-xs">
+      <div className={`grid grid-cols-2 relative z-[2] ${compact ? 'gap-1.5' : 'gap-2'}`}>
+        <div className={`flex items-center text-xs ${compact ? 'gap-2.5' : 'gap-3'}`}>
           <div className="flex flex-col">
-            <span className="text-zinc-500 text-[10px]">Player(P)</span>
+            <span className="text-zinc-500 text-[10px]">{compact ? 'P' : 'Player(P)'}</span>
             <span className="text-blue-400 font-mono font-bold">{table.stats.player}</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-zinc-500 text-[10px]">Banker(B)</span>
+            <span className="text-zinc-500 text-[10px]">{compact ? 'B' : 'Banker(B)'}</span>
             <span className="text-red-400 font-mono font-bold">{table.stats.banker}</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-zinc-500 text-[10px]">Tie(T)</span>
+            <span className="text-zinc-500 text-[10px]">{compact ? 'T' : 'Tie(T)'}</span>
             <span className="text-emerald-400 font-mono font-bold">{table.stats.tie}</span>
           </div>
         </div>
