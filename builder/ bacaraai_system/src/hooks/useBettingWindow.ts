@@ -19,7 +19,10 @@ export function getBettingRemainingSecForTable(
   if (Number.isNaN(detected)) {
     return 0;
   }
-  return Math.max(0, BET_WINDOW_SEC - Math.floor((now - detected) / 1000));
+  // 서버 시각이 앞서 있으면(타임존) 창이 비정상적으로 커지지 않게 클램프
+  const elapsed = Math.floor((now - detected) / 1000);
+  if (elapsed < 0) return BET_WINDOW_SEC;
+  return Math.max(0, Math.min(BET_WINDOW_SEC, BET_WINDOW_SEC - elapsed));
 }
 
 export type BettingWindowState = {

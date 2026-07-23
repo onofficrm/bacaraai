@@ -1531,7 +1531,7 @@ export default function RightPanel({
             </button>
             {roadmapOpen && (
               <div className="p-2 border-t border-zinc-800">
-                <Roadmap data={table.roadmap} />
+                <Roadmap data={table.roadmap} results={table.stats.recentResults} />
               </div>
             )}
           </div>

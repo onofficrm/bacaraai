@@ -168,7 +168,14 @@ export default function useLiveTable(
         if (cancelled) return;
 
         const rows = trimToCurrentShoe(
-          (data.results || []).filter((row) => ['P', 'B', 'T'].includes(row.result)),
+          (data.results || [])
+            .map((row) => ({
+              ...row,
+              result: String(row.result || '')
+                .trim()
+                .toUpperCase() as GameResult,
+            }))
+            .filter((row) => ['P', 'B', 'T'].includes(row.result)),
         );
         const latest = rows.length ? rows[rows.length - 1] : null;
         const nextGameNo = latest?.game_no ?? data.game_no ?? null;

@@ -409,7 +409,7 @@ export default function TableCard({
       </div>
 
       <div className="relative z-[2]">
-        <Roadmap data={table.roadmap} size="sm" />
+        <Roadmap data={table.roadmap} results={table.stats.recentResults} size="sm" />
       </div>
 
       <div className="grid grid-cols-2 gap-2 relative z-[2]">
