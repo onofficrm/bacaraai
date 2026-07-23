@@ -38,6 +38,7 @@ import {
   normalizePatternCases,
   patternSignalKey,
 } from './utils/patternMatch';
+import { resolveAutoTableEvent } from './utils/autoTableEvent';
 import { buildRiskCoachAlerts } from './utils/riskCoach';
 import {
   getCaseMartinStage,
@@ -104,6 +105,13 @@ export default function App() {
     tableId: string;
     side: 'PLAYER' | 'BANKER' | 'TIE';
     caseId?: string;
+    caseLabel?: string;
+  } | null>(null);
+  const [patternRun, setPatternRun] = useState<{
+    tableId: string;
+    side: 'PLAYER' | 'BANKER' | 'TIE';
+    caseId?: string;
+    caseLabel?: string;
   } | null>(null);
   const handledBetResultIdRef = useRef<string | null>(null);
   /** 취소한 베팅과 같은 회차에서 오토베팅이 즉시 재진입하지 않도록 차단 */
@@ -113,6 +121,8 @@ export default function App() {
     baselineResultCount: number;
   } | null>(null);
   const [autoHitTableId, setAutoHitTableId] = useState<string | null>(null);
+  /** 오토 이벤트 바 BET Ns 갱신 */
+  const [autoEventTick, setAutoEventTick] = useState(0);
   const [fxTickers, setFxTickers] = useState<
     { id: string; text: string; tone?: 'win' | 'risk' | 'info' }[]
   >([]);
@@ -128,9 +138,27 @@ export default function App() {
     setFxTickers((prev) => [...prev.slice(-4), { id, text, tone }]);
   };
 
+  const setPatternRunState = (
+    next: {
+      tableId: string;
+      side: 'PLAYER' | 'BANKER' | 'TIE';
+      caseId?: string;
+      caseLabel?: string;
+    } | null,
+  ) => {
+    patternRunRef.current = next;
+    setPatternRun(next);
+  };
+
   useEffect(() => {
     installAudioUnlock();
   }, []);
+
+  useEffect(() => {
+    if (session.status !== 'running' || session.mode !== 'live') return;
+    const id = window.setInterval(() => setAutoEventTick((n) => n + 1), 500);
+    return () => window.clearInterval(id);
+  }, [session.status, session.mode]);
 
   const riskAlerts = useMemo(
     () =>
@@ -267,7 +295,7 @@ export default function App() {
     if (session.status !== 'running' || session.mode !== 'live') {
       if (session.status === 'idle') {
         autoBetSignalRef.current = null;
-        patternRunRef.current = null;
+        setPatternRunState(null);
         handledBetResultIdRef.current = null;
         cancelledAutoUntilRef.current = null;
       }
@@ -301,7 +329,7 @@ export default function App() {
         last.source === 'auto' &&
         patternRunRef.current?.tableId === last.tableId
       ) {
-        patternRunRef.current = null;
+        setPatternRunState(null);
       }
     }
 
@@ -371,7 +399,7 @@ export default function App() {
             };
           }
         } else if (!t || t.status === 'risk_blocked') {
-          patternRunRef.current = null;
+          setPatternRunState(null);
         }
       }
 
@@ -481,11 +509,12 @@ export default function App() {
           autoBetSignalRef.current = null;
         } else {
           if (candidate.fromPatternEntry || strategy === 'pattern') {
-            patternRunRef.current = {
+            setPatternRunState({
               tableId: target.id,
               side: candidate.side,
               caseId: candidate.caseId,
-            };
+              caseLabel: candidate.caseLabel,
+            });
           }
           playSfx('betConfirm');
           pushTicker(
@@ -722,22 +751,38 @@ export default function App() {
               />
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-6 content-start pb-8">
                 <AnimatePresence>
-                  {filteredAndSortedTables.map(table => {
+                  {(() => {
+                    const autoRunning =
+                      session.status === 'running' && session.mode === 'live';
+                    const { patternCases } = normalizePatternCases(session.config);
+                    const patternCaseLabel =
+                      patternRun?.caseLabel ||
+                      patternCases.find((c) => c.id === patternRun?.caseId)?.label ||
+                      null;
+                    void autoEventTick;
+                    return filteredAndSortedTables.map((table) => {
                     const autoWatching =
-                      session.status === 'running' &&
-                      session.mode === 'live' &&
+                      autoRunning &&
                       (table.live != null || table.id === 't1' || table.gameCode === 'MD2729');
                     const hasAutoPending = session.pendingBets.some(
                       (b) => b.source === 'auto' && b.tableId === table.id,
                     );
+                    const autoEvent = resolveAutoTableEvent({
+                      table,
+                      autoRunning,
+                      strategy: session.config.strategy || 'ai',
+                      pendingBets: session.pendingBets,
+                      lastAutoResult: session.lastAutoResult,
+                      autoHit: autoHitTableId === table.id,
+                      patternCases,
+                      patternRunTableId: patternRun?.tableId ?? null,
+                      patternRunCaseLabel: patternCaseLabel,
+                    });
                     const autoLockOn =
                       autoWatching &&
                       (hasAutoPending ||
-                        patternRunRef.current?.tableId === table.id ||
-                        (table.ai.autoBetAllowed &&
-                          (table.ai.finalOpinion === 'PLAYER' ||
-                            table.ai.finalOpinion === 'BANKER') &&
-                          getBettingRemainingSecForTable(table) > 0));
+                        autoEvent?.kind === 'signal' ||
+                        patternRun?.tableId === table.id);
                     return (
                     <motion.div
                       key={table.id}
@@ -756,13 +801,15 @@ export default function App() {
                         autoLockOn={Boolean(autoLockOn)}
                         autoHit={autoHitTableId === table.id}
                         autoBetIn={hasAutoPending}
+                        autoEvent={autoEvent}
                         onSelect={handleTableSelect}
                         onZoom={setZoomedTableId}
                         onToggleFavorite={toggleFavorite}
                       />
                     </motion.div>
                     );
-                  })}
+                  });
+                  })()}
                   {filteredAndSortedTables.length === 0 && (
                     <div className="col-span-full flex flex-col items-center justify-center h-64 text-zinc-500 gap-2">
                       <Activity size={32} className="opacity-50" />
@@ -798,7 +845,7 @@ export default function App() {
                   session.pendingBets.find((b) => b.id === betId) ||
                   session.pendingBets[0];
                 if (pending?.source === 'auto') {
-                  patternRunRef.current = null;
+                  setPatternRunState(null);
                   cancelledAutoUntilRef.current = {
                     tableId: pending.tableId,
                     baselineLatestId: pending.baselineLatestId ?? 0,

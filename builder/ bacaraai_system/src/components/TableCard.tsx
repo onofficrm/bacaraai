@@ -9,6 +9,11 @@ import TableAiSlot from './TableAiSlot';
 import { getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
 import { useFxIntensity } from '../hooks/useFxIntensity';
 import { playSfx } from '../audio/sfxEngine';
+import {
+  autoEventBarClass,
+  autoEventCardClass,
+  type AutoTableEvent,
+} from '../utils/autoTableEvent';
 
 interface TableCardProps {
   table: TableData;
@@ -22,6 +27,8 @@ interface TableCardProps {
   autoHit?: boolean;
   /** 오토 베팅 접수됨 */
   autoBetIn?: boolean;
+  /** 오토베팅 실시간 이벤트 (테두리·이벤트 바) */
+  autoEvent?: AutoTableEvent | null;
   onSelect?: (id: string) => void;
   onZoom?: (id: string) => void;
   onToggleFavorite?: (id: string, e: React.MouseEvent) => void;
@@ -42,6 +49,7 @@ export default function TableCard({
   autoLockOn = false,
   autoHit = false,
   autoBetIn = false,
+  autoEvent = null,
   onSelect,
   onZoom,
   onToggleFavorite,
@@ -140,9 +148,13 @@ export default function TableCard({
     cardClass +=
       ' ring-2 ring-amber-500 border-amber-500/60 shadow-lg shadow-amber-900/20 selected-pulse ';
   }
-  if (ruleFocus) cardClass += ' border-amber-400/70 rule-focus-pulse scale-[1.01] ';
-  else if (table.status === 'risk_blocked') cardClass += ' border-red-900/50 ';
-  if (autoLockOn) cardClass += ' ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.35)] ';
+  if (ruleFocus && !autoEvent) cardClass += ' border-amber-400/70 rule-focus-pulse scale-[1.01] ';
+  else if (table.status === 'risk_blocked' && !autoEvent) cardClass += ' border-red-900/50 ';
+  if (autoEvent) {
+    cardClass += autoEventCardClass(autoEvent, reduced);
+  } else if (autoLockOn) {
+    cardClass += ' ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.35)] ';
+  }
   if (flashClass) cardClass += ` ${flashClass} `;
 
   const betProgress = betSec > 0 ? betSec / 30 : 0;
@@ -176,10 +188,17 @@ export default function TableCard({
         />
       )}
 
-      {autoWatching && enableRadar && !reduced && (
-        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl z-[1] opacity-35">
-          <div className="absolute inset-[-40%] auto-radar-sweep bg-[conic-gradient(from_0deg,transparent_0deg,rgba(56,189,248,0.35)_40deg,transparent_80deg)]" />
+      {autoWatching && enableRadar && !reduced && autoEvent?.kind === 'watching' && (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl z-[1] opacity-30">
+          <div className="absolute inset-[-40%] auto-radar-sweep bg-[conic-gradient(from_0deg,transparent_0deg,rgba(34,211,238,0.32)_40deg,transparent_80deg)]" />
         </div>
+      )}
+
+      {autoEvent && autoEvent.tone === 'ai' && !reduced && (
+        <div className="pointer-events-none absolute inset-0 z-[1] rounded-xl bg-[radial-gradient(ellipse_at_50%_0%,rgba(167,139,250,0.14),transparent_55%)]" />
+      )}
+      {autoEvent && autoEvent.tone === 'pattern' && !reduced && (
+        <div className="pointer-events-none absolute inset-0 z-[1] rounded-xl bg-[radial-gradient(ellipse_at_50%_0%,rgba(251,191,36,0.14),transparent_55%)]" />
       )}
 
       {/* 결과 히트 미니 파티클 */}
@@ -257,17 +276,17 @@ export default function TableCard({
         )}
       </AnimatePresence>
 
-      {autoLockOn && !autoBetIn && (
+      {autoLockOn && !autoBetIn && !autoEvent && (
         <div className="absolute top-2 right-10 z-10 text-[9px] font-black tracking-wider text-sky-300 bg-sky-500/15 border border-sky-400/40 px-1.5 py-0.5 rounded animate-pulse">
           LOCK ON
         </div>
       )}
 
-      {ruleFocus && !reduced && (
+      {ruleFocus && !reduced && !autoEvent && (
         <div className="pointer-events-none absolute inset-0 z-[1] rule-gold-wave rounded-xl" />
       )}
 
-      {table.status === 'risk_blocked' && (
+      {table.status === 'risk_blocked' && !autoEvent && (
         <div className="absolute inset-0 rounded-xl overflow-hidden bg-red-950/20 backdrop-blur-[1px] z-10 flex items-center justify-center">
           <motion.div
             className="bg-zinc-900 border border-red-900 text-red-400 px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 shadow-lg"
@@ -282,6 +301,52 @@ export default function TableCard({
       )}
 
       <div className={`relative z-[2] flex flex-col ${compact ? 'gap-1.5' : 'gap-2'}`}>
+        <AnimatePresence mode="wait">
+          {autoEvent && (
+            <motion.div
+              key={`${autoEvent.kind}-${autoEvent.label}`}
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -2 }}
+              transition={{ duration: 0.18 }}
+              className={`rounded-lg border px-2 py-1 flex items-center gap-1.5 min-w-0 ${autoEventBarClass(autoEvent.tone)}`}
+            >
+              {autoEvent.badge && (
+                <span className="shrink-0 text-[9px] font-black tracking-wide px-1 py-0.5 rounded bg-black/25 border border-white/10">
+                  {autoEvent.badge}
+                </span>
+              )}
+              <span className="min-w-0 flex-1 text-[10px] sm:text-[11px] font-bold truncate leading-tight">
+                {autoEvent.label}
+              </span>
+              {typeof autoEvent.betSec === 'number' && autoEvent.betSec > 0 && (
+                <span
+                  className={`shrink-0 font-mono tabular-nums text-[10px] font-black ${
+                    autoEvent.betSec <= 10 ? 'animate-pulse' : ''
+                  }`}
+                >
+                  {autoEvent.betSec}s
+                </span>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {autoEvent && typeof autoEvent.progress === 'number' && autoEvent.progress > 0 && (
+          <div className="h-0.5 rounded-full bg-zinc-950/80 overflow-hidden -mt-1">
+            <div
+              className={`h-full rounded-full transition-[width] duration-200 ease-linear ${
+                autoEvent.tone === 'pattern'
+                  ? 'bg-amber-400'
+                  : autoEvent.tone === 'ai'
+                    ? 'bg-violet-400'
+                    : 'bg-sky-400'
+              }`}
+              style={{ width: `${Math.max(4, Math.round(autoEvent.progress * 100))}%` }}
+            />
+          </div>
+        )}
+
         <div className="flex justify-between items-start gap-2">
           <div className="flex flex-col gap-0.5 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -518,6 +583,42 @@ export default function TableCard({
         @keyframes streakBreak {
           0% { transform: scale(1) rotate(0); opacity: 1; }
           100% { transform: scale(0.4) rotate(-12deg); opacity: 0; }
+        }
+        .auto-event-pulse-ai {
+          animation: autoEventPulseAi 1.8s ease-in-out infinite;
+        }
+        @keyframes autoEventPulseAi {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(167,139,250,0.2); }
+          50% { box-shadow: 0 0 20px 2px rgba(167,139,250,0.35); }
+        }
+        .auto-event-pulse-pattern {
+          animation: autoEventPulsePattern 1.8s ease-in-out infinite;
+        }
+        @keyframes autoEventPulsePattern {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.22); }
+          50% { box-shadow: 0 0 22px 2px rgba(251,191,36,0.4); }
+        }
+        .auto-event-pulse-pending {
+          animation: autoEventPulsePending 1.4s ease-in-out infinite;
+        }
+        @keyframes autoEventPulsePending {
+          0%, 100% { box-shadow: 0 0 12px rgba(56,189,248,0.25); }
+          50% { box-shadow: 0 0 24px rgba(56,189,248,0.45); }
+        }
+        .auto-event-pulse-hit {
+          animation: autoEventPulseHit 0.9s ease-out;
+        }
+        @keyframes autoEventPulseHit {
+          0% { box-shadow: 0 0 0 0 rgba(52,211,153,0.5); }
+          100% { box-shadow: 0 0 24px rgba(52,211,153,0.35); }
+        }
+        .auto-event-shake {
+          animation: autoEventShake 0.45s ease-out;
+        }
+        @keyframes autoEventShake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-3px); }
+          75% { transform: translateX(3px); }
         }
       `}</style>
     </div>
