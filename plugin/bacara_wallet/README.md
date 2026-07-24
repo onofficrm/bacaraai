@@ -32,6 +32,9 @@ AI API: `/plugin/bacara_wallet/admin/ai_keys.php`
 
 ## DB
 - `g5_bacara_wallet` — 잔액
-- `g5_bacara_wallet_log` — 변동 로그
+- `g5_bacara_wallet_log` — 변동 로그 (`client_key` UNIQUE per mb_id · 베팅 place/settle/cancel 멱등)
 
-그누보드 포인트(`mb_point`)와 분리되어 있습니다.
+## 베팅 API idempotency
+- `POST /plugin/bacara_wallet/api/bet.php` — `client_key` 필수
+- 동일 `mb_id`+`client_key` 재요청 시 잔액 재차감/재입금 없이 `ok:true, idempotent:true`
+- 잔액 갱신은 트랜잭션 + `SELECT … FOR UPDATE`

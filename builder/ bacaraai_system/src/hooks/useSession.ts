@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionConfig } from '../types';
 import {
+  cancelClientKey,
   emitWalletBalance,
+  makeWalletClientKey,
+  settleClientKey,
   walletCancelBet,
   walletPlaceBet,
   walletSettleBet,
@@ -38,6 +41,8 @@ export type PendingBet = {
   placedAt: number;
   /** 직접 베팅 / 오토베팅 구분 — 동시에 각각 진행·표시 가능 */
   source: BetSource;
+  /** place 시 사용한 서버 idempotency 키 */
+  clientKey: string;
   /** 패턴 경우별 금액·마틴 추적용 */
   patternCaseId?: string | null;
   /** 라이브 테이블: 베팅 시점의 마지막 결과 id (이후 더 큰 id 가 오면 정산) */
@@ -455,6 +460,8 @@ export default function useSession() {
   const onCutRef = useRef<((type: 'wincut' | 'losscut', pnl: number) => void) | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
+  /** source별 place 진행 중 락 (await 전 레이스 방지) */
+  const placeInFlightRef = useRef<Set<BetSource>>(new Set());
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -649,6 +656,7 @@ export default function useSession() {
       source: pending.source,
       round: pending.historyMeta?.round,
       shoeNumber: pending.historyMeta?.shoeNumber || pending.historyMeta?.gameCode,
+      clientKey: settleClientKey(pending.id),
     }).then((res) => {
       if (res.ok && typeof res.balance === 'number') {
         emitWalletBalance(res.balance);
@@ -700,6 +708,15 @@ export default function useSession() {
             : '직접 베팅 결과를 확인 중입니다.',
       };
     }
+    if (placeInFlightRef.current.has(resolvedSource)) {
+      return {
+        ok: false,
+        error:
+          resolvedSource === 'auto'
+            ? '오토베팅을 접수하는 중입니다.'
+            : '직접 베팅을 접수하는 중입니다.',
+      };
+    }
     if (input.side !== 'PLAYER' && input.side !== 'BANKER' && input.side !== 'TIE') {
       return { ok: false, error: 'Player, Banker, Tie 중 하나를 선택해 주세요.' };
     }
@@ -735,14 +752,22 @@ export default function useSession() {
       }
     }
 
-    const walletRes = await walletPlaceBet({
-      amount,
-      side: input.side,
-      tableName: input.tableName,
-      source: resolvedSource,
-      round: input.historyMeta?.round,
-      shoeNumber: input.historyMeta?.shoeNumber || input.historyMeta?.gameCode,
-    });
+    const clientKey = makeWalletClientKey(`p_${resolvedSource}`);
+    placeInFlightRef.current.add(resolvedSource);
+    let walletRes;
+    try {
+      walletRes = await walletPlaceBet({
+        amount,
+        side: input.side,
+        tableName: input.tableName,
+        source: resolvedSource,
+        round: input.historyMeta?.round,
+        shoeNumber: input.historyMeta?.shoeNumber || input.historyMeta?.gameCode,
+        clientKey,
+      });
+    } finally {
+      placeInFlightRef.current.delete(resolvedSource);
+    }
     if (!walletRes.ok) {
       return {
         ok: false,
@@ -776,6 +801,7 @@ export default function useSession() {
       amount,
       placedAt: Date.now(),
       source: resolvedSource,
+      clientKey,
       patternCaseId: input.patternCaseId || null,
       baselineLatestId: useLiveSettle ? (baselineLatestId ?? 0) : null,
       baselineResultCount:
@@ -809,6 +835,7 @@ export default function useSession() {
           amount: pending.amount,
           tableName: pending.tableName,
           source: pending.source,
+          clientKey: cancelClientKey(pending.id),
         }).then((res) => {
           if (res.ok && typeof res.balance === 'number') {
             emitWalletBalance(res.balance);
@@ -905,6 +932,7 @@ export default function useSession() {
         amount: pending.amount,
         tableName: pending.tableName,
         source: pending.source,
+        clientKey: cancelClientKey(pending.id),
       });
       if (res.ok && typeof res.balance === 'number') {
         emitWalletBalance(res.balance);

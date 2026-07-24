@@ -8,7 +8,26 @@ type BetApiResponse = {
   balance?: number;
   credit?: number;
   pnl?: number;
+  idempotent?: boolean;
 };
+
+/** place/settle/cancel 공통 idempotency 키 (서버 UNIQUE mb_id+client_key) */
+export function makeWalletClientKey(prefix: string): string {
+  const rand =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().replace(/-/g, '')
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+  return `${prefix}_${rand}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+}
+
+/** pending.id 기반 결정적 키 (재시도·이중 호출 안전) */
+export function settleClientKey(pendingId: string): string {
+  return `s_${pendingId}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+}
+
+export function cancelClientKey(pendingId: string): string {
+  return `c_${pendingId}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+}
 
 async function postBet(body: Record<string, unknown>): Promise<BetApiResponse> {
   const response = await fetch(PLATFORM_LINKS.walletBet, {
@@ -39,6 +58,7 @@ export async function walletPlaceBet(input: {
   source?: 'manual' | 'auto';
   round?: number;
   shoeNumber?: string;
+  clientKey: string;
 }): Promise<BetApiResponse> {
   const source = input.source === 'auto' ? 'auto' : 'manual';
   return postBet({
@@ -49,6 +69,7 @@ export async function walletPlaceBet(input: {
     source,
     round: typeof input.round === 'number' ? input.round : 0,
     shoe: input.shoeNumber || '-',
+    client_key: input.clientKey,
   });
 }
 
@@ -61,6 +82,7 @@ export async function walletSettleBet(input: {
   source?: 'manual' | 'auto';
   round?: number;
   shoeNumber?: string;
+  clientKey: string;
 }): Promise<BetApiResponse> {
   const source = input.source === 'auto' ? 'auto' : 'manual';
   return postBet({
@@ -72,6 +94,7 @@ export async function walletSettleBet(input: {
     source,
     round: typeof input.round === 'number' ? input.round : 0,
     shoe: input.shoeNumber || '-',
+    client_key: input.clientKey,
   });
 }
 
@@ -80,6 +103,7 @@ export async function walletCancelBet(input: {
   amount: number;
   tableName: string;
   source?: 'manual' | 'auto';
+  clientKey: string;
 }): Promise<BetApiResponse> {
   const source = input.source === 'auto' ? 'auto' : 'manual';
   return postBet({
@@ -87,6 +111,7 @@ export async function walletCancelBet(input: {
     amount: input.amount,
     table_name: input.tableName,
     source,
+    client_key: input.clientKey,
   });
 }
 

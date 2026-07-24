@@ -8,6 +8,7 @@
  *   side=PLAYER|BANKER|TIE   (settle)
  *   outcome=P|B|T           (settle)
  *   table_name=...
+ *   client_key=...          (필수 · 동일 키 재요청은 잔액 변동 없음)
  *   note=...
  */
 include_once dirname(__FILE__) . '/../../../common.php';
@@ -60,6 +61,11 @@ if ($shoe === '') {
     $shoe = '-';
 }
 
+$client_key_raw = isset($json['client_key'])
+    ? (string) $json['client_key']
+    : (isset($_POST['client_key']) ? (string) $_POST['client_key'] : '');
+$client_key = bacara_wallet_normalize_client_key($client_key_raw);
+
 $mb_id = $member['mb_id'];
 bacara_wallet_install_tables();
 
@@ -107,7 +113,20 @@ function bacara_bet_net_pnl($side, $amount, $outcome)
     return $credit - (int) $amount;
 }
 
+function bacara_bet_require_client_key($client_key)
+{
+    if ($client_key === '') {
+        http_response_code(400);
+        echo json_encode(array(
+            'ok' => false,
+            'message' => 'client_key가 필요합니다. (중복 차감 방지)',
+        ), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
 if ($action === 'place') {
+    bacara_bet_require_client_key($client_key);
     if ($amount <= 0) {
         http_response_code(400);
         echo json_encode(array('ok' => false, 'message' => '베팅 금액을 입력해 주세요.'), JSON_UNESCAPED_UNICODE);
@@ -118,7 +137,7 @@ if ($action === 'place') {
     $content = $note !== ''
         ? $note
         : ('PLACE|' . $source . '|' . $label . '|' . ($side !== '' ? $side : 'WAIT') . '|' . $amount . '|' . $round . '|' . $shoe);
-    $result = bacara_wallet_adjust($mb_id, -$amount, 'bet', $content, $mb_id);
+    $result = bacara_wallet_adjust($mb_id, -$amount, 'bet', $content, $mb_id, $client_key);
 
     if (empty($result['ok'])) {
         http_response_code(400);
@@ -136,12 +155,16 @@ if ($action === 'place') {
         'amount' => $amount,
         'balance' => (int) $result['balance'],
         'balance_text' => bacara_wallet_format($result['balance']),
-        'message' => '베팅금이 차감되었습니다.',
+        'idempotent' => !empty($result['idempotent']),
+        'message' => !empty($result['idempotent'])
+            ? '이미 접수된 베팅입니다.'
+            : '베팅금이 차감되었습니다.',
     ), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 if ($action === 'cancel') {
+    bacara_bet_require_client_key($client_key);
     if ($amount <= 0) {
         http_response_code(400);
         echo json_encode(array('ok' => false, 'message' => '반환 금액이 없습니다.'), JSON_UNESCAPED_UNICODE);
@@ -150,7 +173,7 @@ if ($action === 'cancel') {
 
     $label = $table_name !== '' ? $table_name : '테이블';
     $content = $note !== '' ? $note : ('CANCEL|' . $source . '|' . $label . '|' . $amount);
-    $result = bacara_wallet_adjust($mb_id, $amount, 'bet_cancel', $content, $mb_id);
+    $result = bacara_wallet_adjust($mb_id, $amount, 'bet_cancel', $content, $mb_id, $client_key);
 
     if (empty($result['ok'])) {
         http_response_code(400);
@@ -168,12 +191,16 @@ if ($action === 'cancel') {
         'amount' => $amount,
         'balance' => (int) $result['balance'],
         'balance_text' => bacara_wallet_format($result['balance']),
-        'message' => '베팅금이 반환되었습니다.',
+        'idempotent' => !empty($result['idempotent']),
+        'message' => !empty($result['idempotent'])
+            ? '이미 취소 처리된 요청입니다.'
+            : '베팅금이 반환되었습니다.',
     ), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 if ($action === 'settle') {
+    bacara_bet_require_client_key($client_key);
     if ($amount <= 0) {
         http_response_code(400);
         echo json_encode(array('ok' => false, 'message' => '정산 금액이 올바르지 않습니다.'), JSON_UNESCAPED_UNICODE);
@@ -201,7 +228,7 @@ if ($action === 'settle') {
     }
 
     // 패배(credit=0)도 반드시 로그에 남겨 게임 기록에 표시
-    $result = bacara_wallet_adjust($mb_id, $credit, $kind, $content, $mb_id);
+    $result = bacara_wallet_adjust($mb_id, $credit, $kind, $content, $mb_id, $client_key);
     if (empty($result['ok'])) {
         http_response_code(500);
         echo json_encode(array(
@@ -222,9 +249,12 @@ if ($action === 'settle') {
         'pnl' => $pnl,
         'balance' => (int) $result['balance'],
         'balance_text' => bacara_wallet_format($result['balance']),
-        'message' => $credit > 0
-            ? ('정산 입금 ' . number_format($credit) . '원')
-            : '패배 — 추가 입금 없음',
+        'idempotent' => !empty($result['idempotent']),
+        'message' => !empty($result['idempotent'])
+            ? '이미 정산된 요청입니다.'
+            : ($credit > 0
+                ? ('정산 입금 ' . number_format($credit) . '원')
+                : '패배 — 추가 입금 없음'),
     ), JSON_UNESCAPED_UNICODE);
     exit;
 }

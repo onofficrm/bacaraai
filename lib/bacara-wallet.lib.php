@@ -45,14 +45,69 @@ if (!function_exists('bacara_wallet_install_tables')) {
                 `balance_after` bigint NOT NULL DEFAULT 0,
                 `kind` varchar(20) NOT NULL DEFAULT 'grant',
                 `content` varchar(255) NOT NULL DEFAULT '',
+                `client_key` varchar(64) NULL DEFAULT NULL,
                 `admin_mb_id` varchar(20) NOT NULL DEFAULT '',
                 `created_at` datetime NOT NULL,
                 PRIMARY KEY (`id`),
                 KEY `mb_id` (`mb_id`),
-                KEY `created_at` (`created_at`)
+                KEY `created_at` (`created_at`),
+                UNIQUE KEY `uq_mb_client_key` (`mb_id`, `client_key`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ",
             false
         );
+
+        // 기존 설치 마이그레이션: client_key + 유니크
+        $col = sql_fetch(" SHOW COLUMNS FROM `{$log}` LIKE 'client_key' ");
+        if (empty($col['Field'])) {
+            sql_query(
+                " ALTER TABLE `{$log}`
+                    ADD `client_key` varchar(64) NULL DEFAULT NULL AFTER `content` ",
+                false
+            );
+        }
+        $idx = sql_fetch(" SHOW INDEX FROM `{$log}` WHERE Key_name = 'uq_mb_client_key' ");
+        if (empty($idx['Key_name'])) {
+            sql_query(
+                " ALTER TABLE `{$log}`
+                    ADD UNIQUE KEY `uq_mb_client_key` (`mb_id`, `client_key`) ",
+                false
+            );
+        }
+    }
+}
+
+if (!function_exists('bacara_wallet_normalize_client_key')) {
+    /**
+     * 베팅 idempotency 키 (영문·숫자·_·- 만, 최대 64자)
+     */
+    function bacara_wallet_normalize_client_key($key)
+    {
+        $key = substr(preg_replace('/[^a-zA-Z0-9_\-]/', '', (string) $key), 0, 64);
+        return $key;
+    }
+}
+
+if (!function_exists('bacara_wallet_find_log_by_client_key')) {
+    /**
+     * @return array|null
+     */
+    function bacara_wallet_find_log_by_client_key($mb_id, $client_key)
+    {
+        $mb_id = trim((string) $mb_id);
+        $client_key = bacara_wallet_normalize_client_key($client_key);
+        if ($mb_id === '' || $client_key === '') {
+            return null;
+        }
+        $log = bacara_wallet_log_table();
+        $mb_esc = sql_real_escape_string($mb_id);
+        $key_esc = sql_real_escape_string($client_key);
+        $row = sql_fetch(
+            " select id, delta, balance_after, kind, content, created_at
+                from `{$log}`
+               where mb_id = '{$mb_esc}' and client_key = '{$key_esc}'
+               limit 1 "
+        );
+        return !empty($row['id']) ? $row : null;
     }
 }
 
@@ -102,12 +157,13 @@ if (!function_exists('bacara_wallet_adjust')) {
     /**
      * @param string $mb_id
      * @param int    $delta 양수=충전, 음수=차감
-     * @param string $kind  grant|set|adjust|session
+     * @param string $kind  grant|set|adjust|session|bet|bet_cancel|bet_win|bet_lose
      * @param string $content
      * @param string $admin_mb_id
-     * @return array{ok:bool,balance:int,message:string}
+     * @param string $client_key 동일 키 재요청 시 잔액 변동 없이 성공 반환 (idempotent)
+     * @return array{ok:bool,balance:int,message:string,idempotent?:bool}
      */
-    function bacara_wallet_adjust($mb_id, $delta, $kind = 'grant', $content = '', $admin_mb_id = '')
+    function bacara_wallet_adjust($mb_id, $delta, $kind = 'grant', $content = '', $admin_mb_id = '', $client_key = '')
     {
         global $member;
 
@@ -117,6 +173,7 @@ if (!function_exists('bacara_wallet_adjust')) {
         if ($kind === '') {
             $kind = 'grant';
         }
+        $client_key = bacara_wallet_normalize_client_key($client_key);
 
         if ($mb_id === '') {
             return array('ok' => false, 'balance' => 0, 'message' => '회원 아이디가 없습니다.');
@@ -128,6 +185,19 @@ if (!function_exists('bacara_wallet_adjust')) {
 
         bacara_wallet_ensure_row($mb_id);
 
+        // 트랜잭션 밖 선조회 (빠른 경로)
+        if ($client_key !== '') {
+            $existing = bacara_wallet_find_log_by_client_key($mb_id, $client_key);
+            if ($existing) {
+                return array(
+                    'ok' => true,
+                    'balance' => bacara_wallet_get_balance($mb_id),
+                    'message' => '이미 처리된 요청입니다.',
+                    'idempotent' => true,
+                );
+            }
+        }
+
         $table = bacara_wallet_table();
         $log = bacara_wallet_log_table();
         $mb_esc = sql_real_escape_string($mb_id);
@@ -135,33 +205,78 @@ if (!function_exists('bacara_wallet_adjust')) {
         $kind_esc = sql_real_escape_string($kind);
         $content_esc = sql_real_escape_string(cut_str(strip_tags((string) $content), 200));
         $now = G5_TIME_YMDHIS;
+        $client_sql = $client_key === '' ? 'NULL' : ("'" . sql_real_escape_string($client_key) . "'");
 
-        $row = sql_fetch(" select balance from `{$table}` where mb_id = '{$mb_esc}' ");
-        $before = isset($row['balance']) ? (int) $row['balance'] : 0;
+        sql_query(' START TRANSACTION ', false);
+
+        $row = sql_fetch(" select balance from `{$table}` where mb_id = '{$mb_esc}' FOR UPDATE ");
+        if (!$row) {
+            sql_query(' ROLLBACK ', false);
+            return array('ok' => false, 'balance' => 0, 'message' => '지갑을 찾을 수 없습니다.');
+        }
+
+        if ($client_key !== '') {
+            $existing = bacara_wallet_find_log_by_client_key($mb_id, $client_key);
+            if ($existing) {
+                sql_query(' COMMIT ', false);
+                return array(
+                    'ok' => true,
+                    'balance' => (int) $row['balance'],
+                    'message' => '이미 처리된 요청입니다.',
+                    'idempotent' => true,
+                );
+            }
+        }
+
+        $before = (int) $row['balance'];
         $after = $before + $delta;
 
         if ($after < 0) {
+            sql_query(' ROLLBACK ', false);
             return array('ok' => false, 'balance' => $before, 'message' => '잔액이 부족합니다.');
         }
 
-        sql_query(
+        $ok_upd = sql_query(
             " update `{$table}` set balance = '{$after}', updated_at = '{$now}' where mb_id = '{$mb_esc}' ",
             false
         );
-
-        sql_query(
+        $ok_ins = sql_query(
             " insert into `{$log}`
                 set mb_id = '{$mb_esc}',
                     delta = '{$delta}',
                     balance_after = '{$after}',
                     kind = '{$kind_esc}',
                     content = '{$content_esc}',
+                    client_key = {$client_sql},
                     admin_mb_id = '{$admin_esc}',
                     created_at = '{$now}' ",
             false
         );
 
-        return array('ok' => true, 'balance' => $after, 'message' => '처리되었습니다.');
+        if (!$ok_upd || !$ok_ins) {
+            sql_query(' ROLLBACK ', false);
+            // 레이스: 유니크 충돌이면 이미 처리된 요청으로 간주
+            if ($client_key !== '') {
+                $existing = bacara_wallet_find_log_by_client_key($mb_id, $client_key);
+                if ($existing) {
+                    return array(
+                        'ok' => true,
+                        'balance' => bacara_wallet_get_balance($mb_id),
+                        'message' => '이미 처리된 요청입니다.',
+                        'idempotent' => true,
+                    );
+                }
+            }
+            return array(
+                'ok' => false,
+                'balance' => bacara_wallet_get_balance($mb_id),
+                'message' => '잔액 처리에 실패했습니다.',
+            );
+        }
+
+        sql_query(' COMMIT ', false);
+
+        return array('ok' => true, 'balance' => $after, 'message' => '처리되었습니다.', 'idempotent' => false);
     }
 }
 
