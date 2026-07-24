@@ -58,6 +58,9 @@ export type ResolveTableCardEventInput = {
   patternRunTableId?: string | null;
   patternRunCaseLabel?: string | null;
   now?: number;
+  /** 축하 팝업 표시 중 — 테이블 승리 플립 억제 */
+  winCelebrationActive?: boolean;
+  winTableFlip?: { result: LastBetResult; startedAt: number } | null;
 };
 
 function sideShort(side: string): string {
@@ -138,12 +141,17 @@ export function resolveTableBetBanners(
     .map((b) => pendingBanner(b, strategy));
 }
 
-/** 최근 정산 플래시 (직접·오토) — 승리는 플립용으로 짧게 */
+/** 최근 정산 플래시 (직접·오토) — 승리는 축하 팝업 닫힌 뒤 플립 */
 export function resolveTableSettleBanner(
   input: Pick<
     ResolveTableCardEventInput,
     'table' | 'lastAutoResult' | 'lastManualResult' | 'autoHit' | 'now'
-  >,
+  > & {
+    /** 축하 팝업이 열려 있으면 즉시 플립 억제 */
+    winCelebrationActive?: boolean;
+    /** 팝업 닫힌 뒤 플립 큐 */
+    winTableFlip?: { result: LastBetResult; startedAt: number } | null;
+  },
 ): TableBetBanner | null {
   const {
     table,
@@ -151,11 +159,39 @@ export function resolveTableSettleBanner(
     lastManualResult = null,
     autoHit = false,
     now = Date.now(),
+    winCelebrationActive = false,
+    winTableFlip = null,
   } = input;
+
+  // 축하 중에는 승리 플립·히트 배너 숨김
+  if (winCelebrationActive) {
+    const candidates = [lastManualResult, lastAutoResult].filter(
+      (r): r is LastBetResult => {
+        if (!r || r.tableId !== table.id) return false;
+        if (r.won === true) return false;
+        return now - r.at < RESULT_FLASH_MS;
+      },
+    );
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.at - a.at);
+    return settleBanner(candidates[0]);
+  }
+
+  // 팝업 종료 후 예약된 승리 플립
+  if (
+    winTableFlip &&
+    winTableFlip.result.tableId === table.id &&
+    winTableFlip.result.won === true &&
+    now - winTableFlip.startedAt < WIN_FLIP_MS
+  ) {
+    return settleBanner(winTableFlip.result);
+  }
 
   const candidates = [lastManualResult, lastAutoResult].filter(
     (r): r is LastBetResult => {
       if (!r || r.tableId !== table.id) return false;
+      // 축하 대상 승리(금액>0)는 winTableFlip 으로만 표시
+      if (r.won === true && r.amount > 0) return false;
       const windowMs = r.won === true ? WIN_FLIP_MS : RESULT_FLASH_MS;
       return now - r.at < windowMs;
     },
@@ -167,6 +203,8 @@ export function resolveTableSettleBanner(
       lastAutoResult.won === true &&
       now - lastAutoResult.at < WIN_FLIP_MS
     ) {
+      // autoHit 단독 경로도 축하 대상이면 스킵 (플립 큐 사용)
+      if (lastAutoResult.amount > 0) return null;
       return settleBanner(lastAutoResult);
     }
     return null;
@@ -215,6 +253,8 @@ export function resolveAutoTableEvent(
     lastManualResult,
     autoHit,
     now,
+    winCelebrationActive: input.winCelebrationActive,
+    winTableFlip: input.winTableFlip,
   });
   if (settle) {
     return {

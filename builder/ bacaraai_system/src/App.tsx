@@ -295,10 +295,7 @@ export default function App() {
             ? last.pnlDelta.toLocaleString()
             : '+0';
       pushTicker(`${last.tableName} ${signed}`, 'win');
-      if (last.source === 'auto') {
-        setAutoHitTableId(last.tableId);
-        window.setTimeout(() => setAutoHitTableId(null), 2200);
-      }
+      // AUTO HIT 스탬프는 축하 팝업 종료 후 (아래 onDismiss) — 즉시 겹치지 않음
     } else if (last.won === false) {
       setWinCombo(0);
       const lossAmt = Math.abs(last.pnlDelta || last.amount);
@@ -908,6 +905,8 @@ export default function App() {
                       lastAutoResult: session.lastAutoResult,
                       lastManualResult: session.lastManualResult,
                       autoHit: autoHitTableId === table.id,
+                      winCelebrationActive: Boolean(session.winCelebration),
+                      winTableFlip: session.winTableFlip,
                     });
                     const autoEvent = resolveAutoTableEvent({
                       table,
@@ -920,6 +919,8 @@ export default function App() {
                       patternCases,
                       patternRunTableId: patternRun?.tableId ?? null,
                       patternRunCaseLabel: patternCaseLabel,
+                      winCelebrationActive: Boolean(session.winCelebration),
+                      winTableFlip: session.winTableFlip,
                     });
                     const autoLockOn =
                       autoWatching &&
@@ -1088,7 +1089,13 @@ export default function App() {
       <WinCelebration
         result={session.winCelebration}
         onDismiss={() => {
-          session.clearWinCelebration(session.winCelebration?.id);
+          const closed = session.winCelebration;
+          session.clearWinCelebration(closed?.id);
+          // 팝업 닫힌 뒤 테이블 플립 + (오토면) AUTO HIT 스탬프
+          if (closed?.source === 'auto' && closed.tableId) {
+            setAutoHitTableId(closed.tableId);
+            window.setTimeout(() => setAutoHitTableId(null), 2200);
+          }
         }}
       />
       <GameFxChrome

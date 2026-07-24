@@ -118,6 +118,8 @@ export type SessionState = {
   lastAutoResult: LastBetResult | null;
   /** 승리 축하 카드 전용 (다른 결과 갱신에 덮이지 않음) */
   winCelebration: LastBetResult | null;
+  /** 축하 팝업 닫힌 뒤 테이블 플립 연출 */
+  winTableFlip: { result: LastBetResult; startedAt: number } | null;
   skippedCount: number;
 };
 
@@ -161,6 +163,7 @@ const DEFAULT_STATE: SessionState = {
   lastManualResult: null,
   lastAutoResult: null,
   winCelebration: null,
+  winTableFlip: null,
   skippedCount: 0,
 };
 
@@ -232,6 +235,7 @@ function readStored(): SessionState {
       lastManualResult: parsed.lastManualResult ?? null,
       lastAutoResult: parsed.lastAutoResult ?? null,
       winCelebration: freshWinCelebration(parsed),
+      winTableFlip: null,
       skippedCount: Number(parsed.skippedCount) || 0,
     };
   } catch {
@@ -532,6 +536,7 @@ export default function useSession() {
       lastManualResult: null,
       lastAutoResult: null,
       winCelebration: null,
+      winTableFlip: null,
       skippedCount: 0,
     });
   }, []);
@@ -575,6 +580,7 @@ export default function useSession() {
       lastManualResult: null,
       lastAutoResult: null,
       winCelebration: null,
+      winTableFlip: null,
       skippedCount: 0,
     }));
   }, []);
@@ -682,8 +688,11 @@ export default function useSession() {
       lastManualResult: pending.source === 'manual' ? result : curr.lastManualResult,
       lastAutoResult: pending.source === 'auto' ? result : curr.lastAutoResult,
       // 승리만 축하 카드 큐에 넣음 (이후 place/cancel 에 덮이지 않음)
+      // 테이블 플립은 팝업 닫힌 뒤 clearWinCelebration 에서 시작
       winCelebration:
         settled.won === true && result.amount > 0 ? result : curr.winCelebration,
+      winTableFlip:
+        settled.won === true && result.amount > 0 ? null : curr.winTableFlip,
     };
   }, []);
 
@@ -1052,7 +1061,13 @@ export default function useSession() {
     setState((prev) => {
       if (!prev.winCelebration) return prev;
       if (id && prev.winCelebration.id !== id) return prev;
-      return { ...prev, winCelebration: null };
+      const closed = prev.winCelebration;
+      return {
+        ...prev,
+        winCelebration: null,
+        // 팝업 종료 후 해당 테이블 플립 연출
+        winTableFlip: { result: closed, startedAt: Date.now() },
+      };
     });
   }, []);
 
