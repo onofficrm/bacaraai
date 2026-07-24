@@ -324,8 +324,14 @@ export default function RightPanel({
     ? ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion)
     : true;
 
-  const manualPending = pendingBets.find((b) => b.source === 'manual') ?? null;
-  const autoPending = pendingBets.find((b) => b.source === 'auto') ?? null;
+  const manualPending =
+    pendingBets.find((b) => b.source === 'manual' && b.tableId === table.id) ?? null;
+  const autoPending =
+    pendingBets.find((b) => b.source === 'auto' && b.tableId === table.id) ?? null;
+  const otherManualPending =
+    pendingBets.find((b) => b.source === 'manual' && b.tableId !== table.id) ?? null;
+  const otherAutoPending =
+    pendingBets.find((b) => b.source === 'auto' && b.tableId !== table.id) ?? null;
   const isManualSettling = Boolean(manualPending);
   const isAutoSettling = Boolean(autoPending);
   const isSettling = isManualSettling || isAutoSettling;
@@ -1497,13 +1503,16 @@ export default function RightPanel({
                             {autoPending.tableName}
                           </span>
                         </p>
+                        {otherManualPending && (
+                          <p className="text-[10px] text-blue-300 text-center mb-2">
+                            다른 테이블 직접 진행 중 · {sideShortLabel(otherManualPending.side)}{' '}
+                            {formatMoney(otherManualPending.amount)} ({otherManualPending.tableName})
+                          </p>
+                        )}
                         {manualPending && (
                           <p className="text-[10px] text-blue-300 text-center mb-2">
-                            직접도 진행 중 · {sideShortLabel(manualPending.side)}{' '}
+                            이 테이블 직접도 진행 중 · {sideShortLabel(manualPending.side)}{' '}
                             {formatMoney(manualPending.amount)}
-                            {manualPending.tableId !== autoPending.tableId
-                              ? ` (${manualPending.tableName})`
-                              : ''}
                           </p>
                         )}
                         <button

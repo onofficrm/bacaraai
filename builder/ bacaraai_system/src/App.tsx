@@ -382,8 +382,8 @@ export default function App() {
       }
       return;
     }
-    // 직접 베팅 대기 중이어도 오토는 따로 진행 가능
-    if (session.pendingBets.some((b) => b.source === 'auto')) return;
+    // 테이블별 오토 pending — 다른 테이블 대기가 있어도 새 후보 탐색 가능
+    // (후보 루프에서 해당 테이블 pending / round 락으로 걸러냄)
 
     // 베팅 가능 시간(결과 후 30초)이 끝난 테이블은 오토도 스킵
     // (후보 선택 시 다시 검사)
@@ -487,6 +487,7 @@ export default function App() {
       // (BB 후 Tie 로 끝이 그대로면 fingerprint 로 재진입 차단)
       for (const t of watchTables) {
         if (pendingRunTableId && t.id === pendingRunTableId) continue;
+        if (session.pendingBets.some((b) => b.source === 'auto' && b.tableId === t.id)) continue;
         if (t.status === 'risk_blocked') continue;
         if (isCancelledRound(t)) continue;
         if (getBettingRemainingSecForTable(t) <= 0) continue;
@@ -516,6 +517,7 @@ export default function App() {
     } else {
       // AI 전략: 서버가 auto_bet_allowed=true 인 테이블만 자동 베팅
       for (const t of watchTables) {
+        if (session.pendingBets.some((b) => b.source === 'auto' && b.tableId === t.id)) continue;
         if (t.status === 'risk_blocked') continue;
         if (isCancelledRound(t)) continue;
         if (getBettingRemainingSecForTable(t) < 5) continue;

@@ -460,8 +460,9 @@ export default function useSession() {
   const onCutRef = useRef<((type: 'wincut' | 'losscut', pnl: number) => void) | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
-  /** source별 place 진행 중 락 (await 전 레이스 방지) */
-  const placeInFlightRef = useRef<Set<BetSource>>(new Set());
+  /** source+table별 place 진행 중 락 (await 전 레이스 방지) */
+  const placeInFlightRef = useRef<Set<string>>(new Set());
+  const placeFlightKey = (source: BetSource, tableId: string) => `${source}:${tableId}`;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -699,22 +700,28 @@ export default function useSession() {
       return { ok: false, error: '오토베팅이 일시정지 중입니다.' };
     }
 
-    if (prev.pendingBets.some((b) => b.source === resolvedSource)) {
+    // 같은 테이블·같은 소스만 중복 금지 — 다른 테이블은 동시 베팅 가능
+    if (
+      prev.pendingBets.some(
+        (b) => b.source === resolvedSource && b.tableId === input.tableId,
+      )
+    ) {
       return {
         ok: false,
         error:
           resolvedSource === 'auto'
-            ? '오토베팅 결과를 확인 중입니다.'
-            : '직접 베팅 결과를 확인 중입니다.',
+            ? '이 테이블 오토베팅 결과를 확인 중입니다.'
+            : '이 테이블 직접 베팅 결과를 확인 중입니다.',
       };
     }
-    if (placeInFlightRef.current.has(resolvedSource)) {
+    const flightKey = placeFlightKey(resolvedSource, input.tableId);
+    if (placeInFlightRef.current.has(flightKey)) {
       return {
         ok: false,
         error:
           resolvedSource === 'auto'
-            ? '오토베팅을 접수하는 중입니다.'
-            : '직접 베팅을 접수하는 중입니다.',
+            ? '이 테이블 오토베팅을 접수하는 중입니다.'
+            : '이 테이블 직접 베팅을 접수하는 중입니다.',
       };
     }
     if (input.side !== 'PLAYER' && input.side !== 'BANKER' && input.side !== 'TIE') {
@@ -752,8 +759,8 @@ export default function useSession() {
       }
     }
 
-    const clientKey = makeWalletClientKey(`p_${resolvedSource}`);
-    placeInFlightRef.current.add(resolvedSource);
+    const clientKey = makeWalletClientKey(`p_${resolvedSource}_${input.tableId}`);
+    placeInFlightRef.current.add(flightKey);
     let walletRes;
     try {
       walletRes = await walletPlaceBet({
@@ -766,7 +773,7 @@ export default function useSession() {
         clientKey,
       });
     } finally {
-      placeInFlightRef.current.delete(resolvedSource);
+      placeInFlightRef.current.delete(flightKey);
     }
     if (!walletRes.ok) {
       return {
@@ -815,7 +822,12 @@ export default function useSession() {
 
     setState((curr) => ({
       ...curr,
-      pendingBets: [...curr.pendingBets.filter((b) => b.source !== resolvedSource), pending],
+      pendingBets: [
+        ...curr.pendingBets.filter(
+          (b) => !(b.source === resolvedSource && b.tableId === input.tableId),
+        ),
+        pending,
+      ],
     }));
 
     if (!useLiveSettle) {
@@ -984,7 +996,13 @@ export default function useSession() {
 
   const skipRound = useCallback((tableId?: string) => {
     setState((prev) => {
-      if (prev.pendingBets.length > 0) return prev;
+      if (
+        tableId
+          ? prev.pendingBets.some((b) => b.tableId === tableId)
+          : prev.pendingBets.length > 0
+      ) {
+        return prev;
+      }
       const lastBetResult: LastBetResult = {
         id: `skip_${Date.now()}`,
         tableId: tableId || '',
