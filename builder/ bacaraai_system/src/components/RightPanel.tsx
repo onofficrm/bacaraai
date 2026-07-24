@@ -778,7 +778,7 @@ export default function RightPanel({
                   선택 테이블 · {table.name}
                 </h2>
                 <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded shrink-0">
-                  연결됨
+                  {isManualSettling || isAutoSettling ? '베팅 중' : '연결됨'}
                 </span>
               </div>
               <div className="text-[11px] text-zinc-500 font-mono mt-0.5 flex gap-1.5">

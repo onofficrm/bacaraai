@@ -179,7 +179,8 @@ export default function SettingsView({
               연출 강도
             </h3>
             <p className="text-sm text-zinc-400 mb-5 leading-relaxed">
-              테이블 히트, AI 슬롯, 레이더, 위험 글로우 등 시각 연출의 세기입니다. 사운드와는 별개로 조절됩니다.
+              테이블 히트, AI 슬롯, 오토 락온, 레이더, 손익 리본, 위험 글로우 등 시각 연출의 세기입니다.
+              베팅 마감 틱 사운드는 위「베팅 마감 사운드」에서 따로 조절합니다.
             </p>
             <div className="grid grid-cols-3 gap-2">
               {fxLevels.map((level) => (

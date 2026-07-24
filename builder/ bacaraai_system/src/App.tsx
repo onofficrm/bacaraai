@@ -195,34 +195,35 @@ export default function App() {
     };
   }, [session.lastManualResult, session.lastAutoResult]);
 
-  // 베팅 마감 5초 카운트 사운드 (선택 테이블 · 이미 접수면 생략)
+  // 베팅 마감 5초 카운트 사운드
+  // 우선: 선택 테이블 → 없으면 진행 중 베팅 테이블 1곳
+  // 이미 접수된 경우 soft 틱(취소 창 안내)
   useEffect(() => {
     if (!betCountdownSoundOn) return;
-    if (!selectedTableId) return;
 
     const tick = () => {
       if (!isBetCountdownSoundEnabled()) return;
-      const table = tables.find((t) => t.id === selectedTableId);
+
+      const pendingFirst = session.pendingBets[0];
+      const targetId = selectedTableId || pendingFirst?.tableId || null;
+      if (!targetId) return;
+
+      const table = tables.find((t) => t.id === targetId);
       if (!table?.live) return;
 
       const hasPending = session.pendingBets.some((b) => b.tableId === table.id);
-      // 이미 접수한 테이블은 마감 틱 생략
-      if (hasPending) {
-        betCountdownSoundKeyRef.current = '';
-        return;
-      }
-
+      const soft = hasPending;
       const sec = getBettingRemainingSecForTable(table);
       const round = table.live.latestId ?? 0;
+
       if (sec <= 0) {
-        const closedKey = `${table.id}:${round}:closed`;
+        const closedKey = `${table.id}:${round}:closed${soft ? ':soft' : ''}`;
         if (betCountdownSoundKeyRef.current !== closedKey) {
           const prev = betCountdownSoundKeyRef.current;
-          const m = prev.match(new RegExp(`^${table.id}:${round}:(\\d+)$`));
+          const m = prev.match(new RegExp(`^${table.id}:${round}:(\\d+)`));
           const lastSec = m ? Number(m[1]) : 0;
-          // 5~1 카운트 중에 마감된 경우만 마감음
           if (lastSec >= 1 && lastSec <= 5) {
-            playBetClosed();
+            playBetClosed({ soft });
           }
           betCountdownSoundKeyRef.current = closedKey;
         }
@@ -234,10 +235,10 @@ export default function App() {
         return;
       }
 
-      const key = `${table.id}:${round}:${sec}`;
+      const key = `${table.id}:${round}:${sec}${soft ? ':soft' : ''}`;
       if (betCountdownSoundKeyRef.current === key) return;
       betCountdownSoundKeyRef.current = key;
-      playBetCountdownTick(sec);
+      playBetCountdownTick(sec, { soft });
     };
 
     tick();
@@ -285,17 +286,21 @@ export default function App() {
     lastResultIdForComboRef.current = last.id;
     if (last.won === true) {
       setWinCombo((c) => c + 1);
-      pushTicker(
-        `${last.tableName} 적중 · ${last.pnlDelta > 0 ? '+' : ''}${last.pnlDelta.toLocaleString()}원`,
-        'win',
-      );
+      const signed =
+        last.pnlDelta > 0
+          ? `+${last.pnlDelta.toLocaleString()}`
+          : last.pnlDelta < 0
+            ? last.pnlDelta.toLocaleString()
+            : '+0';
+      pushTicker(`${last.tableName} ${signed}`, 'win');
       if (last.source === 'auto') {
         setAutoHitTableId(last.tableId);
         window.setTimeout(() => setAutoHitTableId(null), 2200);
       }
     } else if (last.won === false) {
       setWinCombo(0);
-      pushTicker(`${last.tableName} 미적중`, 'info');
+      const lossAmt = Math.abs(last.pnlDelta || last.amount);
+      pushTicker(`${last.tableName} −${lossAmt.toLocaleString()}`, 'info');
     }
   }, [session.lastBetResult]);
 

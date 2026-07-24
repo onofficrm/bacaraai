@@ -383,20 +383,24 @@ export function playSfx(name: SfxName, opts?: { throttleMs?: number }) {
 
 /**
  * 베팅 마감 카운트 틱 (5→1). remainingSec 가 작을수록 음이 높아짐.
+ * soft: 이미 접수된 테이블의 취소 창 안내용(볼륨 ↓)
  */
-export function playBetCountdownTick(remainingSec: number) {
+export function playBetCountdownTick(
+  remainingSec: number,
+  opts?: { soft?: boolean },
+) {
   if (!state.enabled || !state.betCountdown || state.volume <= 0.001) return;
   const sec = Math.max(1, Math.min(5, Math.floor(remainingSec)));
+  const softMul = opts?.soft ? 0.42 : 1;
   try {
     const c = ensureCtx();
     if (c.state === 'suspended') void c.resume();
     const t = c.currentTime + 0.01;
-    // 5~1 은 짧은 틱만 — 마감음(띠잉)은 playBetClosed 에서만
-    const urgent = sec <= 2;
+    const urgent = sec <= 2 && !opts?.soft;
     const freq = 1100 + (5 - sec) * 280;
-    const gain = urgent ? 0.07 : 0.045 + (5 - sec) * 0.005;
+    const gain = (urgent ? 0.07 : 0.045 + (5 - sec) * 0.005) * softMul;
     noiseBurst(t, urgent ? 0.035 : 0.025, {
-      gain: urgent ? 0.08 : 0.055,
+      gain: (urgent ? 0.08 : 0.055) * softMul,
       freq: 3000 + (5 - sec) * 350,
       q: 5,
     });
@@ -411,9 +415,37 @@ export function playBetCountdownTick(remainingSec: number) {
   }
 }
 
-export function playBetClosed() {
+export function playBetClosed(opts?: { soft?: boolean }) {
   if (!state.enabled || !state.betCountdown || state.volume <= 0.001) return;
+  if (opts?.soft) {
+    try {
+      const c = ensureCtx();
+      if (c.state === 'suspended') void c.resume();
+      const t = c.currentTime + 0.01;
+      tone(380, t, 0.12, { type: 'triangle', gain: 0.05, decay: 0.12 });
+      tone(220, t + 0.06, 0.16, { type: 'sine', gain: 0.04, decay: 0.16 });
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
   playSfx('betClosed', { throttleMs: 800 });
+}
+
+/** 오토 조건 충족 · 타깃 락온 */
+export function playLockOn() {
+  if (!state.enabled || state.volume <= 0.001) return;
+  try {
+    const c = ensureCtx();
+    if (c.state === 'suspended') void c.resume();
+    const t = c.currentTime + 0.01;
+    tone(880, t, 0.06, { type: 'square', gain: 0.07, decay: 0.05, filterFreq: 4200 });
+    tone(1320, t + 0.07, 0.08, { type: 'square', gain: 0.08, decay: 0.07, filterFreq: 5200 });
+    tone(1760, t + 0.14, 0.14, { type: 'sine', gain: 0.1, decay: 0.14, filterFreq: 6500 });
+    noiseBurst(t + 0.12, 0.05, { gain: 0.07, freq: 2800, q: 4 });
+  } catch {
+    /* ignore */
+  }
 }
 
 function startAmbient() {

@@ -57,20 +57,20 @@ export default function GameFxChrome({
       </AnimatePresence>
 
       <div
-        className={`pointer-events-none fixed ${topOffset} right-3 sm:right-4 z-[210] flex flex-col items-end gap-1.5 max-w-[min(20rem,calc(100vw-1.5rem))]`}
+        className={`pointer-events-none fixed ${topOffset} left-0 right-0 z-[210] flex flex-col items-center gap-1.5 px-3`}
       >
         <AnimatePresence>
           {visible.map((item) => (
             <motion.div
               key={item.id}
-              initial={{ x: 24, opacity: 0, scale: 0.96 }}
-              animate={{ x: 0, opacity: 1, scale: 1 }}
-              exit={{ x: 16, opacity: 0 }}
-              className={`w-full text-right text-[11px] sm:text-xs font-bold px-3 py-2 rounded-xl border backdrop-blur-md shadow-lg ${
+              initial={{ y: -16, opacity: 0, scaleX: 0.85 }}
+              animate={{ y: 0, opacity: 1, scaleX: 1 }}
+              exit={{ y: -10, opacity: 0 }}
+              className={`w-full max-w-md text-center text-[12px] sm:text-sm font-black tracking-wide px-4 py-2 rounded-none sm:rounded-lg border-y sm:border backdrop-blur-md shadow-lg ${
                 item.tone === 'win'
-                  ? 'bg-emerald-950/90 border-emerald-400/45 text-emerald-200'
+                  ? 'bg-emerald-950/92 border-emerald-400/50 text-emerald-200 shadow-emerald-900/40'
                   : item.tone === 'risk'
-                    ? 'bg-rose-950/90 border-rose-400/45 text-rose-200'
+                    ? 'bg-rose-950/92 border-rose-400/50 text-rose-200 shadow-rose-900/40'
                     : 'bg-zinc-950/92 border-zinc-500/45 text-zinc-100'
               }`}
             >

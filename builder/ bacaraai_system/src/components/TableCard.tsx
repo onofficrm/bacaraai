@@ -8,7 +8,7 @@ import Roadmap from './Roadmap';
 import TableAiSlot from './TableAiSlot';
 import { getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
 import { useFxIntensity } from '../hooks/useFxIntensity';
-import { playSfx } from '../audio/sfxEngine';
+import { playLockOn, playSfx } from '../audio/sfxEngine';
 import WinFlipOverlay from './WinFlipOverlay';
 import BetInOverlay from './BetInOverlay';
 import TableEventOverlay from './TableEventOverlay';
@@ -69,8 +69,10 @@ export default function TableCard({
   const [betSec, setBetSec] = useState(0);
   const [streakPop, setStreakPop] = useState(false);
   const [streakBreak, setStreakBreak] = useState(false);
+  const [lockBurst, setLockBurst] = useState(false);
   const prevLatestRef = useRef<number | null | undefined>(undefined);
   const prevStreakRef = useRef(table.stats.currentStreak);
+  const prevLockRef = useRef(false);
 
   const isPassive = ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(
     table.ai.finalOpinion,
@@ -136,6 +138,19 @@ export default function TableCard({
     return () => window.clearInterval(id);
   }, [table]);
 
+  // 오토 락온 상승 엣지 → 타깃 연출 1회
+  useEffect(() => {
+    if (autoLockOn && !prevLockRef.current) {
+      setLockBurst(true);
+      if (!reduced) playLockOn();
+      const t = window.setTimeout(() => setLockBurst(false), intensity === 'high' ? 1600 : 1200);
+      prevLockRef.current = true;
+      return () => window.clearTimeout(t);
+    }
+    if (!autoLockOn) prevLockRef.current = false;
+    else prevLockRef.current = true;
+  }, [autoLockOn, reduced, intensity]);
+
   const lastResult = table.stats.recentResults[table.stats.recentResults.length - 1] ?? null;
   const lastResultLabel =
     lastResult === 'P' ? 'P' : lastResult === 'B' ? 'B' : lastResult === 'T' ? 'T' : null;
@@ -175,6 +190,9 @@ export default function TableCard({
     cardClass += ' ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.35)] ';
   }
   if (flashClass) cardClass += ` ${flashClass} `;
+  if (isSelected && betSec > 0 && betSec <= 5 && !hasBetMarker) {
+    cardClass += ' countdown-urgent-ring ';
+  }
 
   const betProgress = betSec > 0 ? betSec / 30 : 0;
   const amountText = isPassive
@@ -229,10 +247,62 @@ export default function TableCard({
         <div
           className="pointer-events-none absolute inset-0 rounded-xl z-[1]"
           style={{
-            boxShadow: `inset 0 0 0 2px rgba(56,189,248,${0.25 + betProgress * 0.55})`,
+            boxShadow:
+              isSelected && betSec <= 5
+                ? `inset 0 0 0 2px rgba(244,63,94,${0.45 + (5 - betSec) * 0.1})`
+                : `inset 0 0 0 2px rgba(56,189,248,${0.25 + betProgress * 0.55})`,
           }}
         />
       )}
+
+      <AnimatePresence>
+        {lockBurst && !reduced && (
+          <motion.div
+            key="lock-burst"
+            className="pointer-events-none absolute inset-0 z-[25] flex items-center justify-center overflow-hidden rounded-xl"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="absolute w-28 h-28 rounded-full border-2 border-sky-400/80"
+              initial={{ scale: 2.2, opacity: 0 }}
+              animate={{ scale: 0.55, opacity: [0, 1, 0.85] }}
+              transition={{ duration: 0.55, ease: 'easeOut' }}
+            />
+            <motion.div
+              className="absolute w-16 h-16 rounded-full border border-sky-300/60"
+              initial={{ scale: 2.8, opacity: 0 }}
+              animate={{ scale: 0.7, opacity: [0, 0.9, 0] }}
+              transition={{ duration: 0.7, ease: 'easeOut', delay: 0.05 }}
+            />
+            {/* 미니 칩 비행 */}
+            {[0, 1, 2].map((i) => (
+              <motion.span
+                key={i}
+                className="absolute w-3.5 h-3.5 rounded-full border-2 border-dashed border-amber-300/90 bg-amber-500/40"
+                initial={{
+                  x: i === 0 ? -48 : i === 1 ? 48 : 0,
+                  y: i === 2 ? -40 : 36,
+                  opacity: 0,
+                  scale: 0.6,
+                }}
+                animate={{ x: 0, y: 0, opacity: [0, 1, 0], scale: [0.6, 1, 0.4] }}
+                transition={{ duration: 0.7, delay: 0.12 + i * 0.06, ease: 'easeIn' }}
+              />
+            ))}
+            <motion.span
+              className="relative z-[1] text-sm sm:text-base font-black tracking-[0.2em] text-sky-100 border-2 border-sky-400/90 px-2.5 py-1 rounded-md bg-black/70 shadow-[0_0_24px_rgba(56,189,248,0.55)]"
+              initial={{ scale: 1.4, opacity: 0, rotate: -8 }}
+              animate={{ scale: 1, opacity: 1, rotate: -4 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 18 }}
+            >
+              LOCK ON
+            </motion.span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {autoWatching && enableRadar && !reduced && autoEvent?.kind === 'watching' && (
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl z-[1] opacity-30">
@@ -297,7 +367,7 @@ export default function TableCard({
         )}
       </AnimatePresence>
 
-      {autoLockOn && betBanners.length === 0 && !autoHit && !autoEvent && (
+      {autoLockOn && betBanners.length === 0 && !autoHit && !lockBurst && (
         <div className="absolute top-2 right-10 z-10 text-[9px] font-black tracking-wider text-sky-300 bg-sky-500/15 border border-sky-400/40 px-1.5 py-0.5 rounded animate-pulse">
           LOCK ON
         </div>
@@ -393,9 +463,11 @@ export default function TableCard({
                 <span
                   title="베팅 가능 남은 시간"
                   className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 font-mono tabular-nums ${
-                    betSec <= 10
-                      ? 'text-[10px] font-bold text-rose-300 border-rose-500/40 bg-rose-500/10 animate-pulse'
-                      : 'text-[10px] font-bold text-sky-300 border-sky-500/35 bg-sky-500/10'
+                    betSec <= 5
+                      ? 'text-[11px] font-black text-rose-200 border-rose-400/55 bg-rose-500/20 animate-pulse scale-105'
+                      : betSec <= 10
+                        ? 'text-[10px] font-bold text-rose-300 border-rose-500/40 bg-rose-500/10 animate-pulse'
+                        : 'text-[10px] font-bold text-sky-300 border-sky-500/35 bg-sky-500/10'
                   }`}
                 >
                   <span className="opacity-70 font-sans text-[9px]">BET</span>
@@ -558,6 +630,13 @@ export default function TableCard({
         @keyframes pendingWaitRing {
           0%, 100% { box-shadow: 0 0 0 0 rgba(56,189,248,0.18); }
           50% { box-shadow: 0 0 0 5px rgba(56,189,248,0.1); }
+        }
+        .countdown-urgent-ring {
+          animation: countdownUrgent 0.7s ease-in-out infinite;
+        }
+        @keyframes countdownUrgent {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(244,63,94,0.2); }
+          50% { box-shadow: 0 0 0 5px rgba(244,63,94,0.12); }
         }
         .rule-focus-pulse {
           animation: ruleFocus 1.8s ease-in-out infinite;
