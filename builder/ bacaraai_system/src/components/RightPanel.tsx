@@ -56,15 +56,38 @@ function StepBadge({
 }) {
   return (
     <span
-      className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold shrink-0 ${
+      className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-semibold shrink-0 tabular-nums ${
         state === 'current'
-          ? 'bg-sky-500 text-zinc-950 ring-2 ring-sky-400/40'
+          ? 'bg-zinc-700 text-zinc-300'
           : state === 'done'
-            ? 'bg-emerald-600/80 text-white'
-            : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+            ? 'bg-zinc-800 text-zinc-500'
+            : 'bg-transparent text-zinc-600'
+      }`}
+      aria-hidden
+    >
+      {state === 'done' ? '·' : n}
+    </span>
+  );
+}
+
+function StepLabel({
+  state,
+  children,
+}: {
+  state: 'current' | 'done' | 'todo';
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={`text-[10px] font-medium tracking-wide ${
+        state === 'current'
+          ? 'text-zinc-500'
+          : state === 'done'
+            ? 'text-zinc-600'
+            : 'text-zinc-700'
       }`}
     >
-      {state === 'done' ? '✓' : n}
+      {children}
     </span>
   );
 }
@@ -1202,12 +1225,12 @@ export default function RightPanel({
                 >
                   <div className="px-3 py-2 border-b border-sky-500/15 bg-sky-950/20">
                     <p className="text-xs font-bold text-sky-300">직접 베팅</p>
-                    <p className="text-[10px] text-zinc-500 mt-0.5">
-                      {manualStep === 1
-                        ? '① 베팅 위치를 고르세요'
-                        : manualStep === 2
-                          ? '② 칩으로 금액을 맞추세요'
-                          : '③ 확인 후 확정하세요'}
+                    <p className="text-[10px] mt-1 flex items-center gap-1.5 text-zinc-600">
+                      <span className={manualStep === 1 ? 'text-zinc-400' : ''}>① 위치</span>
+                      <span className="text-zinc-700">→</span>
+                      <span className={manualStep === 2 ? 'text-zinc-400' : ''}>② 금액</span>
+                      <span className="text-zinc-700">→</span>
+                      <span className={manualStep === 3 ? 'text-zinc-400' : ''}>③ 확정</span>
                     </p>
                   </div>
 
@@ -1215,12 +1238,12 @@ export default function RightPanel({
                     {/* ① Side */}
                     <div
                       className={`pb-3.5 transition-opacity ${
-                        stepState(1) === 'todo' ? 'opacity-40' : 'opacity-100'
+                        stepState(1) === 'todo' ? 'opacity-45' : 'opacity-100'
                       }`}
                     >
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-1.5 mb-1.5">
                         <StepBadge n={1} state={stepState(1)} />
-                        <label className="text-[11px] font-bold text-zinc-300">베팅 위치</label>
+                        <StepLabel state={stepState(1)}>위치</StepLabel>
                       </div>
                       <div className="flex gap-2">
                         {sideOptions.map((opt) => {
@@ -1261,13 +1284,13 @@ export default function RightPanel({
                     <div
                       ref={chipSectionRef}
                       className={`snap-start scroll-mt-16 py-3.5 transition-opacity ${
-                        stepState(2) === 'todo' ? 'opacity-40 pointer-events-none' : 'opacity-100'
+                        stepState(2) === 'todo' ? 'opacity-45 pointer-events-none' : 'opacity-100'
                       }`}
                     >
-                      <div className="flex justify-between items-center mb-2">
-                        <div className="flex items-center gap-2">
+                      <div className="flex justify-between items-center mb-1.5">
+                        <div className="flex items-center gap-1.5">
                           <StepBadge n={2} state={stepState(2)} />
-                          <label className="text-[11px] font-bold text-zinc-300">베팅 금액</label>
+                          <StepLabel state={stepState(2)}>금액</StepLabel>
                         </div>
                         <button
                           type="button"
@@ -1349,12 +1372,12 @@ export default function RightPanel({
                     {/* ③ Confirm */}
                     <div
                       className={`pt-3.5 transition-opacity ${
-                        stepState(3) === 'todo' ? 'opacity-40' : 'opacity-100'
+                        stepState(3) === 'todo' ? 'opacity-45' : 'opacity-100'
                       }`}
                     >
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-1.5 mb-1.5">
                         <StepBadge n={3} state={stepState(3)} />
-                        <label className="text-[11px] font-bold text-zinc-300">주문 확인</label>
+                        <StepLabel state={stepState(3)}>확인</StepLabel>
                       </div>
 
                       <div className="rounded-lg bg-black border border-zinc-700 px-3 py-2.5">
@@ -1954,9 +1977,6 @@ export default function RightPanel({
           !(isManualSettling && manualPending) && (
           <div className="shrink-0 border-t border-sky-500/25 bg-zinc-950 px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               <div className="flex flex-col gap-2">
-                <p className="text-[10px] text-center text-sky-400/80 font-bold tracking-wide">
-                  ③ 주문 확인
-                </p>
                 <p className="text-[11px] text-center text-zinc-400">
                   <span className={`font-bold ${sideColor(selectedSide)}`}>{sideShortLabel(selectedSide)}</span>
                   <span className="text-zinc-600 mx-1">·</span>
