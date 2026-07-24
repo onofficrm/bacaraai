@@ -159,7 +159,10 @@ export default function TableCard({
     cardClass +=
       ' ring-2 ring-amber-500 border-amber-500/60 shadow-lg shadow-amber-900/20 selected-pulse ';
   } else if (isSelected && (hasBetMarker || autoEvent)) {
-    cardClass += ' selected-pulse ';
+    cardClass +=
+      ' ring-2 ring-sky-500/70 border-sky-500/50 shadow-lg shadow-sky-900/25 selected-pulse pending-wait-ring ';
+  } else if (hasBetMarker && !autoEvent) {
+    cardClass += ' border-sky-500/40 pending-wait-ring ';
   }
   if (ruleFocus && !autoEvent && !hasBetMarker) {
     cardClass += ' border-amber-400/70 rule-focus-pulse scale-[1.01] ';
@@ -209,6 +212,14 @@ export default function TableCard({
       onClick={() => onSelect?.(table.id)}
       style={showWinFlip ? { perspective: 900 } : undefined}
     >
+      {isSelected && (
+        <div
+          className={`pointer-events-none absolute inset-y-0 left-0 w-[3px] z-[3] rounded-l-xl ${
+            hasBetMarker ? 'bg-sky-400' : 'bg-amber-400'
+          }`}
+          aria-hidden
+        />
+      )}
       <AnimatePresence>
         {showWinFlip && settleBanner && (
           <WinFlipOverlay key={settleBanner.id} banner={settleBanner} compact={compact} />
@@ -306,11 +317,29 @@ export default function TableCard({
                   선택됨
                 </span>
               )}
-              {(betBanners.length > 0 || autoEvent?.kind === 'pending') && (
-                <span className="text-[9px] font-black tracking-wide text-sky-300 bg-sky-500/15 border border-sky-400/40 px-1.5 py-0.5 rounded">
-                  베팅 대기
-                </span>
-              )}
+              {(betBanners.length > 0 || autoEvent?.kind === 'pending') && (() => {
+                const primary = betBanners[0];
+                const side = primary?.side || '';
+                const sideCls =
+                  side === 'Banker' || side === 'B'
+                    ? 'text-red-300 bg-red-500/15 border-red-400/45'
+                    : side === 'Tie' || side === 'T'
+                      ? 'text-emerald-300 bg-emerald-500/15 border-emerald-400/45'
+                      : 'text-sky-300 bg-sky-500/15 border-sky-400/45';
+                const amt =
+                  primary?.amount != null
+                    ? `BET ${primary.amount.toLocaleString()}`
+                    : primary?.label || '베팅 대기';
+                return (
+                  <span
+                    className={`text-[9px] font-black tracking-wide border px-1.5 py-0.5 rounded animate-pulse ${sideCls}`}
+                    title={primary?.hint || '결과 대기'}
+                  >
+                    {amt}
+                    {side ? ` · ${side === 'Player' ? 'P' : side === 'Banker' ? 'B' : 'T'}` : ''}
+                  </span>
+                );
+              })()}
               {ruleFocus && (
                 <span className="text-[9px] font-black tracking-wide text-amber-300 bg-amber-500/15 border border-amber-400/40 px-1.5 py-0.5 rounded">
                   RULE
@@ -522,6 +551,13 @@ export default function TableCard({
         @keyframes selectedPulse {
           0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.15); }
           50% { box-shadow: 0 0 0 6px rgba(245,158,11,0.08); }
+        }
+        .pending-wait-ring {
+          animation: pendingWaitRing 1.8s ease-in-out infinite;
+        }
+        @keyframes pendingWaitRing {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(56,189,248,0.18); }
+          50% { box-shadow: 0 0 0 5px rgba(56,189,248,0.1); }
         }
         .rule-focus-pulse {
           animation: ruleFocus 1.8s ease-in-out infinite;

@@ -338,6 +338,24 @@ function BetInRow({
   const durationMs = Math.min(1100, chips.length * DROP_MS + 160);
   const displayAmount = useCountUp(amount, animate, durationMs, banner.id);
   const side = banner.side || '';
+  const sideTone =
+    side === 'Banker' || side === 'B'
+      ? {
+          stamp: 'text-red-100 border-red-400/80 shadow-red-500/30',
+          amount: 'text-red-100',
+          glow: 'rgba(248,113,113,0.35)',
+        }
+      : side === 'Tie' || side === 'T'
+        ? {
+            stamp: 'text-emerald-100 border-emerald-400/80 shadow-emerald-500/30',
+            amount: 'text-emerald-100',
+            glow: 'rgba(52,211,153,0.35)',
+          }
+        : {
+            stamp: 'text-sky-100 border-sky-400/80 shadow-sky-500/30',
+            amount: 'text-sky-100',
+            glow: 'rgba(56,189,248,0.35)',
+          };
 
   useEffect(() => {
     if (!animate || !playAudio) return;
@@ -373,23 +391,24 @@ function BetInRow({
       <ChipPile amount={amount} compact={compact} animate={animate} />
       <div className="flex flex-col items-start gap-0.5 min-w-0 pb-0.5">
         <motion.span
-          className={`font-black tracking-widest border-2 px-2 py-0.5 rounded-md bg-black/65 shadow-lg ${
-            isAuto ? 'text-amber-200 border-amber-400/70' : 'text-sky-100 border-sky-400/70'
+          className={`font-black tracking-widest border-2 px-2 py-0.5 rounded-md bg-black/70 shadow-lg bet-wait-pulse ${
+            isAuto ? 'text-amber-100 border-amber-400/80' : sideTone.stamp
           } ${compact ? 'text-[10px]' : 'text-xs sm:text-sm'}`}
+          style={{ ['--bet-glow' as string]: isAuto ? 'rgba(251,191,36,0.4)' : sideTone.glow }}
           initial={animate ? { scale: 1.25, opacity: 0 } : false}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: 'spring', stiffness: 380, damping: 16, delay: animate ? 0.06 : 0 }}
         >
-          BET IN
+          BET {displayAmount.toLocaleString()}
         </motion.span>
         <span
           className={`font-mono font-bold px-1.5 py-0.5 rounded bg-black/60 border border-white/10 tabular-nums truncate max-w-[11rem] sm:max-w-[14rem] ${
             compact ? 'text-[9px]' : 'text-[10px] sm:text-[11px]'
-          } ${isAuto ? 'text-amber-200' : 'text-sky-100'}`}
+          } ${isAuto ? 'text-amber-200' : sideTone.amount}`}
         >
-          {animate
-            ? `${banner.badge}${side ? ` · ${side}` : ''} · ${displayAmount.toLocaleString()}원`
-            : `${banner.badge} · ${banner.label}`}
+          {banner.badge}
+          {side ? ` · ${side}` : ''}
+          <span className="text-zinc-500"> · 대기</span>
         </span>
       </div>
     </motion.div>
@@ -449,6 +468,15 @@ export default function BetInOverlay({ banners, compact = false }: Props) {
             />
           ))}
         </div>
+        <style>{`
+          .bet-wait-pulse {
+            animation: betWaitPulse 1.6s ease-in-out infinite;
+          }
+          @keyframes betWaitPulse {
+            0%, 100% { box-shadow: 0 0 0 0 var(--bet-glow, rgba(56,189,248,0.35)); }
+            50% { box-shadow: 0 0 14px 2px var(--bet-glow, rgba(56,189,248,0.35)); }
+          }
+        `}</style>
       </motion.div>
     </AnimatePresence>
   );

@@ -78,14 +78,15 @@ const WIN_FLIP_MS = 1650;
 
 function pendingBanner(bet: PendingBet, strategy: AutoBetStrategy): TableBetBanner {
   const isAuto = bet.source === 'auto';
+  const side = sideShort(bet.side);
   return {
     id: bet.id,
     tone: isAuto ? (strategy === 'pattern' ? 'pattern' : 'pending') : 'manual',
     badge: isAuto ? (strategy === 'pattern' ? '오토·패턴' : '오토') : '직접',
-    label: `${sideShort(bet.side)} · ${formatWon(bet.amount)}`,
-    hint: '결과 대기',
+    label: `BET ${bet.amount.toLocaleString()}`,
+    hint: `${side} · 결과 대기`,
     amount: bet.amount,
-    side: sideShort(bet.side),
+    side,
   };
 }
 
