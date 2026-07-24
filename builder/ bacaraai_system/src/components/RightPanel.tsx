@@ -1113,8 +1113,20 @@ export default function RightPanel({
                       </p>
                       {autoPending && (
                         <p className="mt-1.5 text-[10px] text-amber-400/90 text-center">
-                          오토 진행 중 · {sideShortLabel(autoPending.side)} {formatMoney(autoPending.amount)}
-                          {autoPending.tableId !== table.id ? ` (${autoPending.tableName})` : ''}
+                          이 테이블 오토 진행 중 · {sideShortLabel(autoPending.side)}{' '}
+                          {formatMoney(autoPending.amount)}
+                        </p>
+                      )}
+                      {otherAutoPending && (
+                        <p className="mt-1 text-[10px] text-zinc-500 text-center">
+                          다른 테이블 오토 · {otherAutoPending.tableName}{' '}
+                          {formatMoney(otherAutoPending.amount)}
+                        </p>
+                      )}
+                      {otherManualPending && !manualPending && (
+                        <p className="mt-1 text-[10px] text-zinc-500 text-center">
+                          다른 테이블 직접 · {otherManualPending.tableName}{' '}
+                          {formatMoney(otherManualPending.amount)}
                         </p>
                       )}
                       <div className="mt-2 pt-2 border-t border-zinc-800 text-[11px] text-zinc-500 flex justify-between">
