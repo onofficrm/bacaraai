@@ -64,7 +64,10 @@ export type LastBetResult = {
   won: boolean | null;
   pnlDelta: number;
   message: string;
+  /** 정산(결과 확정) 시각 — 축하·플립 freshness 기준 */
   at: number;
+  /** 베팅 접수 시각 — 게임 기록 표시용 */
+  placedAt?: number;
   /** 직접 / 오토 구분 */
   source?: BetSource;
   /** 게임 기록용 */
@@ -707,8 +710,9 @@ export default function useSession() {
       won: settled.won,
       pnlDelta: settled.pnlDelta,
       message: settled.message,
-      // 접수 시각 우선 — 정산(결과 확정) 시각이면 베팅 시각과 어긋남
-      at: pending.placedAt > 0 ? pending.placedAt : Date.now(),
+      // 정산 시각(축하·플립) / 접수 시각(기록) 분리
+      at: Date.now(),
+      placedAt: pending.placedAt > 0 ? pending.placedAt : Date.now(),
       source: pending.source,
       appliedRule: ruleLabel,
       martinStage: curr.martinStage,
@@ -1170,6 +1174,22 @@ export default function useSession() {
       };
     });
   }, []);
+
+  // 멈춘 축하 큐(표시 실패·장시간 잔류) → 플립으로 전환해 테이블 연출 복구
+  useEffect(() => {
+    const win = state.winCelebration;
+    if (!win || win.won !== true) return;
+    const age = Date.now() - (win.at || 0);
+    if (age < 25_000) return;
+    setState((prev) => {
+      if (!prev.winCelebration || prev.winCelebration.id !== win.id) return prev;
+      return {
+        ...prev,
+        winCelebration: null,
+        winTableFlip: { result: prev.winCelebration, startedAt: Date.now() },
+      };
+    });
+  }, [state.winCelebration]);
 
   const isActive = state.status === 'running' || state.status === 'paused';
   const availableBankroll = bankroll(state.config.seed, state.pnl);

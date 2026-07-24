@@ -78,8 +78,8 @@ function formatWon(amount: number): string {
 }
 
 const RESULT_FLASH_MS = 4500;
-/** 승리 플립 유지 시간 — 포커스→플립→손익 ≈ 1.5s */
-const WIN_FLIP_MS = 1500;
+/** 승리 플립 유지 시간 — 팝업 닫힌 뒤 충분히 보이도록 */
+const WIN_FLIP_MS = 2200;
 
 function pendingBanner(bet: PendingBet, strategy: AutoBetStrategy): TableBetBanner {
   const isAuto = bet.source === 'auto';

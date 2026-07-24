@@ -213,18 +213,18 @@ export default function TableCard({
       : 'text-emerald-400 border-emerald-400/40 bg-emerald-500/10';
 
   const particleCount = intensity === 'high' ? 10 : intensity === 'medium' ? 6 : 0;
-  const showWinFlip = Boolean(settleBanner && settleBanner.tone === 'hit' && !reduced);
+  const showWinFlip = Boolean(settleBanner && settleBanner.tone === 'hit');
   const showMissFlash = Boolean(settleBanner && settleBanner.tone === 'miss');
   const winFlipIdRef = useRef<string | null>(null);
   const [resultSweep, setResultSweep] = useState(false);
   const resultSweepIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!showWinFlip || !settleBanner) return;
+    if (!showWinFlip || !settleBanner || reduced) return;
     if (winFlipIdRef.current === settleBanner.id) return;
     winFlipIdRef.current = settleBanner.id;
     playSfx('win', { throttleMs: 1200 });
-  }, [showWinFlip, settleBanner]);
+  }, [showWinFlip, settleBanner, reduced]);
 
   // 결과 확정: 한 번만 부드러운 빛 스윕
   useEffect(() => {

@@ -206,7 +206,10 @@ export function lastBetToHistoryEntry(
   },
 ): GameHistoryEntry {
   const cancelled = /취소/.test(result.message) && !/타이/.test(result.message);
-  const at = result.at || Date.now();
+  const at =
+    (result.placedAt && result.placedAt > 0 ? result.placedAt : 0) ||
+    result.at ||
+    Date.now();
   const meta = result.historyMeta;
   const source: BetSource | 'unknown' = result.source || 'unknown';
   const appliedRule =

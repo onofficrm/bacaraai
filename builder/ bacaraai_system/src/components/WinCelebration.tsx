@@ -69,13 +69,21 @@ export default function WinCelebration({ result, onDismiss }: Props) {
   const dismissTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!isFreshWin(result)) return;
+    if (!result || result.won !== true || !(result.amount > 0)) return;
     if (shownIdsRef.current.has(result.id)) return;
+
+    // 이미 오래된 승리는 팝업 생략 → 부모 onDismiss 로 테이블 플립만 진행
+    if (!isFreshWin(result)) {
+      shownIdsRef.current.add(result.id);
+      onDismiss();
+      return;
+    }
+
     shownIdsRef.current.add(result.id);
     setHeld(result);
     setImgReady(false);
     playSfx('win');
-  }, [result?.id, result?.won, result?.amount, result?.at, result]);
+  }, [result?.id, result?.won, result?.amount, result?.at, result, onDismiss]);
 
   const open = Boolean(held);
   const display = held;
