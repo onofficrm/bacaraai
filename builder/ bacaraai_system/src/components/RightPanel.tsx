@@ -248,8 +248,13 @@ export default function RightPanel({
         setBetAmount(next);
         setChipStack(amountToStack(next));
       } else {
-        setBetAmount(0);
-        setChipStack([]);
+        // 칩 0원이면 확정 불가 → 기본 금액으로 복구
+        const fallback = Math.max(
+          1000,
+          Math.min(t.ai.recommendedAmount || 10000, maxBet, availableBankroll || 10000),
+        );
+        setBetAmount(fallback);
+        setChipStack(amountToStack(fallback));
       }
     },
     [maxBet, availableBankroll],

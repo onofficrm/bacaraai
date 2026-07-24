@@ -113,15 +113,11 @@ function bacara_bet_net_pnl($side, $amount, $outcome)
     return $credit - (int) $amount;
 }
 
-function bacara_bet_require_client_key($client_key)
+function bacara_bet_require_client_key(&$client_key)
 {
     if ($client_key === '') {
-        http_response_code(400);
-        echo json_encode(array(
-            'ok' => false,
-            'message' => 'client_key가 필요합니다. (중복 차감 방지)',
-        ), JSON_UNESCAPED_UNICODE);
-        exit;
+        // 구버전 클라이언트 호환: 서버에서 키 생성
+        $client_key = substr('s' . md5(uniqid((string) mt_rand(), true)), 0, 32);
     }
 }
 

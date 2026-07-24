@@ -57,7 +57,8 @@ if (!function_exists('bacara_wallet_install_tables')) {
         );
 
         // 기존 설치 마이그레이션: client_key + 유니크
-        $col = sql_fetch(" SHOW COLUMNS FROM `{$log}` LIKE 'client_key' ");
+        // (SHOW INDEX … WHERE 는 MySQL 버전별 미지원 → 전체 인덱스 스캔)
+        $col = sql_fetch(" SHOW COLUMNS FROM `{$log}` LIKE 'client_key' ", false);
         if (empty($col['Field'])) {
             sql_query(
                 " ALTER TABLE `{$log}`
@@ -65,8 +66,17 @@ if (!function_exists('bacara_wallet_install_tables')) {
                 false
             );
         }
-        $idx = sql_fetch(" SHOW INDEX FROM `{$log}` WHERE Key_name = 'uq_mb_client_key' ");
-        if (empty($idx['Key_name'])) {
+        $has_idx = false;
+        $idx_res = sql_query(" SHOW INDEX FROM `{$log}` ", false);
+        if ($idx_res) {
+            while ($idx_row = sql_fetch_array($idx_res)) {
+                if (!empty($idx_row['Key_name']) && $idx_row['Key_name'] === 'uq_mb_client_key') {
+                    $has_idx = true;
+                    break;
+                }
+            }
+        }
+        if (!$has_idx) {
             sql_query(
                 " ALTER TABLE `{$log}`
                     ADD UNIQUE KEY `uq_mb_client_key` (`mb_id`, `client_key`) ",
@@ -105,7 +115,8 @@ if (!function_exists('bacara_wallet_find_log_by_client_key')) {
             " select id, delta, balance_after, kind, content, created_at
                 from `{$log}`
                where mb_id = '{$mb_esc}' and client_key = '{$key_esc}'
-               limit 1 "
+               limit 1 ",
+            false
         );
         return !empty($row['id']) ? $row : null;
     }
@@ -206,19 +217,34 @@ if (!function_exists('bacara_wallet_adjust')) {
         $content_esc = sql_real_escape_string(cut_str(strip_tags((string) $content), 200));
         $now = G5_TIME_YMDHIS;
         $client_sql = $client_key === '' ? 'NULL' : ("'" . sql_real_escape_string($client_key) . "'");
+        $has_client_col = !empty(sql_fetch(" SHOW COLUMNS FROM `{$log}` LIKE 'client_key' ", false)['Field']);
 
-        sql_query(' START TRANSACTION ', false);
+        $in_tx = (bool) sql_query(' START TRANSACTION ', false);
 
-        $row = sql_fetch(" select balance from `{$table}` where mb_id = '{$mb_esc}' FOR UPDATE ");
+        $row = $in_tx
+            ? sql_fetch(" select balance from `{$table}` where mb_id = '{$mb_esc}' FOR UPDATE ", false)
+            : null;
         if (!$row) {
-            sql_query(' ROLLBACK ', false);
+            // FOR UPDATE 실패·미지원 시 일반 조회로 폴백
+            if ($in_tx) {
+                sql_query(' ROLLBACK ', false);
+                $in_tx = false;
+            }
+            $row = sql_fetch(" select balance from `{$table}` where mb_id = '{$mb_esc}' ", false);
+        }
+        if (!$row) {
+            if ($in_tx) {
+                sql_query(' ROLLBACK ', false);
+            }
             return array('ok' => false, 'balance' => 0, 'message' => '지갑을 찾을 수 없습니다.');
         }
 
-        if ($client_key !== '') {
+        if ($client_key !== '' && $has_client_col) {
             $existing = bacara_wallet_find_log_by_client_key($mb_id, $client_key);
             if ($existing) {
-                sql_query(' COMMIT ', false);
+                if ($in_tx) {
+                    sql_query(' COMMIT ', false);
+                }
                 return array(
                     'ok' => true,
                     'balance' => (int) $row['balance'],
@@ -232,7 +258,9 @@ if (!function_exists('bacara_wallet_adjust')) {
         $after = $before + $delta;
 
         if ($after < 0) {
-            sql_query(' ROLLBACK ', false);
+            if ($in_tx) {
+                sql_query(' ROLLBACK ', false);
+            }
             return array('ok' => false, 'balance' => $before, 'message' => '잔액이 부족합니다.');
         }
 
@@ -240,23 +268,40 @@ if (!function_exists('bacara_wallet_adjust')) {
             " update `{$table}` set balance = '{$after}', updated_at = '{$now}' where mb_id = '{$mb_esc}' ",
             false
         );
-        $ok_ins = sql_query(
-            " insert into `{$log}`
-                set mb_id = '{$mb_esc}',
-                    delta = '{$delta}',
-                    balance_after = '{$after}',
-                    kind = '{$kind_esc}',
-                    content = '{$content_esc}',
-                    client_key = {$client_sql},
-                    admin_mb_id = '{$admin_esc}',
-                    created_at = '{$now}' ",
-            false
-        );
+
+        if ($has_client_col) {
+            $ok_ins = sql_query(
+                " insert into `{$log}`
+                    set mb_id = '{$mb_esc}',
+                        delta = '{$delta}',
+                        balance_after = '{$after}',
+                        kind = '{$kind_esc}',
+                        content = '{$content_esc}',
+                        client_key = {$client_sql},
+                        admin_mb_id = '{$admin_esc}',
+                        created_at = '{$now}' ",
+                false
+            );
+        } else {
+            $ok_ins = sql_query(
+                " insert into `{$log}`
+                    set mb_id = '{$mb_esc}',
+                        delta = '{$delta}',
+                        balance_after = '{$after}',
+                        kind = '{$kind_esc}',
+                        content = '{$content_esc}',
+                        admin_mb_id = '{$admin_esc}',
+                        created_at = '{$now}' ",
+                false
+            );
+        }
 
         if (!$ok_upd || !$ok_ins) {
-            sql_query(' ROLLBACK ', false);
+            if ($in_tx) {
+                sql_query(' ROLLBACK ', false);
+            }
             // 레이스: 유니크 충돌이면 이미 처리된 요청으로 간주
-            if ($client_key !== '') {
+            if ($client_key !== '' && $has_client_col) {
                 $existing = bacara_wallet_find_log_by_client_key($mb_id, $client_key);
                 if ($existing) {
                     return array(
@@ -274,7 +319,9 @@ if (!function_exists('bacara_wallet_adjust')) {
             );
         }
 
-        sql_query(' COMMIT ', false);
+        if ($in_tx) {
+            sql_query(' COMMIT ', false);
+        }
 
         return array('ok' => true, 'balance' => $after, 'message' => '처리되었습니다.', 'idempotent' => false);
     }

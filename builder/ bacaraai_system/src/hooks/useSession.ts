@@ -690,15 +690,10 @@ export default function useSession() {
     const prev = stateRef.current;
     const resolvedSource: BetSource = input.source ?? 'manual';
 
-    if (prev.status === 'paused' && resolvedSource === 'manual') {
-      return {
-        ok: false,
-        error: '오토베팅이 일시정지 중입니다. 재개하거나 오토베팅을 종료한 뒤 수동 베팅하세요.',
-      };
-    }
     if (prev.status === 'paused' && resolvedSource === 'auto') {
       return { ok: false, error: '오토베팅이 일시정지 중입니다.' };
     }
+    // paused 여도 직접 베팅은 허용 (오토만 멈춘 상태)
 
     // 같은 테이블·같은 소스만 중복 금지 — 다른 테이블은 동시 베팅 가능
     if (
