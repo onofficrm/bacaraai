@@ -1365,7 +1365,9 @@ export default function RightPanel({
                                 }
                               }}
                               className={`${opt.flex} ${
-                                mobileQuick ? 'min-h-[68px] text-lg' : 'min-h-[56px] sm:min-h-[60px] text-base sm:text-lg'
+                                mobileQuick
+                                  ? 'min-h-16 min-w-[3.25rem] text-lg'
+                                  : 'min-h-[56px] sm:min-h-[60px] text-base sm:text-lg'
                               } py-3 rounded-xl border font-bold transition-colors disabled:opacity-40 touch-manipulation active:scale-[0.98] ${
                                 active
                                   ? opt.active
@@ -1454,7 +1456,7 @@ export default function RightPanel({
                             disabled={isManualSettling || !bettingWindow.canPlaceBet}
                             className={`${
                               mobileQuick
-                                ? 'min-h-[64px] rounded-2xl'
+                                ? 'min-h-16 rounded-2xl'
                                 : 'aspect-square min-h-[48px] rounded-full'
                             } border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-90 transition-transform disabled:opacity-40 ${chip.color}`}
                           >
@@ -1481,9 +1483,15 @@ export default function RightPanel({
                               type="button"
                               onClick={(e) => addChip(chip, e)}
                               disabled={isManualSettling || !bettingWindow.canPlaceBet}
-                              className={`min-h-[48px] rounded-xl border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-90 transition-transform disabled:opacity-40 ${chip.color}`}
+                              className={`${
+                                mobileQuick ? 'min-h-14 rounded-2xl' : 'min-h-[48px] rounded-xl'
+                              } border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-90 transition-transform disabled:opacity-40 ${chip.color}`}
                             >
-                              <span className="text-xs font-bold">{chip.label}</span>
+                              <span
+                                className={`font-bold ${mobileQuick ? 'text-sm' : 'text-xs'}`}
+                              >
+                                {chip.label}
+                              </span>
                             </button>
                           ))}
                         </div>
@@ -2121,15 +2129,18 @@ export default function RightPanel({
           !isDesktop &&
           !sheetCollapsed &&
           !(isManualSettling && manualPending) && (
-          <div className="shrink-0 border-t border-sky-500/25 bg-zinc-950 px-3 pt-2 pb-[max(0.65rem,env(safe-area-inset-bottom))]">
+          <div className="shrink-0 border-t border-sky-500/25 bg-zinc-950 px-2.5 pt-2.5 pb-[max(0.7rem,env(safe-area-inset-bottom))]">
               <div className="flex flex-col gap-2">
                 {lastBetPreset &&
                   (lastBetPreset.side !== selectedSide || lastBetPreset.amount !== betAmount) && (
                   <button
                     type="button"
-                    onClick={applyLastBet}
+                    onClick={() => {
+                      haptic('light');
+                      applyLastBet();
+                    }}
                     disabled={!bettingWindow.canPlaceBet || isManualSettling}
-                    className="w-full min-h-[40px] rounded-xl border border-sky-500/35 text-[12px] font-bold text-sky-300 touch-manipulation disabled:opacity-40"
+                    className="w-full min-h-11 rounded-xl border border-sky-500/35 text-[12px] font-bold text-sky-300 touch-manipulation disabled:opacity-40"
                   >
                     같은 베팅 다시 · {sideShortLabel(lastBetPreset.side)}{' '}
                     {lastBetPreset.amount.toLocaleString()}원
@@ -2147,7 +2158,8 @@ export default function RightPanel({
                     <span className="text-zinc-500 ml-1.5">마감</span>
                   )}
                 </p>
-                <div className="grid grid-cols-[minmax(0,0.75fr)_minmax(0,2.25fr)] gap-2">
+                {/* 확정 ≈풀폭 · 건너뛰기는 좁은 보조 */}
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -2156,14 +2168,14 @@ export default function RightPanel({
                       onSkip?.(table.id);
                       setBetError(null);
                     }}
-                    className="min-h-[60px] py-3.5 bg-zinc-800 active:bg-zinc-700 text-zinc-300 rounded-xl text-sm font-medium touch-manipulation"
+                    className="shrink-0 w-[4.25rem] min-h-16 px-1 bg-zinc-800 active:bg-zinc-700 text-zinc-300 rounded-xl text-[11px] font-medium leading-tight touch-manipulation"
                   >
                     건너뛰기
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      haptic('medium');
+                      haptic('heavy');
                       void handleConfirmBet();
                     }}
                     disabled={
@@ -2172,7 +2184,7 @@ export default function RightPanel({
                       submitting ||
                       !bettingWindow.canPlaceBet
                     }
-                    className={`min-h-[60px] py-3.5 rounded-xl text-base font-bold shadow-lg disabled:opacity-45 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none touch-manipulation ${
+                    className={`flex-1 min-w-0 min-h-16 py-3.5 rounded-xl text-[17px] font-bold shadow-lg disabled:opacity-45 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none touch-manipulation active:scale-[0.99] ${
                       isHighBet
                         ? 'bg-rose-600 active:bg-rose-500 text-white shadow-rose-600/25'
                         : 'bg-blue-600 active:bg-blue-500 text-white shadow-blue-600/25'
