@@ -1,20 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatMoney, type LastBetResult } from '../hooks/useSession';
+import { useCountUp } from '../hooks/useCountUp';
+import { useFxIntensity } from '../hooks/useFxIntensity';
 import { playSfx } from '../audio/sfxEngine';
 
 const WIN_LINES = [
+  '흐름이 당신 편입니다',
+  '깔끔한 한 판',
+  '타이밍이 완벽했습니다',
+  '침착한 적중',
+];
+
+const BIG_WIN_LINES = [
   '오늘 당신은 불타요',
   '잭팟 그 자체!',
   '숨 막히는 한 판!',
-  '이게 바로 흐름!',
-  '한 판 더, 미인처럼!',
-  '운명의 미소!',
-  '완벽한 타이밍!',
   '럭키 스트라이크!',
 ];
 
-/** 승리 축하용 강렬 글램 이미지 (public/win-glam) */
+/** 승리 축하용 강렬 글램 이미지 (public/win-glam) — 고액 위주 */
 const BASE = import.meta.env.BASE_URL || '/';
 const WIN_IMAGES = [
   `${BASE}win-glam/win-glam-01.jpg`,
@@ -27,29 +32,40 @@ const WIN_IMAGES = [
   `${BASE}win-glam/win-glam-08.jpg`,
 ];
 
-const SHOW_MS = 5200;
-/** 이보다 오래된 승리는 카드로 표시하지 않음 */
+const SHOW_MS_NORMAL = 3800;
+const SHOW_MS_BIG = 5200;
 const FRESH_MS = 20_000;
+/** 고액 축하 기준: 순익 50만 이상 또는 베팅 100만 이상 */
+const BIG_WIN_PNL = 500_000;
+const BIG_WIN_STAKE = 1_000_000;
 
 type Props = {
   result: LastBetResult | null;
   onDismiss: () => void;
 };
 
-function pickImage(seed: number) {
-  return WIN_IMAGES[Math.abs(seed) % WIN_IMAGES.length];
-}
-
 function isFreshWin(result: LastBetResult | null | undefined): result is LastBetResult {
   if (!result || result.won !== true || !(result.amount > 0)) return false;
   return Date.now() - (result.at || 0) < FRESH_MS;
 }
 
-/** 승리 시 랜덤 강렬 글램 이미지 + 축하 연출 (직접·오토 공통) */
+function isBigWin(r: LastBetResult) {
+  return r.pnlDelta >= BIG_WIN_PNL || r.amount >= BIG_WIN_STAKE;
+}
+
+function sideLabel(side: LastBetResult['side']) {
+  if (side === 'BANKER') return 'Banker';
+  if (side === 'TIE') return 'Tie';
+  return 'Player';
+}
+
+/** 승리 축하 — 일반은 정보 중심, 고액은 글램 연출 */
 export default function WinCelebration({ result, onDismiss }: Props) {
+  const { reduced } = useFxIntensity();
   const [held, setHeld] = useState<LastBetResult | null>(null);
   const [imgReady, setImgReady] = useState(false);
   const shownIdsRef = useRef<Set<string>>(new Set());
+  const recentImagesRef = useRef<string[]>([]);
   const dismissTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -63,17 +79,44 @@ export default function WinCelebration({ result, onDismiss }: Props) {
 
   const open = Boolean(held);
   const display = held;
+  const big = display ? isBigWin(display) : false;
   const isAuto = display?.source === 'auto' || /오토/.test(display?.appliedRule || '');
 
   const line = useMemo(() => {
     if (!display) return WIN_LINES[0];
-    return WIN_LINES[Math.abs(display.at) % WIN_LINES.length];
-  }, [display]);
+    const pool = big ? BIG_WIN_LINES : WIN_LINES;
+    return pool[Math.abs(display.at) % pool.length];
+  }, [display, big]);
 
   const imageSrc = useMemo(() => {
-    if (!display) return WIN_IMAGES[0];
-    return pickImage(display.at + display.amount * 7);
-  }, [display]);
+    if (!display || !big) return WIN_IMAGES[0];
+    const recent = recentImagesRef.current;
+    let idx = Math.abs(display.at + display.amount * 7) % WIN_IMAGES.length;
+    let pick = WIN_IMAGES[idx];
+    if (recent.includes(pick) && WIN_IMAGES.length > 1) {
+      for (let i = 1; i < WIN_IMAGES.length; i += 1) {
+        const alt = WIN_IMAGES[(idx + i) % WIN_IMAGES.length];
+        if (!recent.includes(alt)) {
+          pick = alt;
+          break;
+        }
+      }
+    }
+    return pick;
+  }, [display, big]);
+
+  useEffect(() => {
+    if (!display || !big || !imageSrc) return;
+    const recent = recentImagesRef.current;
+    if (recent[recent.length - 1] === imageSrc) return;
+    recentImagesRef.current = [...recent, imageSrc].slice(-4);
+  }, [display, big, imageSrc]);
+
+  const pnlAnim = useCountUp(display?.pnlDelta ?? 0, {
+    enabled: open && !reduced && (display?.pnlDelta ?? 0) > 0,
+    durationMs: big ? 900 : 650,
+    runKey: display?.id ?? 'win',
+  });
 
   const dismiss = () => {
     if (dismissTimerRef.current) {
@@ -87,11 +130,12 @@ export default function WinCelebration({ result, onDismiss }: Props) {
   useEffect(() => {
     if (!open || !display) return;
     if (dismissTimerRef.current) window.clearTimeout(dismissTimerRef.current);
+    const ms = big ? SHOW_MS_BIG : SHOW_MS_NORMAL;
     dismissTimerRef.current = window.setTimeout(() => {
       dismissTimerRef.current = null;
       setHeld(null);
       onDismiss();
-    }, SHOW_MS);
+    }, ms);
     return () => {
       if (dismissTimerRef.current) {
         window.clearTimeout(dismissTimerRef.current);
@@ -99,7 +143,9 @@ export default function WinCelebration({ result, onDismiss }: Props) {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, display?.id]);
+  }, [open, display?.id, big]);
+
+  const particleCount = reduced ? 0 : big ? 28 : 10;
 
   return (
     <AnimatePresence>
@@ -114,122 +160,142 @@ export default function WinCelebration({ result, onDismiss }: Props) {
           aria-modal="true"
           aria-label="승리 축하"
         >
-          <div className="absolute inset-0 bg-gradient-to-b from-rose-950/80 via-black/85 to-black/90 backdrop-blur-md" />
+          <div
+            className={`absolute inset-0 backdrop-blur-md ${
+              big
+                ? 'bg-gradient-to-b from-rose-950/75 via-black/88 to-black/92'
+                : 'bg-gradient-to-b from-zinc-950/80 via-black/90 to-black/95'
+            }`}
+          />
 
-          <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            {Array.from({ length: 36 }).map((_, i) => (
-              <motion.span
-                key={i}
-                className="absolute rounded-full"
-                style={{
-                  left: `${3 + ((i * 29) % 94)}%`,
-                  top: '-6%',
-                  width: 4 + (i % 4) * 2,
-                  height: 4 + (i % 4) * 2,
-                  backgroundColor:
-                    i % 4 === 0
-                      ? '#fb7185'
-                      : i % 4 === 1
+          {particleCount > 0 && (
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              {Array.from({ length: particleCount }).map((_, i) => (
+                <motion.span
+                  key={i}
+                  className="absolute rounded-full"
+                  style={{
+                    left: `${4 + ((i * 31) % 92)}%`,
+                    top: '-5%',
+                    width: 3 + (i % 3),
+                    height: 3 + (i % 3),
+                    backgroundColor: big
+                      ? i % 2 === 0
                         ? '#fbbf24'
-                        : i % 4 === 2
-                          ? '#f472b6'
-                          : '#fde68a',
-                  boxShadow: '0 0 8px currentColor',
-                }}
-                initial={{ y: 0, opacity: 1, rotate: 0 }}
-                animate={{
-                  y: '115vh',
-                  opacity: [1, 1, 0],
-                  rotate: 420 + i * 25,
-                }}
-                transition={{
-                  duration: 2 + (i % 6) * 0.3,
-                  delay: (i % 9) * 0.06,
-                  ease: 'easeIn',
-                }}
-              />
-            ))}
-          </div>
+                        : '#fb7185'
+                      : i % 2 === 0
+                        ? '#fde68a'
+                        : '#a8a29e',
+                    boxShadow: big ? '0 0 6px currentColor' : 'none',
+                  }}
+                  initial={{ y: 0, opacity: 0.9 }}
+                  animate={{ y: '110vh', opacity: 0 }}
+                  transition={{
+                    duration: 1.8 + (i % 5) * 0.25,
+                    delay: (i % 7) * 0.05,
+                    ease: 'easeIn',
+                  }}
+                />
+              ))}
+            </div>
+          )}
 
           <motion.div
-            className="relative w-full max-w-[22rem] rounded-2xl border-2 border-rose-400/50 bg-zinc-950 shadow-[0_0_60px_rgba(244,63,94,0.35)] overflow-hidden"
-            initial={{ scale: 0.68, y: 56, rotate: -2 }}
-            animate={{ scale: 1, y: 0, rotate: 0 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 280, damping: 20 }}
+            className={`relative w-full overflow-hidden rounded-2xl border bg-zinc-950/95 shadow-2xl ${
+              big
+                ? 'max-w-[22rem] border-amber-400/45 shadow-[0_0_48px_rgba(251,191,36,0.22)]'
+                : 'max-w-[20rem] border-white/10 shadow-[0_24px_64px_rgba(0,0,0,0.55)]'
+            }`}
+            initial={{ scale: 0.92, y: 28, opacity: 0 }}
+            animate={{ scale: 1, y: 0, opacity: 1 }}
+            exit={{ scale: 0.96, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 26 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-rose-600 via-amber-300 to-fuchsia-500 z-20" />
+            <div
+              className={`absolute inset-x-0 top-0 z-20 h-px ${
+                big
+                  ? 'bg-gradient-to-r from-transparent via-amber-300 to-transparent'
+                  : 'bg-gradient-to-r from-transparent via-white/25 to-transparent'
+              }`}
+            />
 
-            <div className="relative h-[22rem] sm:h-[26rem] overflow-hidden bg-zinc-900">
-              <motion.img
-                key={imageSrc}
-                src={imageSrc}
-                alt=""
-                className="absolute inset-0 w-full h-full object-cover object-[center_18%]"
-                initial={{ scale: 1.25, opacity: 0 }}
-                animate={{
-                  scale: imgReady ? 1.05 : 1.2,
-                  opacity: imgReady ? 1 : 0.55,
-                }}
-                transition={{ duration: 0.85, ease: 'easeOut' }}
-                onLoad={() => setImgReady(true)}
-                onError={() => setImgReady(true)}
-                draggable={false}
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-rose-950/25 to-transparent" />
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.55)_100%)]" />
-
-              <motion.div
-                className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2 z-10"
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
-              >
-                <span className="text-[10px] font-black tracking-[0.28em] text-rose-100 uppercase px-2.5 py-1 rounded-md bg-rose-600/80 border border-rose-300/40 shadow-lg shadow-rose-500/30">
-                  {isAuto ? 'AUTO WIN' : 'HOT WIN'}
-                </span>
-                <span className="text-[10px] font-bold text-amber-200/90 px-2 py-1 rounded-md bg-black/50 border border-amber-400/30">
-                  {isAuto ? '오토 적중' : '★ LUCKY'}
-                </span>
-              </motion.div>
-
-              <div className="absolute inset-x-0 bottom-0 px-4 pb-4 pt-16 z-10">
-                <motion.h3
-                  className="text-[1.65rem] leading-tight font-black text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.85)] mb-1"
-                  initial={{ opacity: 0, y: 14 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.28 }}
-                >
-                  {line}
-                </motion.h3>
-                <motion.p
-                  className="text-3xl font-mono font-black text-amber-300 tabular-nums drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                >
-                  {formatMoney(display.pnlDelta, true)}
-                </motion.p>
+            {big ? (
+              <div className="relative h-[18rem] sm:h-[22rem] overflow-hidden bg-zinc-900">
+                <motion.img
+                  key={imageSrc}
+                  src={imageSrc}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover object-[center_18%]"
+                  initial={{ scale: 1.2, opacity: 0 }}
+                  animate={{
+                    scale: imgReady ? 1.04 : 1.15,
+                    opacity: imgReady ? 1 : 0.4,
+                  }}
+                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                  onLoad={() => setImgReady(true)}
+                  onError={() => setImgReady(true)}
+                  draggable={false}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
+                <div className="absolute left-3 top-3 z-10">
+                  <span className="rounded-md border border-amber-300/40 bg-amber-500/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-zinc-950">
+                    {isAuto ? 'AUTO BIG WIN' : 'BIG WIN'}
+                  </span>
+                </div>
+                <div className="absolute inset-x-0 bottom-0 z-10 px-4 pb-4 pt-12">
+                  <p className="mb-1 text-[1.45rem] font-black leading-tight text-white drop-shadow-lg">
+                    {line}
+                  </p>
+                  <p className="font-mono text-3xl font-black tabular-nums text-amber-300 drop-shadow-lg">
+                    {formatMoney(pnlAnim, true)}
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="relative px-5 pb-2 pt-6 text-center">
+                <span className="inline-flex rounded-md border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-200/95">
+                  {isAuto ? 'AUTO WIN' : 'WIN'}
+                </span>
+                <p className="mt-3 text-[1.15rem] font-semibold tracking-tight text-zinc-100">
+                  {line}
+                </p>
+                <p className="mt-2 font-mono text-[2rem] font-black tabular-nums text-amber-300">
+                  {formatMoney(pnlAnim, true)}
+                </p>
+              </div>
+            )}
 
-            <div className="px-4 pt-3 pb-4 text-center bg-zinc-950">
-              <p className="text-[12px] text-zinc-400">
-                {isAuto ? '오토 · ' : '직접 · '}
-                {display.tableName} ·{' '}
-                {display.side === 'BANKER'
-                  ? 'Banker'
-                  : display.side === 'TIE'
-                    ? 'Tie'
-                    : 'Player'}
-              </p>
-              <p className="mt-1 text-[11px] text-zinc-500 line-clamp-2 px-1">{display.message}</p>
+            <div className={`px-5 ${big ? 'pt-3' : 'pt-1'} pb-5 text-center`}>
+              <div className="mx-auto grid max-w-[16rem] grid-cols-3 gap-2 rounded-xl border border-white/8 bg-black/40 px-3 py-2.5">
+                <div>
+                  <p className="text-[9px] uppercase tracking-wider text-zinc-500">테이블</p>
+                  <p className="mt-0.5 truncate text-[12px] font-bold text-zinc-200">
+                    {display.tableName}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase tracking-wider text-zinc-500">베팅</p>
+                  <p className="mt-0.5 text-[12px] font-bold text-zinc-200">
+                    {sideLabel(display.side)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase tracking-wider text-zinc-500">금액</p>
+                  <p className="mt-0.5 font-mono text-[12px] font-bold tabular-nums text-zinc-200">
+                    {formatMoney(display.amount)}
+                  </p>
+                </div>
+              </div>
 
               <button
                 type="button"
                 onClick={dismiss}
-                className="mt-4 w-full py-3.5 rounded-xl bg-gradient-to-r from-rose-500 via-fuchsia-500 to-amber-400 hover:brightness-110 text-zinc-950 text-sm font-black tracking-wide transition-[filter] shadow-lg shadow-rose-500/25"
+                className={`mt-4 w-full rounded-xl py-3.5 text-sm font-bold tracking-wide transition-[filter,transform] active:scale-[0.99] ${
+                  big
+                    ? 'bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-200 text-zinc-950 shadow-lg shadow-amber-500/20'
+                    : 'border border-white/12 bg-zinc-100 text-zinc-950 hover:brightness-110'
+                }`}
               >
                 계속하기
               </button>

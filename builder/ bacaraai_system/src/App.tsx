@@ -402,7 +402,10 @@ export default function App() {
       celebrating?.won === true &&
       celebrating.amount > 0
     ) {
-      const waitMs = 5200 - (Date.now() - celebrating.at);
+      const big =
+        celebrating.pnlDelta >= 500_000 || celebrating.amount >= 1_000_000;
+      const showMs = big ? 5200 : 3800;
+      const waitMs = showMs - (Date.now() - celebrating.at);
       if (waitMs > 0) {
         const t = window.setTimeout(() => setAutoResumeTick((n) => n + 1), waitMs + 30);
         return () => window.clearTimeout(t);

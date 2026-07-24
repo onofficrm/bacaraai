@@ -331,12 +331,15 @@ function playPattern(name: SfxName) {
       noiseBurst(t + 0.05, 0.2, { gain: 0.12, freq: 400, q: 0.7, type: 'lowpass' });
       break;
     case 'win': {
-      const winNotes = [523.25, 659.25, 783.99, 1046.5, 1318.5, 1568];
+      // 짧은 상승음 — 반복 시 피로감 줄임
+      const winNotes = [523.25, 659.25, 783.99, 1046.5];
       winNotes.forEach((f, i) => {
-        tone(f, t + i * 0.065, 0.28, { type: 'triangle', gain: 0.1, decay: 0.32 });
-        tone(f * 2, t + i * 0.065 + 0.01, 0.18, { type: 'sine', gain: 0.035, decay: 0.2 });
+        tone(f, t + i * 0.07, 0.2, { type: 'triangle', gain: 0.09 - i * 0.01, decay: 0.22 });
+        if (i < 2) {
+          tone(f * 2, t + i * 0.07 + 0.01, 0.12, { type: 'sine', gain: 0.03, decay: 0.14 });
+        }
       });
-      noiseBurst(t + 0.35, 0.15, { gain: 0.12, freq: 4500, q: 2 });
+      noiseBurst(t + 0.28, 0.08, { gain: 0.06, freq: 3800, q: 2.2 });
       break;
     }
     case 'loss':
@@ -366,8 +369,19 @@ function playPattern(name: SfxName) {
 
 const lastPlayed = new Map<SfxName, number>();
 
+const DEFAULT_THROTTLE: Partial<Record<SfxName, number>> = {
+  chip: 55,
+  chipHeavy: 90,
+  tick: 40,
+  ui: 50,
+  betWarn: 80,
+  betConfirm: 220,
+  win: 900,
+  skip: 120,
+};
+
 export function playSfx(name: SfxName, opts?: { throttleMs?: number }) {
-  const throttle = opts?.throttleMs ?? (name === 'chip' || name === 'tick' || name === 'ui' || name === 'betWarn' ? 40 : 0);
+  const throttle = opts?.throttleMs ?? DEFAULT_THROTTLE[name] ?? 0;
   const now = performance.now();
   if (throttle > 0) {
     const prev = lastPlayed.get(name) || 0;
@@ -381,13 +395,24 @@ export function playSfx(name: SfxName, opts?: { throttleMs?: number }) {
   }
 }
 
+/** 칩 금액에 따른 햅틱 강도 */
+export function hapticForChip(value: number | 'DOUBLE') {
+  if (value === 'DOUBLE' || (typeof value === 'number' && value >= 500_000)) {
+    haptic('heavy');
+  } else if (typeof value === 'number' && value >= 50_000) {
+    haptic('medium');
+  } else {
+    haptic('light');
+  }
+}
+
 /** 모바일 터치 피드백 (지원 기기만) */
 export function haptic(
   style: 'light' | 'medium' | 'heavy' = 'light',
 ) {
   try {
     const pattern =
-      style === 'heavy' ? 24 : style === 'medium' ? 14 : 8;
+      style === 'heavy' ? 28 : style === 'medium' ? 16 : 8;
     navigator.vibrate?.(pattern);
   } catch {
     /* ignore */

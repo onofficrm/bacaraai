@@ -6,7 +6,7 @@ import { AiModelAnalysis, AiOpinion, GameResult, SessionConfig, TableData } from
 import MartingaleVisualizer from './MartingaleVisualizer';
 import Roadmap from './Roadmap';
 import EmptyRightPanel from './EmptyRightPanel';
-import { playSfx, haptic } from '../audio/sfxEngine';
+import { playSfx, haptic, hapticForChip } from '../audio/sfxEngine';
 import useIsDesktopXl from '../hooks/useIsDesktopXl';
 import useBettingWindow, { getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
 import BettingCountdown from './BettingCountdown';
@@ -38,14 +38,18 @@ type PanelMode = 'manual' | 'auto';
 
 /** Desktop: darker “betting console” vs game lobby */
 const CONSOLE_DESKTOP_SHELL =
-  'hidden xl:flex z-50 w-[22rem] 2xl:w-[28rem] h-full min-h-0 flex-col shrink-0 border-l border-sky-500/25 bg-black shadow-[-18px_0_40px_rgba(14,165,233,0.08)]';
+  'hidden xl:flex z-50 w-[22rem] 2xl:w-[28rem] h-full min-h-0 flex-col shrink-0 border-l border-amber-200/12 bg-zinc-950/90 backdrop-blur-xl shadow-[-22px_0_48px_rgba(0,0,0,0.55)]';
 
 /** Mobile bottom sheet as betting console */
 const CONSOLE_MOBILE_SHELL =
-  'fixed inset-x-0 bottom-0 z-[70] w-full rounded-t-2xl border-t border-x border-sky-500/30 bg-black shadow-[0_-12px_40px_rgba(14,165,233,0.12)] flex flex-col transition-[max-height] duration-300 ease-out';
+  'fixed inset-x-0 bottom-0 z-[70] w-full rounded-t-2xl border-t border-x border-amber-200/15 bg-zinc-950/92 backdrop-blur-xl shadow-[0_-16px_48px_rgba(0,0,0,0.55)] flex flex-col transition-[max-height] duration-300 ease-out';
 
 const CONSOLE_MOBILE_EMPTY_SHELL =
-  'fixed inset-x-0 bottom-0 z-[70] w-full max-h-[min(70dvh,640px)] rounded-t-2xl border-t border-x border-sky-500/30 bg-black shadow-[0_-12px_40px_rgba(14,165,233,0.12)] flex flex-col';
+  'fixed inset-x-0 bottom-0 z-[70] w-full max-h-[min(70dvh,640px)] rounded-t-2xl border-t border-x border-amber-200/15 bg-zinc-950/92 backdrop-blur-xl shadow-[0_-16px_48px_rgba(0,0,0,0.55)] flex flex-col';
+
+/** 칩 버튼 공통: 눌림→복원 물리감 */
+const CHIP_PRESS =
+  'touch-manipulation transition-transform duration-100 ease-out active:scale-[0.86] active:brightness-110 disabled:opacity-40';
 
 function StepBadge({
   n,
@@ -486,7 +490,7 @@ export default function RightPanel({
     clickEvent?: React.MouseEvent<HTMLButtonElement>,
   ) => {
     if (isManualSettling) return;
-    haptic(chip.value === 'DOUBLE' || (typeof chip.value === 'number' && chip.value >= 100_000) ? 'medium' : 'light');
+    hapticForChip(chip.value);
     if (chip.value === 'DOUBLE') {
       playSfx('chipHeavy');
       setBetAmount((prev) => {
@@ -497,7 +501,7 @@ export default function RightPanel({
       setBurstKey((k) => k + 1);
     } else {
       const amount = chip.value as number;
-      playSfx(amount >= 1_000_000 ? 'chipHeavy' : 'chip');
+      playSfx(amount >= 500_000 ? 'chipHeavy' : 'chip');
       setBetAmount((prev) => {
         const next = clampAmount(prev + amount);
         if (next <= prev) return prev;
@@ -833,8 +837,8 @@ export default function RightPanel({
               className="flex flex-col items-center gap-1 touch-manipulation px-4"
               aria-label={sheetCollapsed ? '베팅 콘솔 펼치기' : '베팅 콘솔 접기'}
             >
-              <div className="w-10 h-1 rounded-full bg-sky-500/40" />
-              <span className="text-[9px] font-bold text-sky-400/80 tracking-[0.18em] uppercase">
+              <div className="w-10 h-1 rounded-full bg-amber-200/35" />
+              <span className="text-[9px] font-bold text-amber-200/70 tracking-[0.18em] uppercase">
                 {table.name} 베팅
                 {sheetCollapsed ? ' · 펼치기' : ''}
               </span>
@@ -1368,7 +1372,7 @@ export default function RightPanel({
                                 mobileQuick
                                   ? 'min-h-16 min-w-[3.25rem] text-lg'
                                   : 'min-h-[56px] sm:min-h-[60px] text-base sm:text-lg'
-                              } py-3 rounded-xl border font-bold transition-colors disabled:opacity-40 touch-manipulation active:scale-[0.98] ${
+                              } py-3 rounded-xl border font-bold transition-colors disabled:opacity-40 ${CHIP_PRESS} ${
                                 active
                                   ? opt.active
                                   : 'bg-black border-zinc-700 text-zinc-400'
@@ -1458,7 +1462,7 @@ export default function RightPanel({
                               mobileQuick
                                 ? 'min-h-16 rounded-2xl'
                                 : 'aspect-square min-h-[48px] rounded-full'
-                            } border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-90 transition-transform disabled:opacity-40 ${chip.color}`}
+                            } border-[3px] border-dashed shadow-md flex items-center justify-center ${CHIP_PRESS} ${chip.color}`}
                           >
                             <span
                               className={`font-bold leading-none ${
@@ -1485,7 +1489,7 @@ export default function RightPanel({
                               disabled={isManualSettling || !bettingWindow.canPlaceBet}
                               className={`${
                                 mobileQuick ? 'min-h-14 rounded-2xl' : 'min-h-[48px] rounded-xl'
-                              } border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-90 transition-transform disabled:opacity-40 ${chip.color}`}
+                              } border-[3px] border-dashed shadow-md flex items-center justify-center ${CHIP_PRESS} ${chip.color}`}
                             >
                               <span
                                 className={`font-bold ${mobileQuick ? 'text-sm' : 'text-xs'}`}
@@ -2129,7 +2133,26 @@ export default function RightPanel({
           !isDesktop &&
           !sheetCollapsed &&
           !(isManualSettling && manualPending) && (
-          <div className="shrink-0 border-t border-sky-500/25 bg-zinc-950 px-2.5 pt-2.5 pb-[max(0.7rem,env(safe-area-inset-bottom))]">
+          <div className="relative shrink-0 border-t border-amber-200/12 bg-zinc-950/95 px-2.5 pt-2.5 pb-[max(0.7rem,env(safe-area-inset-bottom))]">
+              {/* 확정 시 칩이 위로 날아가는 짧은 연출 */}
+              {chipCelebrating && (
+                <div className="pointer-events-none absolute inset-x-0 -top-14 h-14 overflow-visible z-10" aria-hidden>
+                  {[0, 1, 2, 3].map((i) => (
+                    <span
+                      key={i}
+                      className="confirm-chip-fly absolute bottom-0 h-7 w-7 rounded-full border-2 border-white/30 shadow-lg"
+                      style={{
+                        left: `${18 + i * 18}%`,
+                        background:
+                          i % 2 === 0
+                            ? 'linear-gradient(145deg,#2563eb,#1e3a8a)'
+                            : 'linear-gradient(145deg,#dc2626,#7f1d1d)',
+                        animationDelay: `${i * 45}ms`,
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
               <div className="flex flex-col gap-2">
                 {lastBetPreset &&
                   (lastBetPreset.side !== selectedSide || lastBetPreset.amount !== betAmount) && (
@@ -2202,6 +2225,16 @@ export default function RightPanel({
               </div>
           </div>
         )}
+        <style>{`
+          @keyframes confirmChipFly {
+            0% { transform: translateY(0) scale(1); opacity: 0.95; }
+            70% { opacity: 0.85; }
+            100% { transform: translateY(-72px) scale(0.55); opacity: 0; }
+          }
+          .confirm-chip-fly {
+            animation: confirmChipFly 0.7s ease-out forwards;
+          }
+        `}</style>
       </>
   );
 
