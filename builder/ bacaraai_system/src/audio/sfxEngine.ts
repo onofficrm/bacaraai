@@ -381,6 +381,19 @@ export function playSfx(name: SfxName, opts?: { throttleMs?: number }) {
   }
 }
 
+/** 모바일 터치 피드백 (지원 기기만) */
+export function haptic(
+  style: 'light' | 'medium' | 'heavy' = 'light',
+) {
+  try {
+    const pattern =
+      style === 'heavy' ? 24 : style === 'medium' ? 14 : 8;
+    navigator.vibrate?.(pattern);
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * 베팅 마감 카운트 틱 (5→1). remainingSec 가 작을수록 음이 높아짐.
  * soft: 이미 접수된 테이블의 취소 창 안내용(볼륨 ↓)

@@ -6,7 +6,7 @@ import { AiModelAnalysis, AiOpinion, GameResult, SessionConfig, TableData } from
 import MartingaleVisualizer from './MartingaleVisualizer';
 import Roadmap from './Roadmap';
 import EmptyRightPanel from './EmptyRightPanel';
-import { playSfx } from '../audio/sfxEngine';
+import { playSfx, haptic } from '../audio/sfxEngine';
 import useIsDesktopXl from '../hooks/useIsDesktopXl';
 import useBettingWindow, { getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
 import BettingCountdown from './BettingCountdown';
@@ -224,6 +224,9 @@ export default function RightPanel({
   const isDesktop = useIsDesktopXl();
   /** 모바일: 항상 원핸드(빠른) 모드 — 토글 없음 */
   const mobileQuick = !isDesktop;
+  /** 베팅 시트(수동·펼침)에서는 모드 탭 숨김 */
+  const hideModeTabs =
+    mobileQuick && panelMode === 'manual' && !sheetCollapsed;
   const bettingWindow = useBettingWindow(table);
   const submittingRef = React.useRef(false);
   /** 모바일 패널 스크롤: 베팅 블록 / 칩 구간 자동 포커스 */
@@ -483,6 +486,7 @@ export default function RightPanel({
     clickEvent?: React.MouseEvent<HTMLButtonElement>,
   ) => {
     if (isManualSettling) return;
+    haptic(chip.value === 'DOUBLE' || (typeof chip.value === 'number' && chip.value >= 100_000) ? 'medium' : 'light');
     if (chip.value === 'DOUBLE') {
       playSfx('chipHeavy');
       setBetAmount((prev) => {
@@ -525,6 +529,7 @@ export default function RightPanel({
   const applyLastBet = () => {
     if (!lastBetPreset || isManualSettling) return;
     playSfx('ui');
+    haptic('medium');
     setSelectedSide(lastBetPreset.side);
     const next = clampAmount(lastBetPreset.amount);
     setBetAmount(next);
@@ -625,6 +630,7 @@ export default function RightPanel({
       }
 
       playSfx('betConfirm');
+      haptic('heavy');
       setChipCelebrating(true);
       window.setTimeout(() => setChipCelebrating(false), 900);
       const preset = { side: selectedSide, amount: betAmount };
@@ -895,7 +901,9 @@ export default function RightPanel({
             </div>
           </div>
 
-          <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg border border-zinc-800/80 bg-black/40 px-2.5 py-1.5">
+          <div className={`mt-2.5 flex items-center justify-between gap-2 rounded-lg border border-zinc-800/80 bg-black/40 px-2.5 py-1.5 ${
+            hideModeTabs ? 'hidden' : ''
+          }`}>
             <div className="text-[11px] min-w-0">
               <span className="text-zinc-500 mr-1">연속</span>
               <span
@@ -922,13 +930,15 @@ export default function RightPanel({
           ref={panelScrollRef}
           className="flex-1 min-h-0 overflow-y-auto custom-scrollbar overscroll-contain scroll-touch snap-y snap-proximity"
         >
-        <div className="p-3 sm:p-4 flex flex-col gap-3 pb-3">
-          {/* Mode tabs — 베팅 진입을 최상단 */}
+        <div className={`flex flex-col gap-3 pb-3 ${mobileQuick ? 'p-2.5' : 'p-3 sm:p-4'}`}>
+          {/* Mode tabs — 모바일 직접베팅 시트에서는 숨김 */}
+          {!hideModeTabs ? (
           <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-zinc-950 border border-zinc-800 sticky top-0 z-40 shadow-[0_8px_16px_rgba(0,0,0,0.45)]">
             <button
               type="button"
               onClick={() => {
                 playSfx('ui');
+                haptic('light');
                 setFlyers([]);
                 setPanelMode('manual');
                 if (!isDesktop) {
@@ -947,8 +957,10 @@ export default function RightPanel({
               type="button"
               onClick={() => {
                 playSfx('ui');
+                haptic('light');
                 setFlyers([]);
                 setPanelMode('auto');
+                if (mobileQuick) setSheetCollapsed(false);
               }}
               className={`${mobileQuick ? 'min-h-[40px] py-2' : 'min-h-[48px] py-3'} rounded-lg text-sm font-bold transition-colors touch-manipulation relative z-[1] ${
                 panelMode === 'auto'
@@ -959,6 +971,21 @@ export default function RightPanel({
               오토베팅
             </button>
           </div>
+          ) : (
+            <div className="flex items-center justify-end -mt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  playSfx('ui');
+                  haptic('light');
+                  setPanelMode('auto');
+                }}
+                className="text-[11px] text-zinc-500 hover:text-amber-300 min-h-[32px] px-2 touch-manipulation"
+              >
+                오토베팅으로
+              </button>
+            </div>
+          )}
 
           {pendingBets.length > 0 && (
             <div className="rounded-xl border border-sky-500/25 bg-zinc-950 overflow-hidden">
@@ -1326,6 +1353,7 @@ export default function RightPanel({
                               disabled={isManualSettling || !bettingWindow.canPlaceBet}
                               onClick={() => {
                                 playSfx('ui');
+                                haptic('light');
                                 setSelectedSide(opt.id);
                                 setBetError(null);
                                 setManualStep(betAmount > 0 ? 3 : 2);
@@ -1337,7 +1365,7 @@ export default function RightPanel({
                                 }
                               }}
                               className={`${opt.flex} ${
-                                mobileQuick ? 'min-h-[64px] text-lg' : 'min-h-[56px] sm:min-h-[60px] text-base sm:text-lg'
+                                mobileQuick ? 'min-h-[68px] text-lg' : 'min-h-[56px] sm:min-h-[60px] text-base sm:text-lg'
                               } py-3 rounded-xl border font-bold transition-colors disabled:opacity-40 touch-manipulation active:scale-[0.98] ${
                                 active
                                   ? opt.active
@@ -1426,7 +1454,7 @@ export default function RightPanel({
                             disabled={isManualSettling || !bettingWindow.canPlaceBet}
                             className={`${
                               mobileQuick
-                                ? 'min-h-[58px] rounded-2xl'
+                                ? 'min-h-[64px] rounded-2xl'
                                 : 'aspect-square min-h-[48px] rounded-full'
                             } border-[3px] border-dashed shadow-md flex items-center justify-center touch-manipulation active:scale-90 transition-transform disabled:opacity-40 ${chip.color}`}
                           >
@@ -2119,28 +2147,32 @@ export default function RightPanel({
                     <span className="text-zinc-500 ml-1.5">마감</span>
                   )}
                 </p>
-                <div className="grid grid-cols-[minmax(0,0.85fr)_minmax(0,2fr)] gap-2">
+                <div className="grid grid-cols-[minmax(0,0.75fr)_minmax(0,2.25fr)] gap-2">
                   <button
                     type="button"
                     onClick={() => {
                       playSfx('skip');
+                      haptic('light');
                       onSkip?.(table.id);
                       setBetError(null);
                     }}
-                    className="min-h-[56px] py-3.5 bg-zinc-800 active:bg-zinc-700 text-zinc-300 rounded-xl text-sm font-medium touch-manipulation"
+                    className="min-h-[60px] py-3.5 bg-zinc-800 active:bg-zinc-700 text-zinc-300 rounded-xl text-sm font-medium touch-manipulation"
                   >
                     건너뛰기
                   </button>
                   <button
                     type="button"
-                    onClick={() => void handleConfirmBet()}
+                    onClick={() => {
+                      haptic('medium');
+                      void handleConfirmBet();
+                    }}
                     disabled={
                       betAmount <= 0 ||
                       isManualSettling ||
                       submitting ||
                       !bettingWindow.canPlaceBet
                     }
-                    className={`min-h-[56px] py-3.5 rounded-xl text-base font-bold shadow-lg disabled:opacity-45 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none touch-manipulation ${
+                    className={`min-h-[60px] py-3.5 rounded-xl text-base font-bold shadow-lg disabled:opacity-45 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none touch-manipulation ${
                       isHighBet
                         ? 'bg-rose-600 active:bg-rose-500 text-white shadow-rose-600/25'
                         : 'bg-blue-600 active:bg-blue-500 text-white shadow-blue-600/25'
@@ -2178,7 +2210,11 @@ export default function RightPanel({
     <>
       <div className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm" onClick={onClose} />
         <div className={`${CONSOLE_MOBILE_SHELL} ${
-          sheetCollapsed ? 'max-h-[min(42dvh,380px)]' : 'max-h-[min(92dvh,900px)]'
+          sheetCollapsed
+            ? 'max-h-[min(32dvh,300px)]'
+            : panelMode === 'manual'
+              ? 'max-h-[min(62dvh,620px)]'
+              : 'max-h-[min(88dvh,860px)]'
         }`}>
           {panelInner}
         </div>
