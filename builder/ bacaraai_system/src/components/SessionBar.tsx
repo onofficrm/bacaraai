@@ -65,7 +65,7 @@ export default function SessionBar({
 
   const zoneText =
     gauge.zone === 'hit_win'
-      ? '윈컷 도달 — 오토베팅 종료를 권장합니다'
+      ? '윈컷 도달 — 세션을 마치는 것을 권장합니다'
       : gauge.zone === 'hit_loss'
         ? '로스컷 도달 — 즉시 중단하세요'
         : gauge.zone === 'near_win'

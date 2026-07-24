@@ -15,6 +15,8 @@ interface StopSessionModalProps {
   sessionStartedAt?: number | null;
   sessionConfig?: SessionConfig | null;
   martinStage?: number;
+  /** 모달을 열 때 오토/세션이 실행·일시정지 중이었는지 */
+  autoSessionActive?: boolean;
   onViewHistory: () => void;
   onEndSession: () => void;
 }
@@ -38,7 +40,8 @@ function loadSessionRecords(sessionStartedAt: number | null): GameHistoryEntry[]
     return true;
   });
   if (start > 0) return filtered.slice(0, 40);
-  return filtered.filter((e) => inferBetSource(e) === 'auto').slice(0, 20);
+  // 세션 시작 시각이 없으면 최근 직접·오토 모두 (오토만 필터하지 않음)
+  return filtered.slice(0, 20);
 }
 
 export default function StopSessionModal({
@@ -47,6 +50,7 @@ export default function StopSessionModal({
   sessionStartedAt = null,
   sessionConfig = null,
   martinStage = 1,
+  autoSessionActive = false,
   onViewHistory,
   onEndSession,
 }: StopSessionModalProps) {
@@ -137,42 +141,75 @@ export default function StopSessionModal({
 
   if (!type) return null;
 
+  const wins = sessionRecords.filter((e) => e.pnl > 0).length;
+  const losses = sessionRecords.filter((e) => e.pnl < 0).length;
+  const autoCount = sessionRecords.filter((e) => inferBetSource(e) === 'auto').length;
+  const manualCount = sessionRecords.filter((e) => inferBetSource(e) === 'manual').length;
+  const isManualHeavy = manualCount > 0 && autoCount === 0;
+  const isAutoHeavy = autoCount > 0 && manualCount === 0;
+  const isMixed = autoCount > 0 && manualCount > 0;
+
   let Icon = AlertTriangle;
   let title = '';
   let message = '';
   let color = '';
   let bgClass = '';
+  let endLabel = '세션 마치기';
 
   if (type === 'wincut') {
     Icon = CheckCircle;
     title = '목표 수익 달성 (윈컷)';
-    message = '설정한 목표 수익에 도달하여 진행이 자동 종료되었습니다.';
     color = 'text-emerald-400';
     bgClass = 'bg-emerald-500/10 border-emerald-500/30';
+    if (isManualHeavy || (!autoSessionActive && manualCount >= autoCount && manualCount > 0)) {
+      message =
+        '설정한 세션 한도(윈컷)에 도달했습니다. 추가 직접 베팅을 잠시 멈추는 것을 권장합니다.';
+      endLabel = '세션 마치기';
+    } else if (autoSessionActive || isAutoHeavy) {
+      message = '설정한 목표 수익에 도달해 오토베팅이 중단되었습니다.';
+      endLabel = isMixed ? '세션 마치기' : '오토베팅 종료';
+    } else {
+      message = '설정한 세션 목표 수익(윈컷)에 도달했습니다.';
+      endLabel = '세션 마치기';
+    }
   } else if (type === 'losscut') {
     Icon = XCircle;
     title = '손실 한도 도달 (로스컷)';
-    message = '손실 한도에 도달하여 진행이 중단되었습니다.';
     color = 'text-red-400';
     bgClass = 'bg-red-500/10 border-red-500/30';
+    if (isManualHeavy || (!autoSessionActive && manualCount >= autoCount && manualCount > 0)) {
+      message =
+        '설정한 세션 손실 한도(로스컷)에 도달했습니다. 추가 직접 베팅을 중단하는 것을 권장합니다.';
+      endLabel = '세션 마치기';
+    } else if (autoSessionActive || isAutoHeavy) {
+      message = '손실 한도에 도달해 오토베팅이 중단되었습니다.';
+      endLabel = isMixed ? '세션 마치기' : '오토베팅 종료';
+    } else {
+      message = '설정한 세션 손실 한도(로스컷)에 도달했습니다.';
+      endLabel = '세션 마치기';
+    }
   } else if (type === 'manual') {
     Icon = CheckCircle;
-    title = '오토베팅 종료';
-    message = '사용자가 오토베팅을 종료했습니다. 이번 세션을 복기해 보세요.';
     color = 'text-zinc-200';
     bgClass = 'bg-zinc-500/10 border-zinc-600/40';
+    if (autoSessionActive || isAutoHeavy) {
+      title = '오토베팅 종료';
+      message = '사용자가 오토베팅을 종료했습니다. 이번 세션을 복기해 보세요.';
+      endLabel = '오토베팅 종료';
+    } else {
+      title = '세션 종료';
+      message = '이번 세션을 마칩니다. 아래 기록으로 복기해 보세요.';
+      endLabel = '세션 마치기';
+    }
   } else {
     Icon = AlertTriangle;
     title = '시스템 오류 발생';
-    message = '연결 상태가 불안정하거나 AI 응답이 지연되어 안전을 위해 일시 중단되었습니다.';
+    message =
+      '연결 상태가 불안정하거나 AI 응답이 지연되어 안전을 위해 일시 중단되었습니다.';
     color = 'text-amber-400';
     bgClass = 'bg-amber-500/10 border-amber-500/30';
+    endLabel = '확인';
   }
-
-  const wins = sessionRecords.filter((e) => e.pnl > 0).length;
-  const losses = sessionRecords.filter((e) => e.pnl < 0).length;
-  const autoCount = sessionRecords.filter((e) => inferBetSource(e) === 'auto').length;
-  const manualCount = sessionRecords.filter((e) => inferBetSource(e) === 'manual').length;
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -189,7 +226,13 @@ export default function StopSessionModal({
           <h2 id="stop-session-title" className={`text-xl sm:text-2xl font-bold mb-1.5 ${color}`}>
             {title}
           </h2>
-          <p className="text-zinc-300 text-sm leading-relaxed mb-4">{message}</p>
+          <p className="text-zinc-300 text-sm leading-relaxed mb-2">{message}</p>
+          {(autoCount > 0 || manualCount > 0) && (
+            <p className="text-[11px] text-zinc-500 mb-4">
+              이번 세션 · 직접 {manualCount} · 오토 {autoCount}
+            </p>
+          )}
+          {autoCount === 0 && manualCount === 0 && <div className="mb-4" />}
         </div>
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 p-3 mb-3 shrink-0">
@@ -221,11 +264,6 @@ export default function StopSessionModal({
               </p>
             </div>
           </div>
-          {(autoCount > 0 || manualCount > 0) && (
-            <p className="text-[10px] text-zinc-500 text-center mt-2">
-              오토 {autoCount} · 직접 {manualCount}
-            </p>
-          )}
         </div>
 
         <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-3 mb-3 shrink-0">
@@ -355,7 +393,7 @@ export default function StopSessionModal({
                     : 'bg-amber-500 hover:bg-amber-600 text-zinc-950'
             }`}
           >
-            {type === 'error' ? '확인' : '오토베팅 종료'}
+            {endLabel}
           </button>
         </div>
       </div>

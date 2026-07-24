@@ -88,6 +88,8 @@ export default function App() {
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [stopSessionType, setStopSessionType] = useState<'wincut' | 'losscut' | 'error' | 'manual' | null>(null);
   const [stopSessionPnl, setStopSessionPnl] = useState(0);
+  /** 모달 오픈 시점: 오토/세션이 켜져 있었는지 (pause 전에 캡처) */
+  const [stopAutoSessionActive, setStopAutoSessionActive] = useState(false);
   const [insightSourceFilter, setInsightSourceFilter] = useState<'all' | 'manual' | 'auto'>('all');
   const [autoResumeTick, setAutoResumeTick] = useState(0);
   const sessionStartedAtRef = useRef<number | null>(null);
@@ -316,6 +318,8 @@ export default function App() {
   }, [riskAlerts]);
 
   const openStopReview = (type: 'wincut' | 'losscut' | 'error' | 'manual', pnl?: number) => {
+    const autoActive = session.status === 'running' || session.status === 'paused';
+    setStopAutoSessionActive(autoActive);
     session.pauseSession();
     window.setTimeout(() => {
       setStopSessionPnl(typeof pnl === 'number' ? pnl : session.pnl);
@@ -326,6 +330,8 @@ export default function App() {
   useEffect(() => {
     session.setCutHandler((type, pnl) => {
       playSfx(type === 'wincut' ? 'win' : 'loss');
+      const autoActive = session.status === 'running' || session.status === 'paused';
+      setStopAutoSessionActive(autoActive);
       session.pauseSession();
       window.setTimeout(() => {
         setStopSessionPnl(pnl);
@@ -333,7 +339,7 @@ export default function App() {
       }, 120);
     });
     return () => session.setCutHandler(null);
-  }, [session.setCutHandler, session.pauseSession]);
+  }, [session.setCutHandler, session.pauseSession, session.status]);
 
   // 라이브 테이블: 베팅 이후에 새로 들어온 결과로만 정산 (오토·직접 각각)
   useEffect(() => {
@@ -1066,6 +1072,7 @@ export default function App() {
         sessionStartedAt={sessionStartedAtRef.current}
         sessionConfig={session.config}
         martinStage={session.martinStage}
+        autoSessionActive={stopAutoSessionActive}
         onViewHistory={() => {
           setStopSessionType(null);
           session.stopSession();
