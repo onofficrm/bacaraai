@@ -165,6 +165,10 @@ export default function HistoryTab({
         </div>
       </div>
 
+      <p className="text-[11px] text-zinc-500 -mt-2">
+        일시는 한국시간(KST) · 베팅 접수 시각입니다
+      </p>
+
       <div className="hidden md:block flex-1 overflow-auto custom-scrollbar border border-zinc-800 rounded-xl bg-zinc-900/50 min-h-[280px]">
         <table className="w-full text-left text-xs whitespace-nowrap">
           <thead className="bg-zinc-950/80 text-zinc-500 sticky top-0 z-10 border-b border-zinc-800">

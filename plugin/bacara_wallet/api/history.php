@@ -109,6 +109,7 @@ function bacara_wallet_parse_bet_log_row($row)
         return array(
             'id' => 'wlog_' . $id,
             'time' => $time,
+            'day' => preg_match('/^(\d{4}-\d{2}-\d{2})/', $created, $dm) ? $dm[1] : '',
             'tableName' => $tableName,
             'shoeNumber' => $shoeNumber,
             'round' => $round,
@@ -255,6 +256,7 @@ function bacara_wallet_parse_bet_log_row($row)
     return array(
         'id' => 'wlog_' . $id,
         'time' => $time,
+        'day' => preg_match('/^(\d{4}-\d{2}-\d{2})/', $created, $dm) ? $dm[1] : '',
         'tableName' => $tableName,
         'shoeNumber' => $shoeNumber,
         'round' => $round,

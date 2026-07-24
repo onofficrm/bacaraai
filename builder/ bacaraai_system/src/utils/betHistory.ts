@@ -4,8 +4,27 @@ import { parseDetectedAtMs } from '../hooks/useBettingWindow';
 
 const STORAGE_KEY = 'bacara_bet_history_v1';
 const MAX_ENTRIES = 500;
+/** 표시·일자 키는 항상 한국시간(KST, UTC+9) — 브라우저 로컬 TZ와 무관 */
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 export type BetWlResult = 'win' | 'loss' | 'tie' | 'none';
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/** epoch ms → KST 벽시계 부품 */
+function kstParts(at: number) {
+  const shifted = new Date(at + KST_OFFSET_MS);
+  return {
+    y: shifted.getUTCFullYear(),
+    mo: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    hh: shifted.getUTCHours(),
+    mm: shifted.getUTCMinutes(),
+    ss: shifted.getUTCSeconds(),
+  };
+}
 
 export function loadBetHistory(): GameHistoryEntry[] {
   try {
@@ -32,31 +51,22 @@ export function clearBetHistory() {
 }
 
 function formatTime(at: number): string {
-  const d = new Date(at);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
+  const p = kstParts(at);
+  return `${pad2(p.hh)}:${pad2(p.mm)}:${pad2(p.ss)}`;
 }
 
-/** 목록·상세용 — 날짜+시간 (로컬 벽시계) */
+/** 목록·상세용 — 날짜+시간 (항상 KST) */
 export function formatHistoryDateTime(at?: number, fallbackTime?: string): string {
   if (at && at > 0) {
-    const d = new Date(at);
-    const y = d.getFullYear();
-    const mo = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${mo}-${day} ${formatTime(at)}`;
+    const p = kstParts(at);
+    return `${p.y}-${pad2(p.mo)}-${pad2(p.day)} ${formatTime(at)}`;
   }
   return fallbackTime || '-';
 }
 
 function dayKey(at: number = Date.now()): string {
-  const d = new Date(at);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  const p = kstParts(at);
+  return `${p.y}-${pad2(p.mo)}-${pad2(p.day)}`;
 }
 
 /** 손익·결과 기준 승/패/무 */
