@@ -930,6 +930,7 @@ export default function App() {
                     return (
                     <motion.div
                       key={table.id}
+                      data-table-id={table.id}
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.95 }}
@@ -1090,11 +1091,20 @@ export default function App() {
         result={session.winCelebration}
         onDismiss={() => {
           const closed = session.winCelebration;
+          // ① 해당 테이블 포커스 → ② 플립(winTableFlip) → ③ 손익
+          if (closed?.tableId) {
+            setSelectedTableId(closed.tableId);
+            window.requestAnimationFrame(() => {
+              const el = document.querySelector(
+                `[data-table-id="${CSS.escape(closed.tableId)}"]`,
+              );
+              el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            });
+          }
           session.clearWinCelebration(closed?.id);
-          // 팝업 닫힌 뒤 테이블 플립 + (오토면) AUTO HIT 스탬프
           if (closed?.source === 'auto' && closed.tableId) {
             setAutoHitTableId(closed.tableId);
-            window.setTimeout(() => setAutoHitTableId(null), 2200);
+            window.setTimeout(() => setAutoHitTableId(null), 1600);
           }
         }}
       />

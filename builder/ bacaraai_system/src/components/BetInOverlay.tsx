@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'motion/react';
 import { CHIP_TONES } from './ChipBetStage';
 import { playSfx } from '../audio/sfxEngine';
+import { useCountUp } from '../hooks/useCountUp';
 import { useFxIntensity } from '../hooks/useFxIntensity';
 import type { TableBetBanner } from '../utils/autoTableEvent';
 
@@ -295,29 +296,6 @@ function ChipPile({
   );
 }
 
-function useCountUp(target: number, enabled: boolean, durationMs: number, runKey: string) {
-  const [value, setValue] = useState(enabled ? 0 : target);
-
-  useEffect(() => {
-    if (!enabled || target <= 0) {
-      setValue(target);
-      return;
-    }
-    setValue(0);
-    const start = performance.now();
-    let raf = 0;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / durationMs);
-      const eased = 1 - (1 - t) ** 3;
-      setValue(Math.round(target * eased));
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [enabled, target, durationMs, runKey]);
-
-  return value;
-}
 
 function BetInRow({
   banner,
@@ -336,7 +314,11 @@ function BetInRow({
   const isAuto = banner.badge.includes('오토');
   const chips = useMemo(() => buildChipPile(amount, compact), [amount, compact]);
   const durationMs = Math.min(1100, chips.length * DROP_MS + 160);
-  const displayAmount = useCountUp(amount, animate, durationMs, banner.id);
+  const displayAmount = useCountUp(amount, {
+    enabled: animate && amount > 0,
+    durationMs,
+    runKey: banner.id,
+  });
   const side = banner.side || '';
   const sideTone =
     side === 'Banker' || side === 'B'

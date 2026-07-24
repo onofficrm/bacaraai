@@ -15,13 +15,13 @@ import {
   X,
 } from 'lucide-react';
 import NotificationCenter from './NotificationCenter';
+import AnimatedMoney from './AnimatedMoney';
 import { PLATFORM_LINKS } from '../constants';
 import useWallet from '../hooks/useWallet';
 import HelpTooltip from './HelpTooltip';
 import { playSfx } from '../audio/sfxEngine';
 import {
   formatElapsed,
-  formatMoney,
   modeLabel,
   type SessionMode,
   type SessionStatus,
@@ -121,7 +121,6 @@ export default function Header({
   aiRecommendCount = 0,
 }: HeaderProps) {
   const wallet = useWallet();
-  const moneyText = new Intl.NumberFormat('ko-KR').format(wallet.balance) + '원';
   const [fullscreen, setFullscreen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -378,17 +377,13 @@ export default function Header({
                     <span className="text-zinc-600 mx-1">·</span>
                     <span className="text-zinc-400">무 {today.ties}</span>
                     <span className="text-zinc-600 mx-1">·</span>
-                    <span
-                      className={`font-mono font-bold ${
-                        today.pnl > 0
-                          ? 'text-emerald-400'
-                          : today.pnl < 0
-                            ? 'text-rose-400'
-                            : 'text-zinc-300'
-                      }`}
-                    >
-                      {formatMoney(today.pnl, true)}
-                    </span>
+                    <AnimatedMoney
+                      value={today.pnl}
+                      withSign
+                      toneBySign
+                      className="font-bold"
+                      durationMs={800}
+                    />
                   </span>
                 )}
               </div>
@@ -415,7 +410,11 @@ export default function Header({
           <Wallet size={14} className="shrink-0" />
           <span className="hidden sm:inline">가상머니</span>
           {beginnerMode && <HelpTooltip termId="virtual-money" />}
-          <span className="font-mono">{wallet.loading ? '...' : moneyText}</span>
+          {wallet.loading ? (
+            <span className="font-mono tabular-nums">...</span>
+          ) : (
+            <AnimatedMoney value={wallet.balance} className="text-amber-400" durationMs={900} />
+          )}
         </div>
         <div className="hidden sm:flex items-center gap-3 text-zinc-400">
           <button

@@ -216,6 +216,8 @@ export default function TableCard({
   const showWinFlip = Boolean(settleBanner && settleBanner.tone === 'hit' && !reduced);
   const showMissFlash = Boolean(settleBanner && settleBanner.tone === 'miss');
   const winFlipIdRef = useRef<string | null>(null);
+  const [resultSweep, setResultSweep] = useState(false);
+  const resultSweepIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!showWinFlip || !settleBanner) return;
@@ -223,6 +225,23 @@ export default function TableCard({
     winFlipIdRef.current = settleBanner.id;
     playSfx('win', { throttleMs: 1200 });
   }, [showWinFlip, settleBanner]);
+
+  // 결과 확정: 한 번만 부드러운 빛 스윕
+  useEffect(() => {
+    if (reduced) return;
+    const key =
+      settleBanner?.id ||
+      (hitFlash ? `hit-${table.live?.latestId ?? table.id}-${hitFlash}` : null);
+    if (!key) return;
+    if (resultSweepIdRef.current === key) return;
+    resultSweepIdRef.current = key;
+    setResultSweep(true);
+    const t = window.setTimeout(() => setResultSweep(false), 1100);
+    return () => window.clearTimeout(t);
+  }, [settleBanner?.id, hitFlash, reduced, table.live?.latestId, table.id]);
+
+  const bettingOpen = betSec > 0 && betSec > 5;
+  const bettingUrgent = betSec > 0 && betSec <= 5;
 
   return (
     <div
@@ -243,16 +262,22 @@ export default function TableCard({
           <WinFlipOverlay key={settleBanner.id} banner={settleBanner} compact={compact} />
         )}
       </AnimatePresence>
+      {/* 베팅 창: 골드 헤어라인 / 마감 임박: 로즈 */}
       {betSec > 0 && (
         <div
-          className="pointer-events-none absolute inset-0 rounded-xl z-[1]"
+          className={`pointer-events-none absolute inset-0 rounded-xl z-[1] ${
+            bettingOpen && !reduced ? 'betting-gold-line' : ''
+          }`}
           style={{
-            boxShadow:
-              isSelected && betSec <= 5
-                ? `inset 0 0 0 2px rgba(244,63,94,${0.45 + (5 - betSec) * 0.1})`
-                : `inset 0 0 0 2px rgba(56,189,248,${0.25 + betProgress * 0.55})`,
+            boxShadow: bettingUrgent
+              ? `inset 0 0 0 1.5px rgba(244,63,94,${0.5 + (5 - betSec) * 0.08})`
+              : `inset 0 0 0 1px rgba(251,191,36,${0.35 + betProgress * 0.4})`,
           }}
         />
+      )}
+      {/* 결과 확정: 한 번만 부드러운 빛 스윕 */}
+      {resultSweep && !reduced && (
+        <div className="pointer-events-none absolute inset-0 z-[28] rounded-xl overflow-hidden result-light-sweep" aria-hidden />
       )}
 
       <AnimatePresence>
@@ -466,16 +491,18 @@ export default function TableCard({
                     betSec <= 5
                       ? 'text-[11px] font-black text-rose-200 border-rose-400/55 bg-rose-500/20 animate-pulse scale-105'
                       : betSec <= 10
-                        ? 'text-[10px] font-bold text-rose-300 border-rose-500/40 bg-rose-500/10 animate-pulse'
-                        : 'text-[10px] font-bold text-sky-300 border-sky-500/35 bg-sky-500/10'
+                        ? 'text-[10px] font-bold text-amber-200 border-amber-400/45 bg-amber-500/15 animate-pulse'
+                        : 'text-[10px] font-bold text-amber-300/95 border-amber-400/40 bg-amber-500/10'
                   }`}
                 >
-                  <span className="opacity-70 font-sans text-[9px]">BET</span>
+                  <span className="opacity-80 font-sans text-[9px] tracking-wide">
+                    {betSec <= 5 ? 'CLOSE' : 'OPEN'}
+                  </span>
                   {betSec}
                   <span className="opacity-70 font-sans text-[9px]">s</span>
                 </span>
               ) : table.live && lastResultLabel ? (
-                <span className="text-[10px] font-mono text-zinc-600">마감</span>
+                <span className="text-[10px] font-mono text-zinc-600 tracking-wide">CONFIRMED</span>
               ) : null}
             </div>
           </div>
@@ -630,6 +657,30 @@ export default function TableCard({
         @keyframes pendingWaitRing {
           0%, 100% { box-shadow: 0 0 0 0 rgba(56,189,248,0.18); }
           50% { box-shadow: 0 0 0 5px rgba(56,189,248,0.1); }
+        }
+        .betting-gold-line {
+          animation: bettingGoldPulse 2.2s ease-in-out infinite;
+        }
+        @keyframes bettingGoldPulse {
+          0%, 100% { box-shadow: inset 0 0 0 1px rgba(251,191,36,0.32); }
+          50% { box-shadow: inset 0 0 0 1px rgba(251,191,36,0.55); }
+        }
+        .result-light-sweep {
+          background: linear-gradient(
+            105deg,
+            transparent 0%,
+            transparent 38%,
+            rgba(255, 248, 220, 0.14) 48%,
+            rgba(251, 191, 36, 0.18) 52%,
+            transparent 62%,
+            transparent 100%
+          );
+          background-size: 220% 100%;
+          animation: resultLightSweep 1.05s ease-out forwards;
+        }
+        @keyframes resultLightSweep {
+          from { background-position: 100% 0; opacity: 0.9; }
+          to { background-position: -100% 0; opacity: 0; }
         }
         .countdown-urgent-ring {
           animation: countdownUrgent 0.7s ease-in-out infinite;

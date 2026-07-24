@@ -42,6 +42,8 @@ export type TableBetBanner = {
   hint?: string;
   amount?: number;
   side?: string;
+  /** 정산 손익 (플립·카운트업용) */
+  pnl?: number;
 };
 
 export type ResolveTableCardEventInput = {
@@ -76,8 +78,8 @@ function formatWon(amount: number): string {
 }
 
 const RESULT_FLASH_MS = 4500;
-/** 승리 플립 유지 시간 */
-const WIN_FLIP_MS = 1650;
+/** 승리 플립 유지 시간 — 포커스→플립→손익 ≈ 1.5s */
+const WIN_FLIP_MS = 1500;
 
 function pendingBanner(bet: PendingBet, strategy: AutoBetStrategy): TableBetBanner {
   const isAuto = bet.source === 'auto';
@@ -105,6 +107,8 @@ function settleBanner(result: LastBetResult): TableBetBanner {
       tone: 'hit',
       badge: isAuto ? '오토 적중' : '직접 적중',
       label: pnl > 0 ? `${side} · +${formatWon(pnl)}` : `${side} · 적중`,
+      pnl,
+      side,
     };
   }
   if (lost) {
@@ -117,6 +121,8 @@ function settleBanner(result: LastBetResult): TableBetBanner {
         stage != null && isAuto
           ? `${side} · −${formatWon(Math.abs(pnl) || result.amount)} · 다음 ${stage}단계`
           : `${side} · −${formatWon(Math.abs(pnl) || result.amount)}`,
+      pnl,
+      side,
     };
   }
   return {

@@ -2,6 +2,7 @@ import { Lock, Square, Settings2, ShieldAlert, Zap } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import HelpTooltip from './HelpTooltip';
+import AnimatedMoney from './AnimatedMoney';
 import { playSfx } from '../audio/sfxEngine';
 import type { SessionConfig } from '../types';
 import {
@@ -45,8 +46,6 @@ export default function SessionBar({
   const stage = Math.min(Math.max(1, martinStage), config.maxMartin);
   const nextBet = resolveBetAmount(config, stage);
   const gauge = computeGauge(pnl, config.lossCut, config.winCut);
-  const pnlColor =
-    pnl > 0 ? 'text-emerald-400' : pnl < 0 ? 'text-rose-400' : 'text-zinc-300';
   const fillColor = pnl >= 0 ? 'bg-emerald-500' : 'bg-rose-500';
 
   const [levelFlash, setLevelFlash] = useState(false);
@@ -212,9 +211,13 @@ export default function SessionBar({
             <div className="flex-1 min-w-[120px] flex flex-col gap-1 px-1">
               <div className="text-center">
                 <span className="text-[9px] text-zinc-500 mr-1">현재 손익</span>
-                <span className={`text-xs font-mono font-bold tabular-nums ${pnlColor}`}>
-                  {formatMoney(pnl, true)}
-                </span>
+                <AnimatedMoney
+                  value={pnl}
+                  withSign
+                  toneBySign
+                  className="text-xs font-bold"
+                  durationMs={700}
+                />
               </div>
               <div className="h-2.5 w-full bg-zinc-800 rounded-full relative overflow-hidden border border-zinc-700/60">
                 <div
