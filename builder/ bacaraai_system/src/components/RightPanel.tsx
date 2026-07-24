@@ -188,6 +188,8 @@ export default function RightPanel({
   const roundKeyRef = React.useRef<string | null>(null);
   const settledResultIdRef = React.useRef<string | null>(null);
   const [selectedSide, setSelectedSide] = useState<BetSide>('PLAYER');
+  /** false 면 위치 미선택 — 세 버튼 모두 연한 색, 클릭 후 진하게 */
+  const [sidePicked, setSidePicked] = useState(false);
   const [showMoreChips, setShowMoreChips] = useState(false);
   const [showAiDetails, setShowAiDetails] = useState(false);
   const [showRisk, setShowRisk] = useState(false);
@@ -290,6 +292,7 @@ export default function RightPanel({
           ? 'PLAYER'
           : 'PLAYER',
     );
+    setSidePicked(false);
     setShowMoreChips(false);
     setShowAiDetails(false);
     setShowRisk(false);
@@ -329,6 +332,7 @@ export default function RightPanel({
       if (t.ai.finalOpinion === 'BANKER' || t.ai.finalOpinion === 'PLAYER') {
         setSelectedSide(t.ai.finalOpinion === 'BANKER' ? 'BANKER' : 'PLAYER');
       }
+      setSidePicked(false);
       const rec = t.ai.recommendedAmount ?? 0;
       const actionable =
         rec > 0 &&
@@ -467,10 +471,36 @@ export default function RightPanel({
         { label: '2배', value: 'DOUBLE' as const, color: 'bg-zinc-800 text-white border-zinc-950' },
       ];
 
-  const sideOptions: { id: BetSide; label: string; active: string; flex: string }[] = [
-    { id: 'PLAYER', label: 'Player', active: 'bg-blue-600 border-blue-400 text-white', flex: 'flex-[4]' },
-    { id: 'TIE', label: 'Tie', active: 'bg-emerald-500 border-emerald-400 text-white', flex: 'flex-[2]' },
-    { id: 'BANKER', label: 'Banker', active: 'bg-red-500 border-red-400 text-white', flex: 'flex-[4]' },
+  const sideOptions: {
+    id: BetSide;
+    label: string;
+    /** 미선택 · 연한 고유색 */
+    idle: string;
+    /** 클릭 선택 · 진한 강조 */
+    active: string;
+    flex: string;
+  }[] = [
+    {
+      id: 'PLAYER',
+      label: 'Player',
+      idle: 'bg-blue-600/20 border-blue-500/45 text-blue-200/90',
+      active: 'bg-blue-600 border-blue-300 text-white shadow-[0_0_18px_rgba(37,99,235,0.35)]',
+      flex: 'flex-[4]',
+    },
+    {
+      id: 'TIE',
+      label: 'Tie',
+      idle: 'bg-emerald-500/18 border-emerald-500/40 text-emerald-200/90',
+      active: 'bg-emerald-500 border-emerald-300 text-white shadow-[0_0_18px_rgba(16,185,129,0.3)]',
+      flex: 'flex-[2]',
+    },
+    {
+      id: 'BANKER',
+      label: 'Banker',
+      idle: 'bg-red-500/20 border-red-500/45 text-red-200/90',
+      active: 'bg-red-500 border-red-300 text-white shadow-[0_0_18px_rgba(239,68,68,0.35)]',
+      flex: 'flex-[4]',
+    },
   ];
 
   const clampAmount = (amount: number) =>
@@ -535,6 +565,7 @@ export default function RightPanel({
     playSfx('ui');
     haptic('medium');
     setSelectedSide(lastBetPreset.side);
+    setSidePicked(true);
     const next = clampAmount(lastBetPreset.amount);
     setBetAmount(next);
     setChipStack(amountToStack(next));
@@ -546,7 +577,10 @@ export default function RightPanel({
   const applyRecommendedBet = () => {
     if (!table) return;
     playSfx('ui');
-    if (recommendedSide) setSelectedSide(recommendedSide);
+    if (recommendedSide) {
+      setSelectedSide(recommendedSide);
+      setSidePicked(true);
+    }
     const amount =
       table.ai.recommendedAmount > 0
         ? table.ai.recommendedAmount
@@ -656,6 +690,12 @@ export default function RightPanel({
   const handleConfirmBet = async () => {
     if (!table || !onPlaceBet) return;
     if (submittingRef.current || submitting || isManualSettling) return;
+    if (!sidePicked) {
+      setBetError('Player / Tie / Banker 중 위치를 선택해 주세요.');
+      playSfx('error');
+      setManualStep(1);
+      return;
+    }
     if (!bettingWindow.canPlaceBet) {
       setBetError(
         bettingWindow.hasResult
@@ -1349,7 +1389,9 @@ export default function RightPanel({
                       )}
                       <div className="flex gap-2">
                         {sideOptions.map((opt) => {
-                          const active = selectedSide === opt.id;
+                          const active = sidePicked && selectedSide === opt.id;
+                          const aiHint =
+                            !sidePicked && recommendedSide === opt.id;
                           return (
                             <button
                               key={opt.id}
@@ -1359,6 +1401,7 @@ export default function RightPanel({
                                 playSfx('ui');
                                 haptic('light');
                                 setSelectedSide(opt.id);
+                                setSidePicked(true);
                                 setBetError(null);
                                 setManualStep(betAmount > 0 ? 3 : 2);
                                 if (!isDesktop) {
@@ -1372,13 +1415,20 @@ export default function RightPanel({
                                 mobileQuick
                                   ? 'min-h-16 min-w-[3.25rem] text-lg'
                                   : 'min-h-[56px] sm:min-h-[60px] text-base sm:text-lg'
-                              } py-3 rounded-xl border font-bold transition-colors disabled:opacity-40 ${CHIP_PRESS} ${
-                                active
-                                  ? opt.active
-                                  : 'bg-black border-zinc-700 text-zinc-400'
+                              } relative py-3 rounded-xl border font-bold transition-[colors,box-shadow,transform] disabled:opacity-40 ${CHIP_PRESS} ${
+                                active ? opt.active : opt.idle
+                              } ${
+                                aiHint
+                                  ? 'ring-2 ring-amber-400/50 ring-offset-1 ring-offset-zinc-950'
+                                  : ''
                               }`}
                             >
                               {opt.label}
+                              {aiHint && (
+                                <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 rounded px-1 py-px text-[8px] font-bold tracking-wide text-amber-200 bg-amber-500/25 border border-amber-400/40">
+                                  AI
+                                </span>
+                              )}
                             </button>
                           );
                         })}
@@ -1404,7 +1454,13 @@ export default function RightPanel({
                           )}
                           {mobileQuick && (
                             <span className="text-[11px] font-mono font-bold text-zinc-200">
-                              <span className={sideColor(selectedSide)}>{sideShortLabel(selectedSide)}</span>
+                              {sidePicked ? (
+                                <span className={sideColor(selectedSide)}>
+                                  {sideShortLabel(selectedSide)}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-500">위치?</span>
+                              )}
                               <span className="text-zinc-600 mx-1">·</span>
                               {betAmount.toLocaleString()}원
                             </span>
@@ -2170,8 +2226,16 @@ export default function RightPanel({
                   </button>
                 )}
                 <p className="text-[12px] text-center text-zinc-300">
-                  <span className={`font-bold ${sideColor(selectedSide)}`}>{sideShortLabel(selectedSide)}</span>
-                  <span className="text-zinc-600 mx-1">·</span>
+                  {sidePicked ? (
+                    <>
+                      <span className={`font-bold ${sideColor(selectedSide)}`}>
+                        {sideShortLabel(selectedSide)}
+                      </span>
+                      <span className="text-zinc-600 mx-1">·</span>
+                    </>
+                  ) : (
+                    <span className="text-zinc-500 mr-1">위치 선택 · </span>
+                  )}
                   <span className="font-mono font-bold text-white text-[13px]">{betAmount.toLocaleString()}원</span>
                   {bettingWindow.canPlaceBet ? (
                     <span className="text-sky-400/90 ml-1.5 font-mono font-bold">
