@@ -704,6 +704,55 @@ if (!function_exists('onoff_builder_rewrite_asset_paths')) {
     }
 }
 
+if (!function_exists('onoff_builder_bust_asset_cache')) {
+    /**
+     * index.html 의 js/css URL 에 파일 mtime 쿼리를 붙여 배포 직후 검은 화면(구버전 캐시)을 막음.
+     */
+    function onoff_builder_bust_asset_cache($html, $project_id, $entry_path = 'index.html')
+    {
+        $id = onoff_builder_sanitize_project_id($project_id);
+        if ($id === '' || !is_string($html) || $html === '') {
+            return $html;
+        }
+
+        $dir = onoff_builder_import_dir($id);
+        if (!$dir || !is_dir($dir)) {
+            return $html;
+        }
+
+        return preg_replace_callback(
+            '#\s(src|href)=(["\'])([^"\']+\.(?:js|css))(\?[^"\']*)?\2#i',
+            function ($m) use ($dir, $id) {
+                $attr = $m[1];
+                $q = $m[2];
+                $url = $m[3];
+                $path = $url;
+
+                // /plugin/.../imports/{id}/assets/file.js → assets/file.js
+                $marker = '/imports/' . $id . '/';
+                $pos = strpos($path, $marker);
+                if ($pos !== false) {
+                    $rel = substr($path, $pos + strlen($marker));
+                } elseif (preg_match('#(?:^|/)assets/(.+)$#', $path, $mm)) {
+                    $rel = 'assets/' . $mm[1];
+                } else {
+                    return $m[0];
+                }
+
+                $rel = str_replace(array('..', '\\'), '', $rel);
+                $file = $dir . '/' . ltrim($rel, '/');
+                if (!is_file($file)) {
+                    return $m[0];
+                }
+
+                $ver = (string) filemtime($file);
+                return ' ' . $attr . '=' . $q . $url . '?v=' . $ver . $q;
+            },
+            $html
+        );
+    }
+}
+
 if (!function_exists('onoff_builder_resolve_import_index_file')) {
     function onoff_builder_resolve_import_index_file($id, $entry_path)
     {
@@ -842,8 +891,14 @@ if (!function_exists('onoff_builder_render_import_page')) {
 
         $html = onoff_builder_remove_base_tags($html);
         $html = onoff_builder_rewrite_asset_paths($html, $id, $entry);
+        if (function_exists('onoff_builder_bust_asset_cache')) {
+            $html = onoff_builder_bust_asset_cache($html, $id, $entry);
+        }
 
         header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: 0');
         echo $html;
         exit;
     }
