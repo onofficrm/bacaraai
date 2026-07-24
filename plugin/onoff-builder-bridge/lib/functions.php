@@ -715,8 +715,16 @@ if (!function_exists('onoff_builder_bust_asset_cache')) {
             return $html;
         }
 
-        $dir = onoff_builder_import_dir($id);
-        if (!$dir || !is_dir($dir)) {
+        // storage.php 미로드 환경 대비 — 상수/project_dir 로 경로 확보
+        $dir = '';
+        if (function_exists('onoff_builder_project_dir')) {
+            $dir = (string) onoff_builder_project_dir($id);
+        } elseif (function_exists('onoff_builder_import_dir')) {
+            $dir = (string) onoff_builder_import_dir($id);
+        } elseif (defined('ONOFF_BUILDER_IMPORTS_PATH')) {
+            $dir = ONOFF_BUILDER_IMPORTS_PATH . '/' . $id;
+        }
+        if ($dir === '' || !is_dir($dir)) {
             return $html;
         }
 
