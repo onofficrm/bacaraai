@@ -850,7 +850,15 @@ export default function App() {
       <main className="flex-1 min-h-0 flex overflow-hidden">
         {activeView === 'multitable' ? (
           <>
-            <div className="flex-1 min-h-0 p-2.5 sm:p-4 lg:p-6 overflow-y-auto overscroll-y-contain scroll-touch custom-scrollbar flex flex-col">
+            <div className="flex-1 min-h-0 p-2.5 sm:p-4 lg:p-6 overflow-y-auto overscroll-y-contain scroll-touch custom-scrollbar flex flex-col bg-zinc-900/80 border-r border-zinc-800/60">
+              <div className="mb-2 flex items-baseline justify-between gap-2 shrink-0">
+                <p className="text-[10px] font-bold text-zinc-500 tracking-[0.14em] uppercase">
+                  게임 테이블
+                </p>
+                <p className="text-[10px] text-zinc-600 hidden sm:block">
+                  관찰 · 선택 후 오른쪽에서 베팅
+                </p>
+              </div>
               <ScreenHelpBanner screen="multitable" beginnerMode={beginnerMode} />
               <TableToolbar 
                 sortBy={sortBy} 

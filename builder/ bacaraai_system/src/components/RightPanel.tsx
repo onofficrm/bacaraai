@@ -36,6 +36,31 @@ import AiSlotReveal from './AiSlotReveal';
 
 type PanelMode = 'manual' | 'auto';
 
+/** Desktop: darker “betting console” vs game lobby */
+const CONSOLE_DESKTOP_SHELL =
+  'hidden xl:flex z-50 w-[22rem] 2xl:w-[28rem] h-full min-h-0 flex-col shrink-0 border-l border-sky-500/25 bg-black shadow-[-18px_0_40px_rgba(14,165,233,0.08)]';
+
+/** Mobile bottom sheet as betting console */
+const CONSOLE_MOBILE_SHELL =
+  'fixed inset-x-0 bottom-0 z-[70] w-full max-h-[min(92dvh,900px)] rounded-t-2xl border-t border-x border-sky-500/30 bg-black shadow-[0_-12px_40px_rgba(14,165,233,0.12)] flex flex-col';
+
+const CONSOLE_MOBILE_EMPTY_SHELL =
+  'fixed inset-x-0 bottom-0 z-[70] w-full max-h-[min(70dvh,640px)] rounded-t-2xl border-t border-x border-sky-500/30 bg-black shadow-[0_-12px_40px_rgba(14,165,233,0.12)] flex flex-col';
+
+function StepBadge({ n, active }: { n: number; active?: boolean }) {
+  return (
+    <span
+      className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold shrink-0 ${
+        active
+          ? 'bg-sky-500 text-zinc-950'
+          : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+      }`}
+    >
+      {n}
+    </span>
+  );
+}
+
 interface RightPanelProps {
   table: TableData | null;
   tables?: TableData[];
@@ -599,12 +624,20 @@ export default function RightPanel({
     const emptyBody = (
       <>
         {!isDesktop && (
-          <div className="flex justify-center pt-2 pb-1 shrink-0">
-            <div className="w-10 h-1 rounded-full bg-zinc-700" />
+          <div className="flex flex-col items-center pt-2 pb-1 shrink-0 gap-1">
+            <div className="w-10 h-1 rounded-full bg-sky-500/40" />
+            <span className="text-[9px] font-bold text-sky-400/80 tracking-[0.18em] uppercase">
+              베팅 콘솔
+            </span>
           </div>
         )}
-        <div className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 shrink-0">
-          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">시작하기</span>
+        <div className="border-b border-sky-500/15 px-4 py-2.5 flex items-center justify-between shrink-0 bg-zinc-950/80">
+          <div>
+            <p className="text-[9px] font-bold text-sky-400/90 tracking-[0.16em] uppercase">
+              베팅 콘솔
+            </p>
+            <p className="text-[11px] text-zinc-500 mt-0.5">테이블을 선택하면 여기서 베팅합니다</p>
+          </div>
           {!isDesktop && onClose && (
             <button
               type="button"
@@ -631,19 +664,13 @@ export default function RightPanel({
     );
 
     if (isDesktop) {
-      return (
-        <div className="hidden xl:flex z-50 w-80 2xl:w-[420px] h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex-col shrink-0">
-          {emptyBody}
-        </div>
-      );
+      return <div className={CONSOLE_DESKTOP_SHELL}>{emptyBody}</div>;
     }
 
     return createPortal(
       <>
-        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm" onClick={onClose} />
-        <div className="fixed inset-x-0 bottom-0 z-[70] w-full max-h-[min(70dvh,640px)] rounded-t-2xl border-t border-x border-zinc-800 bg-zinc-950 shadow-2xl flex flex-col">
-          {emptyBody}
-        </div>
+        <div className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm" onClick={onClose} />
+        <div className={CONSOLE_MOBILE_EMPTY_SHELL}>{emptyBody}</div>
       </>,
       document.body,
     );
@@ -669,19 +696,28 @@ export default function RightPanel({
   const panelInner = (
       <>
         {!isDesktop && (
-          <div className="flex justify-center pt-2 pb-0.5 shrink-0">
-            <div className="w-10 h-1 rounded-full bg-zinc-700" />
+          <div className="flex flex-col items-center pt-2 pb-0.5 shrink-0 gap-1">
+            <div className="w-10 h-1 rounded-full bg-sky-500/40" />
+            <span className="text-[9px] font-bold text-sky-400/80 tracking-[0.18em] uppercase">
+              {table.name} 베팅
+            </span>
           </div>
         )}
 
-        {/* Header */}
-        <div className="px-4 py-2.5 sm:py-3 border-b border-zinc-800/80 shrink-0 bg-zinc-950 z-10">
+        {/* Betting console header — linked to selected table */}
+        <div className="px-4 py-2.5 sm:py-3 border-b border-sky-500/20 shrink-0 bg-zinc-950/90 z-10 relative">
+          <div className="absolute inset-y-0 left-0 w-[3px] bg-amber-400/90 rounded-r-sm" aria-hidden />
           <div className="flex justify-between items-start gap-3">
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-bold text-white tracking-tight truncate">{table.name}</h2>
+              <p className="text-[9px] font-bold text-sky-400/90 tracking-[0.16em] uppercase mb-1">
+                베팅 콘솔
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg font-bold text-white tracking-tight truncate">
+                  선택 테이블 · {table.name}
+                </h2>
                 <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded shrink-0">
-                  선택됨
+                  연결됨
                 </span>
               </div>
               <div className="text-[11px] text-zinc-500 font-mono mt-0.5 flex gap-1.5">
@@ -690,21 +726,39 @@ export default function RightPanel({
                 <span>회차 {table.stats.currentRound}</span>
               </div>
             </div>
-            <div className="flex items-start gap-2 shrink-0">
-              {!isDesktop && onClose && (
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="p-2 -mr-1 bg-zinc-900 text-zinc-400 hover:text-white rounded-full touch-manipulation"
-                  aria-label="닫기"
-                >
-                  <X size={20} />
-                </button>
+            <div className="flex items-start gap-1.5 shrink-0">
+              {!isDesktop && onClose ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playSfx('ui');
+                      onClose();
+                    }}
+                    className="min-h-[36px] px-2.5 text-[11px] font-bold text-sky-300/90 border border-sky-500/30 rounded-lg touch-manipulation"
+                  >
+                    선택 변경
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="p-2 -mr-1 bg-zinc-900 text-zinc-400 hover:text-white rounded-full touch-manipulation"
+                    aria-label="닫기"
+                  >
+                    <X size={20} />
+                  </button>
+                </>
+              ) : (
+                <p className="text-[10px] text-zinc-500 text-right leading-snug max-w-[7rem] pt-0.5">
+                  왼쪽에서
+                  <br />
+                  다른 테이블 선택
+                </p>
               )}
             </div>
           </div>
 
-          <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg border border-zinc-800/80 bg-black/40 px-2.5 py-1.5">
             <div className="text-[11px] min-w-0">
               <span className="text-zinc-500 mr-1">연속</span>
               <span
@@ -719,7 +773,7 @@ export default function RightPanel({
                 {table.stats.currentStreak}
               </span>
             </div>
-            <div className="flex gap-1 overflow-hidden justify-end max-w-[210px]">
+            <div className="flex gap-1 overflow-hidden justify-end max-w-[210px]" title="최근 결과">
               {table.stats.recentResults.slice(-10).map((res, i, arr) => (
                 <ResultDot key={`${res}-${i}`} result={res} isLast={i === arr.length - 1} compact />
               ))}
@@ -770,12 +824,16 @@ export default function RightPanel({
           </div>
 
           {pendingBets.length > 0 && (
-            <div className="rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden">
-              <div className="px-3 py-2 border-b border-zinc-800">
-                <p className="text-[11px] font-bold text-zinc-300">진행 중 베팅</p>
-                <p className="text-[10px] text-zinc-500 mt-0.5">
-                  직접·오토 금액을 각각 표시합니다
-                </p>
+            <div className="rounded-xl border border-sky-500/25 bg-zinc-950 overflow-hidden">
+              <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] font-bold text-sky-300">
+                    진행 중 베팅 {pendingBets.length}건
+                  </p>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">
+                    직접·오토 금액을 각각 표시합니다
+                  </p>
+                </div>
               </div>
               <ul className="divide-y divide-zinc-800">
                 {pendingBets.map((bet) => (
@@ -993,16 +1051,20 @@ export default function RightPanel({
               ) : (
                 <div
                   ref={manualBetBlockRef}
-                  className="rounded-xl border border-blue-500/25 bg-zinc-900 overflow-hidden snap-start scroll-mt-16"
+                  className="rounded-xl border border-sky-500/30 bg-zinc-950 overflow-hidden snap-start scroll-mt-16 shadow-[0_0_24px_rgba(14,165,233,0.06)]"
                 >
-                  <div className="px-3 py-2 border-b border-zinc-800 bg-blue-950/20">
-                    <p className="text-xs font-bold text-blue-300">직접 베팅</p>
-                    <p className="text-[10px] text-zinc-500 mt-0.5">사이드 → 금액 → 확정</p>
+                  <div className="px-3 py-2 border-b border-sky-500/15 bg-sky-950/20">
+                    <p className="text-xs font-bold text-sky-300">직접 베팅</p>
+                    <p className="text-[10px] text-zinc-500 mt-0.5">① 위치 → ② 금액 → ③ 확정</p>
                   </div>
 
-                  <div className="p-3 sm:p-4 flex flex-col gap-3.5">
-                    <div>
-                      <label className="text-[11px] font-bold text-zinc-400 mb-2 block">베팅할 곳</label>
+                  <div className="p-3 sm:p-4 flex flex-col gap-0">
+                    {/* ① Side */}
+                    <div className="pb-3.5">
+                      <div className="flex items-center gap-2 mb-2">
+                        <StepBadge n={1} active />
+                        <label className="text-[11px] font-bold text-zinc-300">베팅 위치</label>
+                      </div>
                       <div className="flex gap-2">
                         {sideOptions.map((opt) => {
                           const active = selectedSide === opt.id;
@@ -1025,7 +1087,7 @@ export default function RightPanel({
                               className={`${opt.flex} min-h-[56px] sm:min-h-[60px] py-3 rounded-xl border text-base sm:text-lg font-bold transition-colors disabled:opacity-40 touch-manipulation active:scale-[0.98] ${
                                 active
                                   ? opt.active
-                                  : 'bg-zinc-950 border-zinc-700 text-zinc-400'
+                                  : 'bg-black border-zinc-700 text-zinc-400'
                               }`}
                             >
                               {opt.label}
@@ -1035,9 +1097,15 @@ export default function RightPanel({
                       </div>
                     </div>
 
-                    <div ref={chipSectionRef} className="snap-start scroll-mt-16">
+                    <div className="border-t border-zinc-800/90" />
+
+                    {/* ② Amount */}
+                    <div ref={chipSectionRef} className="snap-start scroll-mt-16 py-3.5">
                       <div className="flex justify-between items-center mb-2">
-                        <label className="text-[11px] font-bold text-zinc-400">베팅 금액</label>
+                        <div className="flex items-center gap-2">
+                          <StepBadge n={2} active={betAmount > 0 || selectedSide != null} />
+                          <label className="text-[11px] font-bold text-zinc-300">베팅 금액</label>
+                        </div>
                         <button
                           type="button"
                           onClick={clearChips}
@@ -1110,94 +1178,104 @@ export default function RightPanel({
                       </button>
                     </div>
 
-                    <div className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2.5">
-                      <p className="text-[11px] text-zinc-400 text-center font-medium">
-                        <span className={sideColor(selectedSide)}>{sideShortLabel(selectedSide)}</span>
-                        <span className="text-zinc-600 mx-1.5">·</span>
-                        <span className="font-mono text-zinc-100">{betAmount.toLocaleString()}원</span>
-                      </p>
-                      {autoPending && (
-                        <p className="mt-1.5 text-[10px] text-amber-400/90 text-center">
-                          이 테이블 오토 진행 중 · {sideShortLabel(autoPending.side)}{' '}
-                          {formatMoney(autoPending.amount)}
-                        </p>
-                      )}
-                      {otherAutoPending && (
-                        <p className="mt-1 text-[10px] text-zinc-500 text-center">
-                          다른 테이블 오토 · {otherAutoPending.tableName}{' '}
-                          {formatMoney(otherAutoPending.amount)}
-                        </p>
-                      )}
-                      {otherManualPending && !manualPending && (
-                        <p className="mt-1 text-[10px] text-zinc-500 text-center">
-                          다른 테이블 직접 · {otherManualPending.tableName}{' '}
-                          {formatMoney(otherManualPending.amount)}
-                        </p>
-                      )}
-                      <div className="mt-2 pt-2 border-t border-zinc-800 text-[11px] text-zinc-500 flex justify-between">
-                        <span>보유</span>
-                        <span className="font-mono text-zinc-300">{formatMoney(availableBankroll)}</span>
-                      </div>
-                      <div className="text-[11px] text-zinc-500 flex justify-between mt-0.5">
-                        <span>베팅 후</span>
-                        <span className={`font-mono ${afterBetBalance < betAmount ? 'text-amber-300' : 'text-zinc-300'}`}>
-                          {formatMoney(afterBetBalance)}
-                        </span>
-                      </div>
-                      {balanceWarn && (
-                        <p className="mt-2 text-[11px] text-amber-300 text-center">{balanceWarn}</p>
-                      )}
-                      {isHighBet && (
-                        <p className="mt-1 text-[10px] text-rose-300/90 text-center">
-                          고액 베팅 · 확정 시 안내만 표시됩니다
-                        </p>
-                      )}
-                    </div>
+                    <div className="border-t border-zinc-800/90" />
 
-                    {/* Desktop actions (mobile uses sticky bar) · 취소는 상단「진행 중 베팅」에서 */}
-                    <div className="hidden xl:grid grid-cols-2 gap-2">
-                      {isManualSettling && manualPending ? (
-                        <p className="col-span-2 py-2.5 text-center text-[12px] text-zinc-500">
-                          직접 베팅 진행 중 · 취소는 위「진행 중 베팅」에서
+                    {/* ③ Confirm */}
+                    <div className="pt-3.5">
+                      <div className="flex items-center gap-2 mb-2">
+                        <StepBadge n={3} active={betAmount > 0} />
+                        <label className="text-[11px] font-bold text-zinc-300">주문 확인</label>
+                      </div>
+
+                      <div className="rounded-lg bg-black border border-zinc-700 px-3 py-2.5">
+                        <p className="text-[11px] text-zinc-400 text-center font-medium">
+                          <span className={sideColor(selectedSide)}>{sideShortLabel(selectedSide)}</span>
+                          <span className="text-zinc-600 mx-1.5">·</span>
+                          <span className="font-mono text-zinc-100">{betAmount.toLocaleString()}원</span>
                         </p>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              playSfx('skip');
-                              onSkip?.(table.id);
-                              setBetError(null);
-                            }}
-                            className="py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
-                          >
-                            건너뛰기
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleConfirmBet()}
-                            className={`py-3 rounded-lg text-sm font-bold transition-colors shadow-lg disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none ${
-                              isHighBet
-                                ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/20'
-                                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/20'
-                            }`}
-                            disabled={
-                              betAmount <= 0 ||
-                              submitting ||
-                              isManualSettling ||
-                              !bettingWindow.canPlaceBet
-                            }
-                          >
-                            {submitting
-                              ? '접수 중…'
-                              : !bettingWindow.canPlaceBet
-                                ? '시간 마감'
-                                : isHighBet
-                                  ? `고액 확정 · ${betAmount.toLocaleString()}원`
-                                  : '베팅 확정'}
-                          </button>
-                        </>
-                      )}
+                        {autoPending && (
+                          <p className="mt-1.5 text-[10px] text-amber-400/90 text-center">
+                            이 테이블 오토 진행 중 · {sideShortLabel(autoPending.side)}{' '}
+                            {formatMoney(autoPending.amount)}
+                          </p>
+                        )}
+                        {otherAutoPending && (
+                          <p className="mt-1 text-[10px] text-zinc-500 text-center">
+                            다른 테이블 오토 · {otherAutoPending.tableName}{' '}
+                            {formatMoney(otherAutoPending.amount)}
+                          </p>
+                        )}
+                        {otherManualPending && !manualPending && (
+                          <p className="mt-1 text-[10px] text-zinc-500 text-center">
+                            다른 테이블 직접 · {otherManualPending.tableName}{' '}
+                            {formatMoney(otherManualPending.amount)}
+                          </p>
+                        )}
+                        <div className="mt-2 pt-2 border-t border-zinc-800 text-[11px] text-zinc-500 flex justify-between">
+                          <span>보유</span>
+                          <span className="font-mono text-zinc-300">{formatMoney(availableBankroll)}</span>
+                        </div>
+                        <div className="text-[11px] text-zinc-500 flex justify-between mt-0.5">
+                          <span>베팅 후</span>
+                          <span className={`font-mono ${afterBetBalance < betAmount ? 'text-amber-300' : 'text-zinc-300'}`}>
+                            {formatMoney(afterBetBalance)}
+                          </span>
+                        </div>
+                        {balanceWarn && (
+                          <p className="mt-2 text-[11px] text-amber-300 text-center">{balanceWarn}</p>
+                        )}
+                        {isHighBet && (
+                          <p className="mt-1 text-[10px] text-rose-300/90 text-center">
+                            고액 베팅 · 확정 시 안내만 표시됩니다
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Desktop actions (mobile uses sticky bar) · 취소는 상단「진행 중 베팅」에서 */}
+                      <div className="hidden xl:grid grid-cols-2 gap-2 mt-3">
+                        {isManualSettling && manualPending ? (
+                          <p className="col-span-2 py-2.5 text-center text-[12px] text-zinc-500">
+                            직접 베팅 진행 중 · 취소는 위「진행 중 베팅」에서
+                          </p>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                playSfx('skip');
+                                onSkip?.(table.id);
+                                setBetError(null);
+                              }}
+                              className="py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-sm font-medium transition-colors"
+                            >
+                              건너뛰기
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleConfirmBet()}
+                              className={`py-3 rounded-lg text-sm font-bold transition-colors shadow-lg disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none ${
+                                isHighBet
+                                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/20'
+                                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/20'
+                              }`}
+                              disabled={
+                                betAmount <= 0 ||
+                                submitting ||
+                                isManualSettling ||
+                                !bettingWindow.canPlaceBet
+                              }
+                            >
+                              {submitting
+                                ? '접수 중…'
+                                : !bettingWindow.canPlaceBet
+                                  ? '시간 마감'
+                                  : isHighBet
+                                    ? `고액 확정 · ${betAmount.toLocaleString()}원`
+                                    : '베팅 확정'}
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1700,8 +1778,11 @@ export default function RightPanel({
 
         {/* Mobile/tablet sticky bet bar · 취소는 상단「진행 중 베팅」에서 */}
         {panelMode === 'manual' && !isRisk && !isDesktop && !(isManualSettling && manualPending) && (
-          <div className="shrink-0 border-t border-zinc-800 bg-zinc-950 px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="shrink-0 border-t border-sky-500/25 bg-zinc-950 px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               <div className="flex flex-col gap-2">
+                <p className="text-[10px] text-center text-sky-400/80 font-bold tracking-wide">
+                  ③ 주문 확인
+                </p>
                 <p className="text-[11px] text-center text-zinc-400">
                   <span className={`font-bold ${sideColor(selectedSide)}`}>{sideShortLabel(selectedSide)}</span>
                   <span className="text-zinc-600 mx-1">·</span>
@@ -1762,7 +1843,7 @@ export default function RightPanel({
         {highBetNotice && (
           <HighBetNoticeToast message={highBetNotice} />
         )}
-        <div className="hidden xl:flex z-50 w-80 2xl:w-[420px] h-full min-h-0 border-l border-zinc-800 bg-zinc-950 flex-col shrink-0">
+        <div className={CONSOLE_DESKTOP_SHELL}>
           {panelInner}
         </div>
       </>
@@ -1772,7 +1853,7 @@ export default function RightPanel({
   return createPortal(
     <>
       <div className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-x-0 bottom-0 z-[70] w-full max-h-[min(92dvh,900px)] rounded-t-2xl border-t border-x border-zinc-800 bg-zinc-950 shadow-2xl flex flex-col">
+      <div className={CONSOLE_MOBILE_SHELL}>
         {panelInner}
       </div>
       {highBetNotice && (
