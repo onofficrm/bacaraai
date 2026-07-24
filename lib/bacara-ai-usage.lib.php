@@ -67,11 +67,12 @@ if (!function_exists('bacara_ai_usage_price_table')) {
                 'default' => array(3.00, 15.00),
             ),
             'gemini' => array(
+                'gemini-2.5-flash' => array(0.30, 2.50),
+                'gemini-2.5-flash-lite' => array(0.10, 0.40),
                 'gemini-2.0-flash' => array(0.10, 0.40),
                 'gemini-2.0-flash-lite' => array(0.075, 0.30),
-                'gemini-2.5-flash' => array(0.30, 2.50),
                 'gemini-1.5-flash' => array(0.075, 0.30),
-                'default' => array(0.10, 0.40),
+                'default' => array(0.30, 2.50),
             ),
         );
     }
@@ -112,9 +113,13 @@ if (!function_exists('bacara_ai_usage_estimate_usd')) {
                 } elseif (strpos($model, 'sonnet') !== false && $provider === 'anthropic') {
                     $rates = $table['anthropic']['default'];
                 } elseif (strpos($model, 'flash-lite') !== false && $provider === 'gemini') {
-                    $rates = $table['gemini']['gemini-2.0-flash-lite'];
+                    $rates = isset($table['gemini']['gemini-2.5-flash-lite'])
+                        ? $table['gemini']['gemini-2.5-flash-lite']
+                        : $table['gemini']['default'];
                 } elseif (strpos($model, 'flash') !== false && $provider === 'gemini') {
-                    $rates = isset($table['gemini']['gemini-2.0-flash']) ? $table['gemini']['gemini-2.0-flash'] : $table['gemini']['default'];
+                    $rates = isset($table['gemini']['gemini-2.5-flash'])
+                        ? $table['gemini']['gemini-2.5-flash']
+                        : $table['gemini']['default'];
                 }
             }
         }

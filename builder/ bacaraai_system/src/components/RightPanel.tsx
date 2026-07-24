@@ -1566,8 +1566,8 @@ export default function RightPanel({
                   </div>
                 )}
                 <AiDetailCard title="GPT-4o" model={table.ai.gpt} color="emerald" />
-                <AiDetailCard title="Gemini 1.5 Pro" model={table.ai.gemini} color="blue" />
-                <AiDetailCard title="Claude 3.5" model={table.ai.claude} color="purple" />
+                <AiDetailCard title="Gemini" model={table.ai.gemini} color="blue" />
+                <AiDetailCard title="Claude" model={table.ai.claude} color="purple" />
               </div>
             )}
           </div>

@@ -41,7 +41,7 @@ $saved = isset($_GET['saved']) && $_GET['saved'] === '1';
                 <input type="checkbox" name="auto_bet_enabled" value="1"<?php echo (!isset($cfg['auto_bet_enabled']) || $cfg['auto_bet_enabled'] === '1') ? ' checked' : ''; ?>>
                 AI 자동 베팅 허용 (세션이 라이브 + 「AI 추천대로」일 때, 엄격 조건 충족 시에만 실제 베팅)
             </label>
-            <p class="bw-hint">조건: 3개 AI 모두 정상 · 2/3 이상 동의 · 신뢰도 65%+ · 표본 30+ · P/B 격차 10%+</p>
+            <p class="bw-hint">조건: ChatGPT+Gemini 정상(Claude 있으면 포함) · 2표 이상 동의 · 신뢰도 65%+ · 표본 30+ · P/B 격차 10%+</p>
         </div>
 
         <h3>ChatGPT (OpenAI)</h3>
@@ -102,8 +102,8 @@ $saved = isset($_GET['saved']) && $_GET['saved'] === '1';
             </div>
             <div>
                 <label for="gemini_model">모델</label>
-                <input type="text" name="gemini_model" id="gemini_model" class="frm_input" value="<?php echo htmlspecialchars($cfg['gemini_model'], ENT_QUOTES, 'UTF-8'); ?>" placeholder="gemini-2.0-flash">
-                <p class="bw-hint">예: gemini-2.0-flash, gemini-2.0-flash-lite</p>
+                <input type="text" name="gemini_model" id="gemini_model" class="frm_input" value="<?php echo htmlspecialchars($cfg['gemini_model'], ENT_QUOTES, 'UTF-8'); ?>" placeholder="gemini-2.5-flash">
+                <p class="bw-hint">예: gemini-2.5-flash, gemini-2.5-flash-lite (구 2.0/1.5 모델명은 자동 치환)</p>
             </div>
         </div>
 

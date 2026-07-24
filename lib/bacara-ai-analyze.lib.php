@@ -635,7 +635,7 @@ if (!function_exists('bacara_ai_call_gemini')) {
     function bacara_ai_call_gemini(array $stats)
     {
         $key = bacara_ai_config_get('gemini_api_key');
-        $model = bacara_ai_config_get('gemini_model', 'gemini-2.0-flash');
+        $model = bacara_ai_normalize_gemini_model(bacara_ai_config_get('gemini_model', 'gemini-2.5-flash'));
         if ($key === '') {
             return array('opinion' => 'WAIT', 'confidence' => 0, 'reasons' => array(), 'ms' => 0, 'error' => 'API 키 없음');
         }
@@ -691,8 +691,10 @@ if (!function_exists('bacara_ai_call_gemini')) {
 if (!function_exists('bacara_ai_decide_final')) {
     /**
      * 결정 엔진: 다수결 + 신뢰도 + 표본
-     * - final_opinion: 화면 추천 (완화된 기준)
-     * - auto_bet_ok: 자동 베팅용 엄격 기준 (3키 정상 · 2/3 · 65% · n≥30 · edge≥10%)
+     * - final_opinion: 화면 추천 (완화된 기준) — 등록된 모델만 투표
+     * - auto_bet_ok: 자동 베팅용 엄격 기준
+     *   · ChatGPT + Gemini 키 필수 (Claude는 있으면 함께 종합)
+     *   · 등록된 모델 전부 정상 응답 · 2표 이상 동의 · 65% · n≥30 · edge≥10%
      */
     function bacara_ai_decide_final(array $models, array $stats)
     {
@@ -704,7 +706,6 @@ if (!function_exists('bacara_ai_decide_final')) {
             if (empty($models[$name])) {
                 continue;
             }
-            $has_key = empty($models[$name]['error']) || $models[$name]['error'] !== 'API 키 없음';
             // 키가 있는 모델만 카운트
             if (!empty($models[$name]['error']) && $models[$name]['error'] === 'API 키 없음') {
                 continue;
@@ -783,16 +784,22 @@ if (!function_exists('bacara_ai_decide_final')) {
         $display['final_confidence'] = min(90, $avg_conf);
         $display['decision_reason'] = '다수결 ' . $consensus . ' · 표본 ' . $sample;
 
-        // 자동 베팅: 3개 키 모두 등록·정상 + 더 엄격한 기준
+        // 자동 베팅: ChatGPT+Gemini 필수, 등록된 모델은 전부 정상 + 엄격 기준
         $auto_ok = true;
         $auto_reason = '';
-        if (!bacara_ai_config_has_key('openai')
-            || !bacara_ai_config_has_key('anthropic')
-            || !bacara_ai_config_has_key('gemini')
-        ) {
+        $registered = 0;
+        foreach (array('openai', 'anthropic', 'gemini') as $provider) {
+            if (bacara_ai_config_has_key($provider)) {
+                $registered++;
+            }
+        }
+        if (!bacara_ai_config_has_key('openai') || !bacara_ai_config_has_key('gemini')) {
             $auto_ok = false;
-            $auto_reason = '3개 API 키 모두 필요';
-        } elseif ($ok_count < 3) {
+            $auto_reason = 'ChatGPT·Gemini API 키 모두 필요';
+        } elseif ($registered < 2) {
+            $auto_ok = false;
+            $auto_reason = '최소 2개 AI 키 필요';
+        } elseif ($ok_count < $registered || $ok_count < 2) {
             $auto_ok = false;
             $auto_reason = 'AI 호출 일부 실패';
         } elseif ($agree < 2) {
@@ -944,7 +951,7 @@ if (!function_exists('bacara_ai_call_models_parallel')) {
             );
         }
         if (bacara_ai_config_has_key('gemini')) {
-            $model = bacara_ai_config_get('gemini_model', 'gemini-2.0-flash');
+            $model = bacara_ai_normalize_gemini_model(bacara_ai_config_get('gemini_model', 'gemini-2.5-flash'));
             $jobs['gemini'] = array(
                 'provider' => 'gemini',
                 'model' => $model,
@@ -1693,7 +1700,7 @@ if (!function_exists('bacara_ai_session_retrospective')) {
                 }
             } elseif (bacara_ai_config_has_key('gemini')) {
                 $key = bacara_ai_config_get('gemini_api_key');
-                $model = bacara_ai_config_get('gemini_model', 'gemini-2.0-flash');
+                $model = bacara_ai_normalize_gemini_model(bacara_ai_config_get('gemini_model', 'gemini-2.5-flash'));
                 $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
                     . rawurlencode($model) . ':generateContent?key=' . rawurlencode($key);
                 $body = json_encode(array(

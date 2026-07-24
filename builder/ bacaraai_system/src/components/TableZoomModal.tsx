@@ -51,8 +51,8 @@ export default function TableZoomModal({ table, onClose }: TableZoomModalProps) 
 
               <div className="flex flex-col gap-3">
                 <AiStatusRow name="GPT-4o" opinion={table.ai.gpt.opinion} conf={table.ai.gpt.confidence} />
-                <AiStatusRow name="Gemini 1.5" opinion={table.ai.gemini.opinion} conf={table.ai.gemini.confidence} />
-                <AiStatusRow name="Claude 3.5" opinion={table.ai.claude.opinion} conf={table.ai.claude.confidence} />
+                <AiStatusRow name="Gemini" opinion={table.ai.gemini.opinion} conf={table.ai.gemini.confidence} />
+                <AiStatusRow name="Claude" opinion={table.ai.claude.opinion} conf={table.ai.claude.confidence} />
               </div>
 
               <div className="mt-5 pt-4 border-t border-zinc-800 flex justify-between items-center gap-3">

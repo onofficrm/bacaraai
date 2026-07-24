@@ -4,8 +4,8 @@
  *
  * GET table_name=MD2729&force=0
  * - 최신 결과 ID 기준으로 캐시
- * - GPT / Claude / Gemini 분석 + 결정 엔진
- * - 자동 베팅에는 아직 사용하지 않음 (auto_bet_allowed=false)
+ * - GPT / Claude / Gemini 병렬 분석 + 결정 엔진
+ * - auto_bet_allowed: ChatGPT+Gemini(및 등록된 Claude) 종합 조건 충족 시 true
  */
 include_once dirname(__FILE__) . '/../../../common.php';
 include_once G5_LIB_PATH . '/bacara-ai-analyze.lib.php';

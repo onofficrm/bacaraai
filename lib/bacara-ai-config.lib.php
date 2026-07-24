@@ -24,11 +24,42 @@ if (!function_exists('bacara_ai_config_defaults')) {
             'anthropic_api_key' => '',
             'anthropic_model' => 'claude-sonnet-4-20250514',
             'gemini_api_key' => '',
-            'gemini_model' => 'gemini-2.0-flash',
+            'gemini_model' => 'gemini-2.5-flash',
             'enabled' => '1',
             /** 1이면 AI 추천 전략에서 조건 충족 시 자동 베팅 허용 */
             'auto_bet_enabled' => '1',
         );
+    }
+}
+
+if (!function_exists('bacara_ai_normalize_gemini_model')) {
+    /**
+     * 종료·구버전 Gemini 모델명을 현재 호출 가능한 모델로 치환.
+     * (gemini-2.0-flash 계열은 2026-06-01 종료)
+     */
+    function bacara_ai_normalize_gemini_model($model)
+    {
+        $model = trim((string) $model);
+        $map = array(
+            'gemini-2.0-flash' => 'gemini-2.5-flash',
+            'gemini-2.0-flash-001' => 'gemini-2.5-flash',
+            'gemini-2.0-flash-exp' => 'gemini-2.5-flash',
+            'gemini-2.0-flash-lite' => 'gemini-2.5-flash-lite',
+            'gemini-2.0-flash-lite-001' => 'gemini-2.5-flash-lite',
+            'gemini-1.5-flash' => 'gemini-2.5-flash',
+            'gemini-1.5-flash-001' => 'gemini-2.5-flash',
+            'gemini-1.5-flash-002' => 'gemini-2.5-flash',
+            'gemini-1.5-pro' => 'gemini-2.5-flash',
+            'gemini-1.5-pro-001' => 'gemini-2.5-flash',
+            'gemini-1.5-pro-002' => 'gemini-2.5-flash',
+        );
+        if ($model === '') {
+            return 'gemini-2.5-flash';
+        }
+        if (isset($map[$model])) {
+            return $map[$model];
+        }
+        return $model;
     }
 }
 
@@ -66,6 +97,8 @@ if (!function_exists('bacara_ai_config_load')) {
                 $cfg[$key] = $value;
             }
         }
+
+        $cfg['gemini_model'] = bacara_ai_normalize_gemini_model($cfg['gemini_model']);
 
         return $cfg;
     }
@@ -179,6 +212,8 @@ if (!function_exists('bacara_ai_config_save')) {
         if ($cfg['auto_bet_enabled'] !== '0') {
             $cfg['auto_bet_enabled'] = '1';
         }
+
+        $cfg['gemini_model'] = bacara_ai_normalize_gemini_model($cfg['gemini_model']);
 
         $path = bacara_ai_config_path();
         $php = "<?php\nif (!defined('_GNUBOARD_')) exit;\n"
