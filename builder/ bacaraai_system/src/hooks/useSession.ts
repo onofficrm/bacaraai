@@ -148,6 +148,10 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
 
 const STORAGE_KEY = 'bacara_session_state_v1';
 const SETTLE_MS = 1400;
+/** 라이브 결과 대기 초과 시 자동 취소·환불 */
+const LIVE_CANCEL_MS = 180_000;
+/** 복원 가능 최대 연령 (이보다 오래되면 즉시 환불 시도) */
+const PENDING_RESTORE_MAX_MS = LIVE_CANCEL_MS + 60_000;
 
 const DEFAULT_STATE: SessionState = {
   status: 'idle',
@@ -218,6 +222,43 @@ function freshWinCelebration(parsed: Partial<SessionState>): LastBetResult | nul
   return win;
 }
 
+function normalizePendingBets(raw: unknown): PendingBet[] {
+  if (!Array.isArray(raw)) return [];
+  const now = Date.now();
+  const out: PendingBet[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const b = item as Partial<PendingBet>;
+    if (typeof b.id !== 'string' || !b.id) continue;
+    if (typeof b.tableId !== 'string' || !b.tableId) continue;
+    if (typeof b.tableName !== 'string') continue;
+    if (b.side !== 'PLAYER' && b.side !== 'BANKER' && b.side !== 'TIE') continue;
+    const amount = Number(b.amount);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    const placedAt = Number(b.placedAt) || 0;
+    if (!placedAt || now - placedAt > PENDING_RESTORE_MAX_MS) continue;
+    const source: BetSource = b.source === 'auto' ? 'auto' : 'manual';
+    out.push({
+      id: b.id,
+      tableId: b.tableId,
+      tableName: b.tableName || b.tableId,
+      side: b.side,
+      amount,
+      placedAt,
+      source,
+      clientKey: typeof b.clientKey === 'string' ? b.clientKey : '',
+      patternCaseId: b.patternCaseId ?? null,
+      baselineLatestId:
+        typeof b.baselineLatestId === 'number' ? b.baselineLatestId : null,
+      baselineResultCount:
+        typeof b.baselineResultCount === 'number' ? b.baselineResultCount : 0,
+      waitForLiveResult: Boolean(b.waitForLiveResult || b.baselineLatestId != null),
+      historyMeta: b.historyMeta,
+    });
+  }
+  return out;
+}
+
 function readStored(): SessionState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -230,7 +271,8 @@ function readStored(): SessionState {
       status: parsed.status === 'running' ? 'paused' : parsed.status || 'idle',
       startedAt: null,
       elapsedMs: Number(parsed.elapsedMs) || 0,
-      pendingBets: [],
+      // 새로고침 후에도 대기 베팅 유지 — 미정산 차감 유실 방지
+      pendingBets: normalizePendingBets(parsed.pendingBets),
       lastBetResult: parsed.lastBetResult ?? null,
       lastManualResult: parsed.lastManualResult ?? null,
       lastAutoResult: parsed.lastAutoResult ?? null,
@@ -472,6 +514,23 @@ export default function useSession() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
+  // 새로고침 직전에도 대기 베팅이 디스크에 남도록 즉시 flush
+  useEffect(() => {
+    const flush = () => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateRef.current));
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+    };
+  }, []);
+
   useEffect(() => {
     if (state.status !== 'running') return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -696,6 +755,100 @@ export default function useSession() {
     };
   }, []);
 
+  /** 결과 대기 초과·복원 시 환불 */
+  const refundTimedOutPending = useCallback((pending: PendingBet, reason?: string) => {
+    void walletCancelBet({
+      amount: pending.amount,
+      tableName: pending.tableName,
+      source: pending.source,
+      clientKey: cancelClientKey(pending.id),
+    }).then((res) => {
+      if (res.ok && typeof res.balance === 'number') {
+        emitWalletBalance(res.balance);
+      }
+    });
+    setState((curr) => {
+      if (!curr.pendingBets.some((b) => b.id === pending.id)) return curr;
+      const lastBetResult: LastBetResult = {
+        id: pending.id,
+        tableId: pending.tableId,
+        tableName: pending.tableName,
+        side: pending.side,
+        amount: pending.amount,
+        outcome: 'T',
+        won: null,
+        pnlDelta: 0,
+        message:
+          reason ||
+          '다음 게임 결과가 없어 베팅을 취소했습니다 (시드 반환)',
+        at: pending.placedAt > 0 ? pending.placedAt : Date.now(),
+        source: pending.source,
+        appliedRule: pending.historyMeta?.ruleLabel || '자동 취소',
+        martinStage: curr.martinStage,
+        historyMeta: pending.historyMeta,
+      };
+      return {
+        ...curr,
+        pendingBets: curr.pendingBets.filter((b) => b.id !== pending.id),
+        lastBetResult,
+        lastManualResult:
+          pending.source === 'manual' ? lastBetResult : curr.lastManualResult,
+        lastAutoResult:
+          pending.source === 'auto' ? lastBetResult : curr.lastAutoResult,
+      };
+    });
+  }, []);
+
+  /** 대기 베팅 타이머 재개 (접수·새로고침 복원 공용) */
+  const armPendingWatchdog = useCallback(
+    (pending: PendingBet) => {
+      clearSettleTimer(pending.id);
+      const age = Math.max(0, Date.now() - (pending.placedAt || Date.now()));
+      const useLive = Boolean(
+        pending.waitForLiveResult || pending.baselineLatestId != null,
+      );
+
+      if (!useLive) {
+        const delay = Math.max(0, SETTLE_MS - age);
+        const tid = window.setTimeout(() => {
+          settleTimers.current.delete(pending.id);
+          setState((curr) => {
+            const bet = curr.pendingBets.find((b) => b.id === pending.id);
+            if (!bet) return curr;
+            return applySettlement(curr, bet, rollOutcome());
+          });
+        }, delay);
+        settleTimers.current.set(pending.id, tid);
+        return;
+      }
+
+      const delay = Math.max(0, LIVE_CANCEL_MS - age);
+      const tid = window.setTimeout(() => {
+        settleTimers.current.delete(pending.id);
+        refundTimedOutPending(
+          pending,
+          age >= LIVE_CANCEL_MS
+            ? '새로고침 후 대기 시간이 만료되어 베팅을 취소했습니다 (시드 반환)'
+            : '다음 게임 결과가 없어 베팅을 취소했습니다 (시드 반환)',
+        );
+      }, delay);
+      settleTimers.current.set(pending.id, tid);
+    },
+    [applySettlement, refundTimedOutPending],
+  );
+
+  // 새로고침 복원된 대기 베팅에 타이머 재부착
+  const pendingResumedRef = useRef(false);
+  useEffect(() => {
+    if (pendingResumedRef.current) return;
+    pendingResumedRef.current = true;
+    const list = stateRef.current.pendingBets;
+    if (list.length === 0) return;
+    for (const pending of list) {
+      armPendingWatchdog(pending);
+    }
+  }, [armPendingWatchdog]);
+
   const placeBet = useCallback(async (input: PlaceBetInput): Promise<PlaceBetResult> => {
     const prev = stateRef.current;
     const resolvedSource: BetSource = input.source ?? 'manual';
@@ -835,63 +988,10 @@ export default function useSession() {
       ],
     }));
 
-    if (!useLiveSettle) {
-      const tid = window.setTimeout(() => {
-        settleTimers.current.delete(pending.id);
-        setState((curr) => {
-          const bet = curr.pendingBets.find((b) => b.id === pending.id);
-          if (!bet) return curr;
-          return applySettlement(curr, bet, rollOutcome());
-        });
-      }, SETTLE_MS);
-      settleTimers.current.set(pending.id, tid);
-    } else {
-      const tid = window.setTimeout(() => {
-        settleTimers.current.delete(pending.id);
-        void walletCancelBet({
-          amount: pending.amount,
-          tableName: pending.tableName,
-          source: pending.source,
-          clientKey: cancelClientKey(pending.id),
-        }).then((res) => {
-          if (res.ok && typeof res.balance === 'number') {
-            emitWalletBalance(res.balance);
-          }
-        });
-        setState((curr) => {
-          if (!curr.pendingBets.some((b) => b.id === pending.id)) return curr;
-          const lastBetResult: LastBetResult = {
-            id: pending.id,
-            tableId: pending.tableId,
-            tableName: pending.tableName,
-            side: pending.side,
-            amount: pending.amount,
-            outcome: 'T',
-            won: null,
-            pnlDelta: 0,
-            message: '다음 게임 결과가 없어 베팅을 취소했습니다 (시드 반환)',
-            at: pending.placedAt > 0 ? pending.placedAt : Date.now(),
-            source: pending.source,
-            appliedRule: pending.historyMeta?.ruleLabel || '자동 취소',
-            martinStage: curr.martinStage,
-            historyMeta: pending.historyMeta,
-          };
-          return {
-            ...curr,
-            pendingBets: curr.pendingBets.filter((b) => b.id !== pending.id),
-            lastBetResult,
-            lastManualResult:
-              pending.source === 'manual' ? lastBetResult : curr.lastManualResult,
-            lastAutoResult:
-              pending.source === 'auto' ? lastBetResult : curr.lastAutoResult,
-          };
-        });
-      }, 180_000);
-      settleTimers.current.set(pending.id, tid);
-    }
+    armPendingWatchdog(pending);
 
     return { ok: true };
-  }, [applySettlement]);
+  }, [applySettlement, armPendingWatchdog]);
 
   /** 결과 대기 중인 베팅 취소 (시드/가상머니 반환) */
   const cancelPendingBet = useCallback(async (opts?: {
