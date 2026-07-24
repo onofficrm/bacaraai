@@ -144,6 +144,37 @@ export default function RightPanel({
   const isDesktop = useIsDesktopXl();
   const bettingWindow = useBettingWindow(table);
   const submittingRef = React.useRef(false);
+  /** 모바일 패널 스크롤: 베팅 블록 / 칩 구간 자동 포커스 */
+  const panelScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const manualBetBlockRef = React.useRef<HTMLDivElement | null>(null);
+  const chipSectionRef = React.useRef<HTMLDivElement | null>(null);
+  const focusedBetWindowKeyRef = React.useRef<string | null>(null);
+
+  const scrollPanelTo = React.useCallback(
+    (el: HTMLElement | null, block: ScrollLogicalPosition = 'start') => {
+      if (!el || isDesktop) return;
+      window.requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: 'smooth', block, inline: 'nearest' });
+      });
+    },
+    [isDesktop],
+  );
+
+  const focusManualBetBlock = React.useCallback(
+    (reason: 'window' | 'tab' = 'window') => {
+      if (isDesktop || panelMode !== 'manual') return;
+      if (!table || !bettingWindow.canPlaceBet) return;
+      const roundKey = `${table.id}:${table.live?.latestId ?? table.stats.recentResults.length}`;
+      // 회차당 자동 포커스는 1회 (탭 전환은 다시 허용)
+      if (reason === 'window') {
+        if (focusedBetWindowKeyRef.current === roundKey) return;
+        focusedBetWindowKeyRef.current = roundKey;
+      }
+      const delay = reason === 'window' ? 120 : 40;
+      window.setTimeout(() => scrollPanelTo(manualBetBlockRef.current, 'start'), delay);
+    },
+    [isDesktop, panelMode, table, bettingWindow.canPlaceBet, scrollPanelTo],
+  );
 
   const recommendedSide: BetSide | null =
     table?.ai.finalOpinion === 'PLAYER'
@@ -256,6 +287,27 @@ export default function RightPanel({
     settledResultIdRef.current = lastManualResult.id;
     prepareNextRoundBet(table);
   }, [lastManualResult, table, prepareNextRoundBet]);
+
+  // 베팅창 열림(마감→가능) · 패널 오픈 시 직접 베팅 블록으로 1회 스크롤
+  React.useEffect(() => {
+    if (!isOpen || isDesktop || !table) return;
+    if (panelMode !== 'manual') return;
+    if (!bettingWindow.canPlaceBet) return;
+    focusManualBetBlock('window');
+  }, [
+    isOpen,
+    isDesktop,
+    table?.id,
+    table?.live?.latestId,
+    panelMode,
+    bettingWindow.canPlaceBet,
+    focusManualBetBlock,
+  ]);
+
+  // 회차 변경 시 자동 스크롤 포커스 키 리셋
+  React.useEffect(() => {
+    focusedBetWindowKeyRef.current = null;
+  }, [table?.id, table?.live?.latestId]);
 
   // 금액은 테이블 전환·라운드 종료 시에만 맞추고, 칩 입력 중에는 덮어쓰지 않음
 
@@ -664,7 +716,10 @@ export default function RightPanel({
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar overscroll-contain scroll-touch">
+        <div
+          ref={panelScrollRef}
+          className="flex-1 min-h-0 overflow-y-auto custom-scrollbar overscroll-contain scroll-touch snap-y snap-proximity"
+        >
         <div className="p-3 sm:p-4 flex flex-col gap-3 pb-3">
           {/* Mode tabs — 베팅 진입을 최상단 */}
           <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-zinc-950 border border-zinc-800 sticky top-0 z-40 shadow-[0_8px_16px_rgba(0,0,0,0.45)]">
@@ -674,6 +729,9 @@ export default function RightPanel({
                 playSfx('ui');
                 setFlyers([]);
                 setPanelMode('manual');
+                if (!isDesktop) {
+                  window.setTimeout(() => scrollPanelTo(manualBetBlockRef.current, 'start'), 60);
+                }
               }}
               className={`min-h-[48px] py-3 rounded-lg text-sm font-bold transition-colors touch-manipulation relative z-[1] ${
                 panelMode === 'manual'
@@ -887,14 +945,15 @@ export default function RightPanel({
                 pending={isManualSettling}
               />
 
-              {/* 직접 / 오토 결과 각각 표시 */}
+              {/* 직접 / 오토 결과 각각 표시 — 몇 초 후 한 줄로 접혀 칩 공간을 확보 */}
               {!isManualSettling && (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 snap-start scroll-mt-16">
                   {lastManualResult && lastManualResult.tableId === table.id && (
                     <BetResultCard
                       result={lastManualResult}
                       label="직접 베팅 결과"
                       onClose={() => onClearBetResult?.('manual')}
+                      autoCompactMs={3500}
                     />
                   )}
                   {lastAutoResult && (
@@ -903,6 +962,7 @@ export default function RightPanel({
                       label="오토베팅 결과"
                       onClose={() => onClearBetResult?.('auto')}
                       dim={lastAutoResult.tableId !== table.id}
+                      autoCompactMs={3500}
                     />
                   )}
                 </div>
@@ -920,7 +980,10 @@ export default function RightPanel({
                   <p className="text-[11px] text-zinc-400">위험 한도 때문에 베팅이 막혀 있습니다.</p>
                 </div>
               ) : (
-                <div className="rounded-xl border border-blue-500/25 bg-zinc-900 overflow-hidden">
+                <div
+                  ref={manualBetBlockRef}
+                  className="rounded-xl border border-blue-500/25 bg-zinc-900 overflow-hidden snap-start scroll-mt-16"
+                >
                   <div className="px-3 py-2 border-b border-zinc-800 bg-blue-950/20">
                     <p className="text-xs font-bold text-blue-300">직접 베팅</p>
                     <p className="text-[10px] text-zinc-500 mt-0.5">사이드 → 금액 → 확정</p>
@@ -941,6 +1004,12 @@ export default function RightPanel({
                                 playSfx('ui');
                                 setSelectedSide(opt.id);
                                 setBetError(null);
+                                if (!isDesktop) {
+                                  window.setTimeout(
+                                    () => scrollPanelTo(chipSectionRef.current, 'nearest'),
+                                    40,
+                                  );
+                                }
                               }}
                               className={`${opt.flex} min-h-[56px] sm:min-h-[60px] py-3 rounded-xl border text-base sm:text-lg font-bold transition-colors disabled:opacity-40 touch-manipulation active:scale-[0.98] ${
                                 active
@@ -955,7 +1024,7 @@ export default function RightPanel({
                       </div>
                     </div>
 
-                    <div>
+                    <div ref={chipSectionRef} className="snap-start scroll-mt-16">
                       <div className="flex justify-between items-center mb-2">
                         <label className="text-[11px] font-bold text-zinc-400">베팅 금액</label>
                         <button
@@ -1693,12 +1762,16 @@ function BetResultCard({
   label,
   onClose,
   dim = false,
+  autoCompactMs = 0,
 }: {
   result: LastBetResult;
   label: string;
   onClose: () => void;
   dim?: boolean;
+  /** 0이면 접지 않음. 모바일에서 칩 공간 확보용 */
+  autoCompactMs?: number;
 }) {
+  const [compact, setCompact] = useState(false);
   const tone =
     result.won === true
       ? 'border-emerald-500/30 bg-emerald-500/10'
@@ -1712,6 +1785,41 @@ function BetResultCard({
         ? 'text-rose-300'
         : 'text-zinc-300';
   const isAuto = result.source === 'auto' || result.appliedRule === '오토베팅';
+
+  React.useEffect(() => {
+    setCompact(false);
+    if (!autoCompactMs || autoCompactMs <= 0) return;
+    const t = window.setTimeout(() => setCompact(true), autoCompactMs);
+    return () => window.clearTimeout(t);
+  }, [result.id, autoCompactMs]);
+
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={() => setCompact(false)}
+        className={`w-full text-left rounded-xl border px-3 py-2 touch-manipulation ${tone} ${dim ? 'opacity-80' : ''}`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <p className={`text-[11px] font-bold truncate ${titleTone}`}>
+            <span
+              className={`mr-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                isAuto
+                  ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                  : 'text-blue-300 border-blue-500/40 bg-blue-500/10'
+              }`}
+            >
+              {isAuto ? '오토' : '직접'}
+            </span>
+            {result.amount > 0
+              ? `${result.won === true ? '적중' : result.won === false ? '미적중' : '무'} · ${formatMoney(result.pnlDelta, true)}`
+              : '건너뛰기'}
+          </p>
+          <span className="text-[10px] text-zinc-500 shrink-0">펼치기</span>
+        </div>
+      </button>
+    );
+  }
 
   return (
     <div className={`rounded-xl border px-3 py-2.5 ${tone} ${dim ? 'opacity-80' : ''}`}>
