@@ -353,12 +353,7 @@ function BetInRow({
         }, 20 + index * 50 + chip.order * DROP_MS),
       );
     });
-
-    timers.push(
-      window.setTimeout(() => {
-        playSfx('betConfirm', { throttleMs: 450 });
-      }, 20 + index * 50 + list.length * DROP_MS + 40),
-    );
+    // 베팅 시작 핀포인트 소리는 TableCard(betStart)가 담당 — 여기서는 칩만
 
     return () => timers.forEach((id) => clearTimeout(id));
   }, [animate, playAudio, chips, banner.id, index]);

@@ -16,6 +16,7 @@ interface SettingsViewProps {
 const PREVIEW_SOUNDS: { id: SfxName; label: string }[] = [
   { id: 'chip', label: '칩' },
   { id: 'chipHeavy', label: '고액 칩' },
+  { id: 'betStart', label: '베팅 시작' },
   { id: 'betConfirm', label: '베팅 확정' },
   { id: 'sessionStart', label: '오토베팅 시작' },
   { id: 'ruleTrigger', label: '규칙 발동' },

@@ -638,7 +638,7 @@ export default function App() {
               caseLabel: candidate.caseLabel,
             });
           }
-          playSfx('betConfirm');
+          playSfx('betStart');
           pushTicker(
             `AUTO · ${target.name} ${candidate.side === 'PLAYER' ? 'P' : candidate.side === 'BANKER' ? 'B' : 'T'}`,
             'info',

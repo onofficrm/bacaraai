@@ -637,8 +637,7 @@ export default function RightPanel({
     submittingRef.current = true;
     setSubmitting(true);
     setBetError(null);
-    // 확정 즉시 피드백 — pending 은 placeBet 안에서 동기적으로 올라감
-    playSfx('betConfirm');
+    // 확정 즉시 피드백 — 테이블 핀포인트(betStart)는 TableCard가 담당
     haptic('heavy');
     setChipCelebrating(true);
     window.setTimeout(() => setChipCelebrating(false), 900);

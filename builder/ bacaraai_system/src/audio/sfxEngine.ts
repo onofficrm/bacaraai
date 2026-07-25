@@ -9,6 +9,7 @@ export type SfxName =
   | 'chip'
   | 'chipHeavy'
   | 'betConfirm'
+  | 'betStart'
   | 'skip'
   | 'sessionStart'
   | 'sessionPause'
@@ -286,6 +287,12 @@ function playPattern(name: SfxName) {
       tone(1046.5, t + 0.22, 0.25, { type: 'sine', gain: 0.1, decay: 0.28 });
       noiseBurst(t + 0.2, 0.08, { gain: 0.08, freq: 4000, q: 3 });
       break;
+    case 'betStart':
+      // 짧은 핀포인트 — "어느 테이블" 인지용 (0.2초)
+      noiseBurst(t, 0.035, { gain: 0.16, freq: 2400, q: 3.2 });
+      tone(880, t, 0.07, { type: 'square', gain: 0.09, decay: 0.06, filterFreq: 4800 });
+      tone(1174.7, t + 0.045, 0.12, { type: 'sine', gain: 0.11, decay: 0.11, filterFreq: 6200 });
+      break;
     case 'skip':
       tone(480, t, 0.08, { type: 'sine', gain: 0.07, decay: 0.08 });
       tone(360, t + 0.06, 0.12, { type: 'sine', gain: 0.06, decay: 0.12 });
@@ -376,6 +383,7 @@ const DEFAULT_THROTTLE: Partial<Record<SfxName, number>> = {
   ui: 50,
   betWarn: 80,
   betConfirm: 220,
+  betStart: 380,
   win: 900,
   skip: 120,
 };

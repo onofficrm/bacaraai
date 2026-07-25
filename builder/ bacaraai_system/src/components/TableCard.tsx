@@ -70,9 +70,15 @@ export default function TableCard({
   const [streakPop, setStreakPop] = useState(false);
   const [streakBreak, setStreakBreak] = useState(false);
   const [lockBurst, setLockBurst] = useState(false);
+  const [betStartBurst, setBetStartBurst] = useState<{
+    key: number;
+    side: 'P' | 'B' | 'T';
+  } | null>(null);
   const prevLatestRef = useRef<number | null | undefined>(undefined);
   const prevStreakRef = useRef(table.stats.currentStreak);
   const prevLockRef = useRef(false);
+  const seenBetIdsRef = useRef<Set<string>>(new Set());
+  const betStartBootRef = useRef(true);
 
   const isPassive = ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(
     table.ai.finalOpinion,
@@ -151,6 +157,36 @@ export default function TableCard({
     else prevLockRef.current = true;
   }, [autoLockOn, reduced, intensity]);
 
+  // 베팅 시작(신규 pending) → 핀포인트 소리 + 사이드 링
+  useEffect(() => {
+    const ids = betBanners.map((b) => b.id);
+    if (betStartBootRef.current) {
+      betStartBootRef.current = false;
+      seenBetIdsRef.current = new Set(ids);
+      return;
+    }
+    const seen = seenBetIdsRef.current;
+    const fresh = betBanners.filter((b) => !seen.has(b.id));
+    seenBetIdsRef.current = new Set(ids);
+    if (fresh.length === 0) return;
+
+    const newest = fresh[fresh.length - 1];
+    const raw = (newest.side || '').toUpperCase();
+    const side: 'P' | 'B' | 'T' =
+      raw === 'P' || raw.startsWith('PLAYER') || raw === '플레이어'
+        ? 'P'
+        : raw === 'B' || raw.startsWith('BANKER') || raw === '뱅커'
+          ? 'B'
+          : raw === 'T' || raw.startsWith('TIE') || raw === '타이'
+            ? 'T'
+            : 'P';
+
+    setBetStartBurst({ key: Date.now(), side });
+    if (!reduced) playSfx('betStart');
+    const t = window.setTimeout(() => setBetStartBurst(null), 800);
+    return () => window.clearTimeout(t);
+  }, [betBanners, reduced]);
+
   const lastResult = table.stats.recentResults[table.stats.recentResults.length - 1] ?? null;
   const lastResultLabel =
     lastResult === 'P' ? 'P' : lastResult === 'B' ? 'B' : lastResult === 'T' ? 'T' : null;
@@ -188,6 +224,14 @@ export default function TableCard({
     cardClass += autoEventCardClass(autoEvent, reduced);
   } else if (autoLockOn) {
     cardClass += ' ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.35)] ';
+  }
+  if (betStartBurst) {
+    cardClass +=
+      betStartBurst.side === 'P'
+        ? ' bet-start-ring-p '
+        : betStartBurst.side === 'B'
+          ? ' bet-start-ring-b '
+          : ' bet-start-ring-t ';
   }
   if (flashClass) cardClass += ` ${flashClass} `;
   if (isSelected && betSec > 0 && betSec <= 5 && !hasBetMarker) {
@@ -324,6 +368,72 @@ export default function TableCard({
               transition={{ type: 'spring', stiffness: 380, damping: 18 }}
             >
               LOCK ON
+            </motion.span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 베팅 시작 핀포인트 — 사이드 컬러 링 + BET 뱃지 */}
+      <AnimatePresence>
+        {betStartBurst && (
+          <motion.div
+            key={`bet-start-${betStartBurst.key}`}
+            className="pointer-events-none absolute inset-0 z-[26] flex items-center justify-center overflow-hidden rounded-xl"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <motion.div
+              className={`absolute inset-0 rounded-xl ${
+                betStartBurst.side === 'P'
+                  ? 'shadow-[inset_0_0_0_3px_rgba(96,165,250,0.95)]'
+                  : betStartBurst.side === 'B'
+                    ? 'shadow-[inset_0_0_0_3px_rgba(248,113,113,0.95)]'
+                    : 'shadow-[inset_0_0_0_3px_rgba(52,211,153,0.95)]'
+              }`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 1, 1, 0] }}
+              transition={{ duration: 0.8, times: [0, 0.12, 0.7, 1] }}
+            />
+            <motion.div
+              className={`absolute w-36 h-36 rounded-full border-[3px] ${
+                betStartBurst.side === 'P'
+                  ? 'border-blue-400/90'
+                  : betStartBurst.side === 'B'
+                    ? 'border-red-400/90'
+                    : 'border-emerald-400/90'
+              }`}
+              initial={{ scale: 0.35, opacity: 0.95 }}
+              animate={{ scale: 2.1, opacity: 0 }}
+              transition={{ duration: 0.75, ease: 'easeOut' }}
+            />
+            <motion.div
+              className={`absolute w-20 h-20 rounded-full border-2 ${
+                betStartBurst.side === 'P'
+                  ? 'border-blue-300/70'
+                  : betStartBurst.side === 'B'
+                    ? 'border-red-300/70'
+                    : 'border-emerald-300/70'
+              }`}
+              initial={{ scale: 0.45, opacity: 0.85 }}
+              animate={{ scale: 1.8, opacity: 0 }}
+              transition={{ duration: 0.65, ease: 'easeOut', delay: 0.04 }}
+            />
+            <motion.span
+              className={`relative z-[1] text-sm sm:text-base font-black tracking-[0.28em] px-3 py-1 rounded-md border-2 bg-black/75 ${
+                betStartBurst.side === 'P'
+                  ? 'text-blue-100 border-blue-400/90 shadow-[0_0_22px_rgba(59,130,246,0.55)]'
+                  : betStartBurst.side === 'B'
+                    ? 'text-red-100 border-red-400/90 shadow-[0_0_22px_rgba(248,113,113,0.55)]'
+                    : 'text-emerald-100 border-emerald-400/90 shadow-[0_0_22px_rgba(52,211,153,0.55)]'
+              }`}
+              initial={{ scale: 1.35, opacity: 0, y: 6 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 20 }}
+            >
+              BET
             </motion.span>
           </motion.div>
         )}
@@ -657,6 +767,30 @@ export default function TableCard({
         @keyframes pendingWaitRing {
           0%, 100% { box-shadow: 0 0 0 0 rgba(56,189,248,0.18); }
           50% { box-shadow: 0 0 0 5px rgba(56,189,248,0.1); }
+        }
+        .bet-start-ring-p {
+          animation: betStartRingP 0.8s ease-out forwards;
+        }
+        .bet-start-ring-b {
+          animation: betStartRingB 0.8s ease-out forwards;
+        }
+        .bet-start-ring-t {
+          animation: betStartRingT 0.8s ease-out forwards;
+        }
+        @keyframes betStartRingP {
+          0% { box-shadow: 0 0 0 0 rgba(59,130,246,0.55); }
+          35% { box-shadow: 0 0 0 7px rgba(59,130,246,0.28); }
+          100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+        }
+        @keyframes betStartRingB {
+          0% { box-shadow: 0 0 0 0 rgba(248,113,113,0.55); }
+          35% { box-shadow: 0 0 0 7px rgba(248,113,113,0.28); }
+          100% { box-shadow: 0 0 0 0 rgba(248,113,113,0); }
+        }
+        @keyframes betStartRingT {
+          0% { box-shadow: 0 0 0 0 rgba(52,211,153,0.55); }
+          35% { box-shadow: 0 0 0 7px rgba(52,211,153,0.28); }
+          100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
         }
         .betting-gold-line {
           animation: bettingGoldPulse 2.2s ease-in-out infinite;
