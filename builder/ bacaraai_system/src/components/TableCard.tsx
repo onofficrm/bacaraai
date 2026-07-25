@@ -144,18 +144,19 @@ export default function TableCard({
     return () => window.clearInterval(id);
   }, [table]);
 
-  // 오토 락온 상승 엣지 → 타깃 연출 1회
+  // 오토 락온 상승 엣지 → 타깃 연출 1회 (이미 베팅 중이면 생략 — LOCK ON/BET 겹침 방지)
   useEffect(() => {
     if (autoLockOn && !prevLockRef.current) {
+      prevLockRef.current = true;
+      if (betBanners.length > 0 || betStartBurst) return;
       setLockBurst(true);
       if (!reduced) playLockOn();
       const t = window.setTimeout(() => setLockBurst(false), intensity === 'high' ? 1600 : 1200);
-      prevLockRef.current = true;
       return () => window.clearTimeout(t);
     }
     if (!autoLockOn) prevLockRef.current = false;
     else prevLockRef.current = true;
-  }, [autoLockOn, reduced, intensity]);
+  }, [autoLockOn, reduced, intensity, betBanners.length, betStartBurst]);
 
   // 베팅 시작(신규 pending) → 핀포인트 소리 + 사이드 링
   useEffect(() => {
@@ -185,6 +186,8 @@ export default function TableCard({
             ? 'T'
             : 'P';
 
+    // BET 시작 연출이 LOCK ON 과 겹치지 않도록 즉시 해제
+    setLockBurst(false);
     setBetStartBurst({ key: Date.now(), side });
     if (!reduced) playSfx('betStart');
     const t = window.setTimeout(() => setBetStartBurst(null), 800);
@@ -329,7 +332,7 @@ export default function TableCard({
       )}
 
       <AnimatePresence>
-        {lockBurst && !reduced && (
+        {lockBurst && !betStartBurst && betBanners.length === 0 && !reduced && (
           <motion.div
             key="lock-burst"
             className="pointer-events-none absolute inset-0 z-[25] flex items-center justify-center overflow-hidden rounded-xl"
@@ -506,7 +509,11 @@ export default function TableCard({
         )}
       </AnimatePresence>
 
-      {autoLockOn && betBanners.length === 0 && !autoHit && !lockBurst && (
+      {autoLockOn &&
+        betBanners.length === 0 &&
+        !autoHit &&
+        !lockBurst &&
+        !betStartBurst && (
         <div className="absolute top-2 right-10 z-10 text-[9px] font-black tracking-wider text-sky-300 bg-sky-500/15 border border-sky-400/40 px-1.5 py-0.5 rounded animate-pulse">
           LOCK ON
         </div>
@@ -683,7 +690,8 @@ export default function TableCard({
 
       <div className="relative z-[2]">
         <Roadmap data={table.roadmap} results={table.stats.recentResults} size="sm" />
-        {!showWinFlip && !autoHit && betBanners.length > 0 && (
+        {/* betStart 연출(0.8s) 동안은 BET 뱃지만 — BetInOverlay 와 중앙 겹침 방지 */}
+        {!showWinFlip && !autoHit && !betStartBurst && betBanners.length > 0 && (
           <BetInOverlay banners={betBanners} compact={compact} />
         )}
         {!showWinFlip && !autoHit && betBanners.length === 0 && (
