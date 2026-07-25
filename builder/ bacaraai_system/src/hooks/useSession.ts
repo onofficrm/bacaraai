@@ -352,7 +352,8 @@ export function resolveAmountPlan(
     customSteps: Array.isArray(config.customSteps) ? config.customSteps : [],
   };
   if (config.patternAmountScope !== 'per_case' || !caseId) return shared;
-  const c = (config.patternCases || []).find((x) => x.id === caseId);
+  // 구버전 localStorage에 null 항목이 남아 있어도 새로고침이 중단되지 않게 방어
+  const c = (config.patternCases || []).find((x) => x?.id === caseId);
   if (!c) return shared;
   return {
     amountMode: c.amountMode ?? config.amountMode,

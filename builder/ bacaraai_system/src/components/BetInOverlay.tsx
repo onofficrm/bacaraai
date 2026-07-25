@@ -402,7 +402,10 @@ type Props = {
  */
 export default function BetInOverlay({ banners, compact = false }: Props) {
   const { reduced } = useFxIntensity();
-  const runKey = banners.map((b) => b.id).join('|');
+  const safeBanners = banners.filter(
+    (b): b is TableBetBanner => Boolean(b && typeof b.id === 'string'),
+  );
+  const runKey = safeBanners.map((b) => b.id).join('|');
   const playedRef = useRef<string | null>(null);
   const [animate, setAnimate] = useState(!reduced);
 
@@ -419,7 +422,7 @@ export default function BetInOverlay({ banners, compact = false }: Props) {
     setAnimate(true);
   }, [runKey, reduced]);
 
-  if (banners.length === 0) return null;
+  if (safeBanners.length === 0) return null;
 
   return (
     <AnimatePresence>
@@ -432,9 +435,9 @@ export default function BetInOverlay({ banners, compact = false }: Props) {
       >
         <div className="absolute inset-0 bg-zinc-950/30 backdrop-blur-[1px]" />
         <div
-          className={`relative flex ${banners.length > 1 ? 'flex-col gap-2' : ''} items-center`}
+          className={`relative flex ${safeBanners.length > 1 ? 'flex-col gap-2' : ''} items-center`}
         >
-          {banners.map((banner, idx) => (
+          {safeBanners.map((banner, idx) => (
             <BetInRow
               key={banner.id}
               banner={banner}

@@ -159,14 +159,18 @@ export default function TableCard({
 
   // 베팅 시작(신규 pending) → 핀포인트 소리 + 사이드 링
   useEffect(() => {
-    const ids = betBanners.map((b) => b.id);
+    // 새로고침 복원 중 구버전/손상 항목이 있어도 카드 전체가 멈추지 않게 정리
+    const safeBanners = betBanners.filter(
+      (b): b is TableBetBanner => Boolean(b && typeof b.id === 'string'),
+    );
+    const ids = safeBanners.map((b) => b.id);
     if (betStartBootRef.current) {
       betStartBootRef.current = false;
       seenBetIdsRef.current = new Set(ids);
       return;
     }
     const seen = seenBetIdsRef.current;
-    const fresh = betBanners.filter((b) => !seen.has(b.id));
+    const fresh = safeBanners.filter((b) => !seen.has(b.id));
     seenBetIdsRef.current = new Set(ids);
     if (fresh.length === 0) return;
 
