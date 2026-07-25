@@ -113,6 +113,21 @@ function trimToCurrentShoe(rows: LiveResultRow[]): LiveResultRow[] {
   return start === 0 ? sorted : sorted.slice(start);
 }
 
+/** 변경 감지용 경량 시그니처 (id·결과·개수) — 매 폴링 전체 문자열화 없이 안전 비교 */
+function buildRowsSignature(rows: LiveResultRow[]): string {
+  if (rows.length === 0) return '0';
+  let checksum = 0;
+  for (let i = 0; i < rows.length; i += 1) {
+    const r = rows[i];
+    const code = r.result === 'P' ? 1 : r.result === 'B' ? 2 : 3;
+    // 정수 오버플로 방지를 위해 32-bit 범위로 접음
+    checksum = (checksum * 31 + r.id * 4 + code) % 2147483647;
+  }
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  return `${rows.length}:${first.id}:${last.id}:${last.result}:${checksum}`;
+}
+
 /** 같은 game_no 재감지 시 최신 id 만 유지 */
 function dedupeByGameNo(rows: LiveResultRow[]): LiveResultRow[] {
   if (rows.length === 0) return rows;
@@ -164,9 +179,12 @@ export default function useLiveTable(
   const requestActive = useRef(false);
   const analyzeActive = useRef(false);
   const analyzedIdRef = useRef<number | null>(null);
+  const lastSyncSigRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    // 테이블이 바뀌면 이전 시그니처 무효화
+    lastSyncSigRef.current = null;
 
     const poll = async () => {
       if (requestActive.current) return;
@@ -198,23 +216,38 @@ export default function useLiveTable(
         );
         const latest = rows.length ? rows[rows.length - 1] : null;
         const nextGameNo = latest?.game_no ?? data.game_no ?? null;
+        const nextLatestId = latest?.id ?? data.latest_id ?? null;
+        const nextDetectedAt = latest?.detected_at ?? data.latest_detected_at ?? null;
+
+        // 데이터가 실제로 바뀐 경우에만 상태 갱신 — 2초마다 전체 재렌더/재계산 방지
+        const sig = `ok|${buildRowsSignature(rows)}|${nextGameNo ?? ''}|${nextLatestId ?? ''}`;
+        if (lastSyncSigRef.current === sig) {
+          return;
+        }
+        lastSyncSigRef.current = sig;
 
         setState({
           loading: false,
           connected: true,
           rows,
           gameNo: nextGameNo,
-          latestId: latest?.id ?? data.latest_id ?? null,
-          latestDetectedAt: latest?.detected_at ?? data.latest_detected_at ?? null,
+          latestId: nextLatestId,
+          latestDetectedAt: nextDetectedAt,
           error: null,
         });
       } catch (error) {
         if (cancelled) return;
+        const message = error instanceof Error ? error.message : '실시간 연결 오류';
+        // 오류는 상태를 한 번만 반영 (반복 오류로 인한 재렌더 폭주 방지)
+        if (lastSyncSigRef.current === `err|${message}`) {
+          return;
+        }
+        lastSyncSigRef.current = `err|${message}`;
         setState((prev) => ({
           ...prev,
           loading: false,
           connected: false,
-          error: error instanceof Error ? error.message : '실시간 연결 오류',
+          error: message,
         }));
       } finally {
         requestActive.current = false;
