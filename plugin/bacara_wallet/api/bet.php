@@ -13,6 +13,7 @@
  */
 include_once dirname(__FILE__) . '/../../../common.php';
 include_once G5_LIB_PATH . '/bacara-wallet.lib.php';
+include_once G5_LIB_PATH . '/bacara-ai-analyze.lib.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -117,12 +118,122 @@ function bacara_bet_net_pnl($side, $amount, $outcome)
     return $credit - (int) $amount;
 }
 
-function bacara_bet_require_client_key(&$client_key)
+function bacara_bet_require_client_key($client_key)
 {
     if ($client_key === '') {
-        // 구버전 클라이언트 호환: 서버에서 키 생성
-        $client_key = substr('s' . md5(uniqid((string) mt_rand(), true)), 0, 32);
+        http_response_code(400);
+        echo json_encode(array(
+            'ok' => false,
+            'message' => 'client_key 가 필요합니다.',
+        ), JSON_UNESCAPED_UNICODE);
+        exit;
     }
+}
+
+/**
+ * 라이브 결과 DB에서 베팅 이후 첫 결과를 조회한다.
+ * 클라이언트가 보낸 outcome 은 참고용이며, 정산 금액 계산은 이 값을 우선한다.
+ *
+ * @return array{ok:bool,outcome:?string,message:string,id:?int,game_no:?int}
+ */
+function bacara_bet_fetch_authoritative_outcome($table_name, $placed_at, $round_no)
+{
+    $table_name = strtoupper(trim((string) $table_name));
+    if ($table_name === '' || !preg_match('/^[A-Z0-9_-]{1,40}$/', $table_name)) {
+        return array(
+            'ok' => false,
+            'outcome' => null,
+            'message' => '정산할 테이블 코드가 올바르지 않습니다.',
+            'id' => null,
+            'game_no' => null,
+        );
+    }
+
+    // table_name 이 UI 라벨(TABLE1(MD2729))로 올 수 있으면 코드만 추출
+    if (preg_match('/\(([A-Z0-9_-]+)\)/', $table_name, $m)) {
+        $table_name = strtoupper($m[1]);
+    }
+
+    $conn = bacara_ai_live_connect();
+    if (empty($conn['ok'])) {
+        return array(
+            'ok' => false,
+            'outcome' => null,
+            'message' => $conn['error'] !== '' ? $conn['error'] : '실시간 결과 DB 연결 실패',
+            'id' => null,
+            'game_no' => null,
+        );
+    }
+
+    $use_live = !empty($conn['use_live']);
+    $link = $conn['link'];
+    $cfg = isset($conn['cfg']) && is_array($conn['cfg']) ? $conn['cfg'] : array();
+    $safe_table = bacara_ai_live_escape($table_name, $use_live, $link);
+    $round_no = max(0, (int) $round_no);
+    $placed_at = trim((string) $placed_at);
+    $placed_sql = $placed_at !== ''
+        ? ("'" . bacara_ai_live_escape($placed_at, $use_live, $link) . "'")
+        : 'NULL';
+
+    $account_clause = '1=1';
+    if (!empty($cfg['account'])) {
+        $safe_account = bacara_ai_live_escape((string) $cfg['account'], $use_live, $link);
+        $account_clause = "account = '{$safe_account}'";
+    }
+
+    // 접수 시각 이후 · 또는 접수 회차 이후의 첫 결과
+    $sql = " select id, game_no, result, detected_at
+               from `bacaraai`
+              where {$account_clause}
+                and table_name = '{$safe_table}'
+                and result in ('P', 'B', 'T')
+                and (
+                      (" . ($placed_sql === 'NULL' ? '0' : "detected_at >= {$placed_sql}") . ")
+                   or (" . ($round_no > 0 ? "game_no > {$round_no}" : '0') . ")
+                )
+              order by id asc
+              limit 1 ";
+
+    $error = '';
+    $rows = bacara_ai_live_query_rows($sql, $use_live, $link, $error);
+    if ($error !== '') {
+        return array(
+            'ok' => false,
+            'outcome' => null,
+            'message' => '실시간 결과 조회에 실패했습니다.',
+            'id' => null,
+            'game_no' => null,
+        );
+    }
+    if (!$rows) {
+        return array(
+            'ok' => false,
+            'outcome' => null,
+            'message' => '아직 정산할 라이브 결과가 없습니다.',
+            'id' => null,
+            'game_no' => null,
+        );
+    }
+
+    $row = $rows[0];
+    $outcome = strtoupper((string) $row['result']);
+    if (!in_array($outcome, array('P', 'B', 'T'), true)) {
+        return array(
+            'ok' => false,
+            'outcome' => null,
+            'message' => '라이브 결과 값이 올바르지 않습니다.',
+            'id' => null,
+            'game_no' => null,
+        );
+    }
+
+    return array(
+        'ok' => true,
+        'outcome' => $outcome,
+        'message' => '',
+        'id' => isset($row['id']) ? (int) $row['id'] : null,
+        'game_no' => isset($row['game_no']) ? (int) $row['game_no'] : null,
+    );
 }
 
 /**
@@ -282,10 +393,17 @@ if ($action === 'place') {
         exit;
     }
 
+    $ledger_table = $table_name;
+    if (preg_match('/\(([A-Z0-9_-]+)\)/i', $table_name, $tm)) {
+        $ledger_table = strtoupper($tm[1]);
+    } elseif (preg_match('/^(MD[0-9A-Z_-]+)/i', $table_name, $tm)) {
+        $ledger_table = strtoupper($tm[1]);
+    }
+
     $ledger_ok = bacara_bet_insert_ledger(
         $mb_id,
         $place_key,
-        $table_name,
+        $ledger_table,
         $side,
         $amount,
         $source,
@@ -411,11 +529,7 @@ if ($action === 'settle') {
         echo json_encode(array('ok' => false, 'message' => '원베팅 식별키가 없습니다.'), JSON_UNESCAPED_UNICODE);
         exit;
     }
-    if (!in_array($outcome, array('P', 'B', 'T'), true)) {
-        http_response_code(400);
-        echo json_encode(array('ok' => false, 'message' => '결과가 올바르지 않습니다.'), JSON_UNESCAPED_UNICODE);
-        exit;
-    }
+    // outcome 은 서버 라이브 DB에서 확정한다. 클라이언트 값은 선택적 참고만.
 
     $member_lock = bacara_bet_member_lock($mb_id);
     if ($member_lock === '') {
@@ -453,6 +567,26 @@ if ($action === 'settle') {
     $source = $ledger['source'] === 'auto' ? 'auto' : 'manual';
     $round = (int) $ledger['round_no'];
     $shoe = (string) $ledger['shoe'];
+    $placed_at = isset($ledger['placed_at']) ? (string) $ledger['placed_at'] : '';
+
+    // 클라이언트 outcome 은 무시하고 라이브 DB 권위 결과를 사용한다.
+    $live = bacara_bet_fetch_authoritative_outcome($table_name, $placed_at, $round);
+    if (empty($live['ok']) || empty($live['outcome'])) {
+        bacara_bet_member_unlock($member_lock);
+        http_response_code(409);
+        echo json_encode(array(
+            'ok' => false,
+            'message' => $live['message'] !== '' ? $live['message'] : '아직 정산할 결과가 없습니다.',
+            'balance' => bacara_wallet_get_balance($mb_id),
+            'bet_status' => 'pending',
+        ), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $outcome = (string) $live['outcome'];
+    $client_outcome = isset($json['outcome'])
+        ? strtoupper((string) $json['outcome'])
+        : (isset($_POST['outcome']) ? strtoupper((string) $_POST['outcome']) : '');
+    $outcome_overridden = ($client_outcome !== '' && $client_outcome !== $outcome);
 
     $credit = bacara_bet_settle_credit($side, $amount, $outcome);
     $pnl = bacara_bet_net_pnl($side, $amount, $outcome);
@@ -491,6 +625,8 @@ if ($action === 'settle') {
         'balance_text' => bacara_wallet_format($result['balance']),
         'idempotent' => !empty($result['idempotent']),
         'bet_status' => 'settled',
+        'live_result_id' => $live['id'],
+        'outcome_overridden' => $outcome_overridden,
         'message' => !empty($result['idempotent'])
             ? '이미 정산된 요청입니다.'
             : ($credit > 0

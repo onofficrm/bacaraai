@@ -262,6 +262,18 @@ function normalizePendingBets(raw: unknown): PendingBet[] {
   return out;
 }
 
+/** 여러 탭의 pending 을 id 기준으로 합친다 (최신 placedAt 우선). */
+function mergePendingBets(a: PendingBet[], b: PendingBet[]): PendingBet[] {
+  const map = new Map<string, PendingBet>();
+  for (const bet of [...a, ...b]) {
+    const prev = map.get(bet.id);
+    if (!prev || bet.placedAt >= prev.placedAt) {
+      map.set(bet.id, bet);
+    }
+  }
+  return Array.from(map.values()).sort((x, y) => x.placedAt - y.placedAt);
+}
+
 function readStored(): SessionState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -514,14 +526,75 @@ export default function useSession() {
   const placeFlightKey = (source: BetSource, tableId: string) => `${source}:${tableId}`;
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // pending 은 탭 간 병합 저장 (last-writer-wins 로 다른 탭 베팅이 지워지지 않게)
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const existing = raw ? (JSON.parse(raw) as Partial<SessionState>) : null;
+      const mergedPending = mergePendingBets(
+        normalizePendingBets(existing?.pendingBets),
+        state.pendingBets,
+      );
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          ...state,
+          pendingBets: mergedPending,
+        }),
+      );
+    } catch {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch {
+        /* ignore */
+      }
+    }
   }, [state]);
+
+  // 다른 탭의 pending 추가/제거를 즉시 반영
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== STORAGE_KEY || !event.newValue) return;
+      try {
+        const parsed = JSON.parse(event.newValue) as Partial<SessionState>;
+        const remotePending = normalizePendingBets(parsed.pendingBets);
+        setState((curr) => {
+          const merged = mergePendingBets(curr.pendingBets, remotePending);
+          // 원격에서 사라진 pending 은 서버 원장이 권위이므로,
+          // 동일 id 가 원격에 없고 placedAt 이 오래된 경우만 제거하지 않고
+          // 합집합을 유지한다 (정산은 서버에서 중복 차단).
+          if (
+            merged.length === curr.pendingBets.length &&
+            merged.every((b, i) => b.id === curr.pendingBets[i]?.id)
+          ) {
+            return curr;
+          }
+          return { ...curr, pendingBets: merged };
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   // 새로고침 직전에도 대기 베팅이 디스크에 남도록 즉시 flush
   useEffect(() => {
     const flush = () => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateRef.current));
+        const raw = localStorage.getItem(STORAGE_KEY);
+        const existing = raw ? (JSON.parse(raw) as Partial<SessionState>) : null;
+        const mergedPending = mergePendingBets(
+          normalizePendingBets(existing?.pendingBets),
+          stateRef.current.pendingBets,
+        );
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            ...stateRef.current,
+            pendingBets: mergedPending,
+          }),
+        );
       } catch {
         /* ignore */
       }
@@ -854,6 +927,15 @@ export default function useSession() {
       armPendingWatchdog(pending);
     }
   }, [armPendingWatchdog]);
+
+  // 다른 탭에서 합쳐진 pending 에도 워치독 부착
+  useEffect(() => {
+    for (const pending of state.pendingBets) {
+      if (!settleTimers.current.has(pending.id)) {
+        armPendingWatchdog(pending);
+      }
+    }
+  }, [state.pendingBets, armPendingWatchdog]);
 
   const placeBet = useCallback(async (input: PlaceBetInput): Promise<PlaceBetResult> => {
     const prev = stateRef.current;
