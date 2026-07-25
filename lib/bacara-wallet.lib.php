@@ -21,11 +21,34 @@ if (!function_exists('bacara_wallet_log_table')) {
     }
 }
 
+if (!function_exists('bacara_wallet_bet_table')) {
+    function bacara_wallet_bet_table()
+    {
+        return G5_TABLE_PREFIX . 'bacara_wallet_bet';
+    }
+}
+
 if (!function_exists('bacara_wallet_install_tables')) {
     function bacara_wallet_install_tables()
     {
+        static $checked = false;
+        if ($checked) {
+            return;
+        }
+        $checked = true;
+
+        // CREATE/SHOW/ALTER를 매 HTTP 요청마다 실행하면 동시 접속 때
+        // MySQL metadata lock으로 게임 화면과 베팅 API가 함께 지연될 수 있다.
+        $schema_marker = defined('G5_DATA_PATH')
+            ? G5_DATA_PATH . '/.bacara-wallet-schema-v3'
+            : '';
+        if ($schema_marker !== '' && is_file($schema_marker)) {
+            return;
+        }
+
         $wallet = bacara_wallet_table();
         $log = bacara_wallet_log_table();
+        $bet = bacara_wallet_bet_table();
 
         sql_query(
             " CREATE TABLE IF NOT EXISTS `{$wallet}` (
@@ -33,6 +56,31 @@ if (!function_exists('bacara_wallet_install_tables')) {
                 `balance` bigint NOT NULL DEFAULT 0,
                 `updated_at` datetime NOT NULL,
                 PRIMARY KEY (`mb_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ",
+            false
+        );
+
+        // 서버 권위 베팅 원장. place_key 한 건은 pending → settled/cancelled 중
+        // 하나로만 전이하여 여러 탭의 정산/취소 경합에서도 이중 입금을 막는다.
+        sql_query(
+            " CREATE TABLE IF NOT EXISTS `{$bet}` (
+                `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+                `mb_id` varchar(20) NOT NULL,
+                `place_key` varchar(64) NOT NULL,
+                `table_name` varchar(80) NOT NULL DEFAULT '',
+                `side` varchar(10) NOT NULL DEFAULT '',
+                `amount` bigint NOT NULL DEFAULT 0,
+                `source` varchar(10) NOT NULL DEFAULT 'manual',
+                `round_no` int NOT NULL DEFAULT 0,
+                `shoe` varchar(80) NOT NULL DEFAULT '-',
+                `status` varchar(12) NOT NULL DEFAULT 'pending',
+                `outcome` char(1) NULL DEFAULT NULL,
+                `placed_at` datetime NOT NULL,
+                `resolved_at` datetime NULL DEFAULT NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uq_mb_place_key` (`mb_id`, `place_key`),
+                KEY `idx_mb_status` (`mb_id`, `status`),
+                KEY `idx_table_status` (`table_name`, `status`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ",
             false
         );
@@ -82,6 +130,10 @@ if (!function_exists('bacara_wallet_install_tables')) {
                     ADD UNIQUE KEY `uq_mb_client_key` (`mb_id`, `client_key`) ",
                 false
             );
+        }
+
+        if ($schema_marker !== '') {
+            @file_put_contents($schema_marker, G5_TIME_YMDHIS . PHP_EOL, LOCK_EX);
         }
     }
 }

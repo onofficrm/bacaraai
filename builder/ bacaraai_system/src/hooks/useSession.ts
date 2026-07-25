@@ -728,6 +728,7 @@ export default function useSession() {
       round: pending.historyMeta?.round,
       shoeNumber: pending.historyMeta?.shoeNumber || pending.historyMeta?.gameCode,
       clientKey: settleClientKey(pending.id),
+      placeKey: pending.clientKey,
     }).then((res) => {
       if (res.ok && typeof res.balance === 'number') {
         emitWalletBalance(res.balance);
@@ -766,6 +767,7 @@ export default function useSession() {
       tableName: pending.tableName,
       source: pending.source,
       clientKey: cancelClientKey(pending.id),
+      placeKey: pending.clientKey,
     }).then((res) => {
       if (res.ok && typeof res.balance === 'number') {
         emitWalletBalance(res.balance);
@@ -971,7 +973,8 @@ export default function useSession() {
       ],
     }));
     armPendingWatchdog(pending);
-    emitWalletBalance(Math.max(0, available - amount));
+    // 서버 확정 전 낙관적 잔액은 현재 탭에만 표시한다.
+    emitWalletBalance(Math.max(0, available - amount), true);
 
     let walletRes;
     try {
@@ -1066,6 +1069,7 @@ export default function useSession() {
         tableName: pending.tableName,
         source: pending.source,
         clientKey: cancelClientKey(pending.id),
+        placeKey: pending.clientKey,
       });
       if (res.ok && typeof res.balance === 'number') {
         emitWalletBalance(res.balance);

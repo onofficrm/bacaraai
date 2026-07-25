@@ -83,6 +83,7 @@ export async function walletSettleBet(input: {
   round?: number;
   shoeNumber?: string;
   clientKey: string;
+  placeKey: string;
 }): Promise<BetApiResponse> {
   const source = input.source === 'auto' ? 'auto' : 'manual';
   return postBet({
@@ -95,6 +96,7 @@ export async function walletSettleBet(input: {
     round: typeof input.round === 'number' ? input.round : 0,
     shoe: input.shoeNumber || '-',
     client_key: input.clientKey,
+    place_key: input.placeKey,
   });
 }
 
@@ -104,6 +106,7 @@ export async function walletCancelBet(input: {
   tableName: string;
   source?: 'manual' | 'auto';
   clientKey: string;
+  placeKey: string;
 }): Promise<BetApiResponse> {
   const source = input.source === 'auto' ? 'auto' : 'manual';
   return postBet({
@@ -112,13 +115,26 @@ export async function walletCancelBet(input: {
     table_name: input.tableName,
     source,
     client_key: input.clientKey,
+    place_key: input.placeKey,
   });
 }
 
-export function emitWalletBalance(balance: number) {
+const WALLET_SYNC_KEY = 'bacara_wallet_balance_sync';
+
+export function emitWalletBalance(balance: number, localOnly = false) {
   window.dispatchEvent(
     new CustomEvent('bacara-wallet-balance', { detail: { balance } }),
   );
+  if (!localOnly) {
+    try {
+      localStorage.setItem(
+        WALLET_SYNC_KEY,
+        JSON.stringify({ balance, at: Date.now(), nonce: Math.random() }),
+      );
+    } catch {
+      /* storage unavailable */
+    }
+  }
 }
 
 export type WalletHistoryItem = {

@@ -43,6 +43,69 @@ if (!preg_match('/^[A-Z0-9_-]{1,40}$/', $table_name)) {
 $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 800;
 $limit = max(1, min(1000, $limit));
 
+/**
+ * 모든 로그인 사용자가 같은 라이브 테이블을 조회하므로 짧은 공유 캐시 사용.
+ * - fresh 1초: 즉시 반환
+ * - 다른 요청이 갱신 중이면 stale(최대 10초)를 즉시 반환
+ * 이렇게 하면 동시 사용자 수가 늘어도 외부 live DB 쿼리는 초당 최대 1회다.
+ */
+$live_cache_dir = G5_DATA_PATH . '/cache';
+if (!is_dir($live_cache_dir)) {
+    @mkdir($live_cache_dir, 0755, true);
+}
+$live_cache_key = preg_replace('/[^A-Z0-9_-]/', '', $table_name) . '-' . $limit;
+$live_cache_file = $live_cache_dir . '/bacara-live-' . $live_cache_key . '.json';
+$live_cache_lock_file = $live_cache_file . '.lock';
+$live_cache_lock = null;
+
+function bacara_live_cached_payload($file, $max_age)
+{
+    if (!is_file($file)) {
+        return null;
+    }
+    $mtime = @filemtime($file);
+    if (!$mtime || (time() - $mtime) > $max_age) {
+        return null;
+    }
+    $raw = @file_get_contents($file);
+    $data = $raw ? json_decode($raw, true) : null;
+    return is_array($data) && !empty($data['ok']) ? $data : null;
+}
+
+function bacara_live_output_payload($payload, $member_id, $cache_state)
+{
+    $payload['logged_in'] = true;
+    $payload['member_id'] = $member_id;
+    $payload['cache'] = $cache_state;
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+}
+
+$fresh_payload = bacara_live_cached_payload($live_cache_file, 1);
+if ($fresh_payload !== null) {
+    bacara_live_output_payload($fresh_payload, $member['mb_id'], 'fresh');
+    exit;
+}
+
+$live_cache_lock = @fopen($live_cache_lock_file, 'c');
+if ($live_cache_lock && !@flock($live_cache_lock, LOCK_EX | LOCK_NB)) {
+    // 다른 PHP worker가 DB를 갱신 중이면 게임 화면을 기다리게 하지 않는다.
+    $stale_payload = bacara_live_cached_payload($live_cache_file, 10);
+    if ($stale_payload !== null) {
+        @fclose($live_cache_lock);
+        bacara_live_output_payload($stale_payload, $member['mb_id'], 'stale');
+        exit;
+    }
+    // 최초 요청만 최대 짧게 대기. 이후에는 생성된 캐시를 사용한다.
+    @flock($live_cache_lock, LOCK_EX);
+    $fresh_payload = bacara_live_cached_payload($live_cache_file, 10);
+    if ($fresh_payload !== null) {
+        @flock($live_cache_lock, LOCK_UN);
+        @fclose($live_cache_lock);
+        bacara_live_output_payload($fresh_payload, $member['mb_id'], 'waited');
+        exit;
+    }
+}
+
 $live_cfg_file = G5_DATA_PATH . '/bacaraai-live.config.php';
 $live_link = null;
 $use_live_cfg = false;
@@ -59,13 +122,24 @@ if (is_file($live_cfg_file)) {
         $live_cfg = $loaded;
         mysqli_report(MYSQLI_REPORT_OFF);
         $live_port = !empty($live_cfg['port']) ? (int) $live_cfg['port'] : 3306;
-        $live_link = @mysqli_connect(
-            $live_cfg['host'],
-            $live_cfg['user'],
-            $live_cfg['password'],
-            $live_cfg['database'],
-            $live_port
-        );
+        $live_link = @mysqli_init();
+        if ($live_link) {
+            @mysqli_options($live_link, MYSQLI_OPT_CONNECT_TIMEOUT, 3);
+            if (defined('MYSQLI_OPT_READ_TIMEOUT')) {
+                @mysqli_options($live_link, MYSQLI_OPT_READ_TIMEOUT, 3);
+            }
+            $connected = @mysqli_real_connect(
+                $live_link,
+                $live_cfg['host'],
+                $live_cfg['user'],
+                $live_cfg['password'],
+                $live_cfg['database'],
+                $live_port
+            );
+            if (!$connected) {
+                $live_link = null;
+            }
+        }
         if ($live_link) {
             @mysqli_set_charset($live_link, G5_DB_CHARSET);
             $use_live_cfg = true;
@@ -315,10 +389,14 @@ function bacara_live_latest_id($rows)
 
 $account_candidates = array();
 if (!empty($live_cfg['account'])) {
+    // 운영 감지 계정이 명시되면 모든 사용자가 같은 단일 결과 스트림을 본다.
+    // 로그인 회원 ID를 추가 후보로 섞으면 첫 캐시 요청자의 개인 데이터가
+    // 전체 사용자에게 노출되거나 서로 다른 슈가 선택될 수 있다.
     $account_candidates[] = (string) $live_cfg['account'];
+} else {
+    $account_candidates[] = (string) $member['mb_id'];
+    $account_candidates[] = 'awesome';
 }
-$account_candidates[] = (string) $member['mb_id'];
-$account_candidates[] = 'awesome';
 $account_candidates = array_values(array_unique(array_filter($account_candidates)));
 
 $rows = array();
@@ -437,11 +515,9 @@ $rows = bacara_live_dedupe_game_no($rows);
 $latest = count($rows) ? $rows[count($rows) - 1] : null;
 $game_no = $latest && isset($latest['game_no']) ? $latest['game_no'] : null;
 
-echo json_encode(array(
+$payload = array(
     'ok' => true,
-    'logged_in' => true,
-    'member_id' => $member['mb_id'],
-    'account' => $used_account !== null ? $used_account : $member['mb_id'],
+    'account' => $used_account !== null ? $used_account : '',
     'table_name' => $table_name,
     'game_no' => $game_no,
     'source' => $use_live_cfg ? 'live_config' : 'g5',
@@ -453,5 +529,16 @@ echo json_encode(array(
     'latest_id' => $latest ? $latest['id'] : null,
     'latest_detected_at' => $latest ? $latest['detected_at'] : null,
     'results' => $rows,
-), JSON_UNESCAPED_UNICODE);
+);
+
+// 완성된 정상 응답만 원자적으로 캐시에 교체한다.
+$cache_tmp = $live_cache_file . '.' . getmypid() . '.tmp';
+@file_put_contents($cache_tmp, json_encode($payload, JSON_UNESCAPED_UNICODE), LOCK_EX);
+@rename($cache_tmp, $live_cache_file);
+if ($live_cache_lock) {
+    @flock($live_cache_lock, LOCK_UN);
+    @fclose($live_cache_lock);
+}
+
+bacara_live_output_payload($payload, $member['mb_id'], 'miss');
 exit;
