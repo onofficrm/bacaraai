@@ -113,6 +113,23 @@ function trimToCurrentShoe(rows: LiveResultRow[]): LiveResultRow[] {
   return start === 0 ? sorted : sorted.slice(start);
 }
 
+/** 같은 game_no 재감지 시 최신 id 만 유지 */
+function dedupeByGameNo(rows: LiveResultRow[]): LiveResultRow[] {
+  if (rows.length === 0) return rows;
+  const best = new Map<number, LiveResultRow>();
+  const passthrough: LiveResultRow[] = [];
+  for (const row of rows) {
+    const no = row.game_no ?? 0;
+    if (!no || no <= 0) {
+      passthrough.push(row);
+      continue;
+    }
+    const prev = best.get(no);
+    if (!prev || row.id > prev.id) best.set(no, row);
+  }
+  return [...best.values(), ...passthrough].sort((a, b) => a.id - b.id);
+}
+
 function fallbackModel(opinion: AiOpinion = 'WAIT'): AiModelAnalysis {
   return {
     status: '대기',
@@ -155,7 +172,7 @@ export default function useLiveTable(
       if (requestActive.current) return;
       requestActive.current = true;
       try {
-        const query = new URLSearchParams({ table_name: tableName, limit: '200' });
+        const query = new URLSearchParams({ table_name: tableName, limit: '800' });
         const response = await fetch(`${PLATFORM_LINKS.liveResults}?${query.toString()}`, {
           credentials: 'same-origin',
           headers: { Accept: 'application/json' },
@@ -167,15 +184,17 @@ export default function useLiveTable(
         }
         if (cancelled) return;
 
-        const rows = trimToCurrentShoe(
-          (data.results || [])
-            .map((row) => ({
-              ...row,
-              result: String(row.result || '')
-                .trim()
-                .toUpperCase() as GameResult,
-            }))
-            .filter((row) => ['P', 'B', 'T'].includes(row.result)),
+        const rows = dedupeByGameNo(
+          trimToCurrentShoe(
+            (data.results || [])
+              .map((row) => ({
+                ...row,
+                result: String(row.result || '')
+                  .trim()
+                  .toUpperCase() as GameResult,
+              }))
+              .filter((row) => ['P', 'B', 'T'].includes(row.result)),
+          ),
         );
         const latest = rows.length ? rows[rows.length - 1] : null;
         const nextGameNo = latest?.game_no ?? data.game_no ?? null;

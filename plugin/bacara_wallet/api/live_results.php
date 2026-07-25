@@ -2,12 +2,14 @@
 /**
  * 로그인 회원의 실시간 바카라 결과 JSON
  *
- * GET table_name=MD2729&limit=200
+ * GET table_name=MD2729&limit=800
  *
  * - 현재 슈(shoe) 결과만 반환
  * - game_no 는 회차 카운터(1,2,3… 후 리셋). 최신 game_no 로 필터하면
  *   과거 슈의 같은 회차까지 섞이므로, 마지막 game_no=1 이후 id 구간을 사용
- * - 슈가 limit 보다 길면 **최신** limit 건만 반환 (ASC LIMIT 는 과거만 잘라 냄)
+ * - 슈가 짧으면 슈 시작부터 전부 반환 (앞부분 잘림 방지 — 로드맵 불일치 원인)
+ * - 슈가 limit 보다 길면 **최신** limit 건만 반환 + truncated=true
+ * - 같은 game_no 중복 감지 시 최신 id 만 유지
  * - score account 는 live config 의 account 우선, 없으면 로그인 ID,
  *   그래도 없으면 awesome / 테이블 전체 fallback
  *   (여러 계정에 데이터가 있으면 가장 id 가 더 최신인 계정 선택)
@@ -38,8 +40,8 @@ if (!preg_match('/^[A-Z0-9_-]{1,40}$/', $table_name)) {
     exit;
 }
 
-$limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 200;
-$limit = max(1, min(400, $limit));
+$limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 800;
+$limit = max(1, min(1000, $limit));
 
 $live_cfg_file = G5_DATA_PATH . '/bacaraai-live.config.php';
 $live_link = null;
@@ -125,51 +127,154 @@ function bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, &$query_error)
 }
 
 /**
- * 현재 슈 시작 id: 최근 game_no=1 행.
- * 없으면 최신 limit 근처부터.
+ * 단일 값 조회 헬퍼
  */
-function bacara_live_shoe_start_clause($account_clause, $safe_table_name, $limit)
+function bacara_live_query_scalar($sql, $use_live_cfg, $live_link, $field, &$query_error)
 {
-    return " id >= coalesce((
-                select id
-                  from `bacaraai`
-                 where {$account_clause}
-                   and table_name = '{$safe_table_name}'
-                   and result in ('P', 'B', 'T')
-                   and game_no = 1
-                 order by id desc
-                 limit 1
-            ), (
-                select greatest(0, coalesce(max(id), 0) - {$limit})
-                  from `bacaraai`
-                 where {$account_clause}
-                   and table_name = '{$safe_table_name}'
-                   and result in ('P', 'B', 'T')
-            )) ";
+    $query_error = '';
+    if ($use_live_cfg) {
+        $q = @mysqli_query($live_link, $sql);
+        if (!$q) {
+            $query_error = mysqli_error($live_link);
+            return null;
+        }
+        $row = mysqli_fetch_assoc($q);
+        return $row && isset($row[$field]) ? $row[$field] : null;
+    }
+    $q = sql_query($sql, false);
+    if (!$q) {
+        $query_error = 'sql_query failed';
+        return null;
+    }
+    $row = sql_fetch_array($q);
+    return $row && isset($row[$field]) ? $row[$field] : null;
 }
 
 /**
- * 슈 구간에서 최신 limit 건을 ASC 로 반환.
- * (과거: ORDER BY id ASC LIMIT — 슈가 길면 최신 경과가 잘림)
+ * 현재 슈 시작 id: 최근 game_no=1 행. 없으면 null.
  */
-function bacara_live_query_for_account($account, $safe_table_name, $limit, $use_live_cfg, $live_link, &$query_error)
+function bacara_live_shoe_start_id($account_clause, $safe_table_name, $use_live_cfg, $live_link, &$query_error)
+{
+    $sql = " select id
+               from `bacaraai`
+              where {$account_clause}
+                and table_name = '{$safe_table_name}'
+                and result in ('P', 'B', 'T')
+                and game_no = 1
+              order by id desc
+              limit 1 ";
+    $val = bacara_live_query_scalar($sql, $use_live_cfg, $live_link, 'id', $query_error);
+    return $val === null ? null : (int) $val;
+}
+
+/**
+ * 슈 구간 조회.
+ * - 슈 길이 ≤ limit → 슈 시작부터 전부 (로드맵이 카지노와 맞도록)
+ * - 슈 길이 > limit → 최신 limit 만 + truncated
+ */
+function bacara_live_query_for_account($account, $safe_table_name, $limit, $use_live_cfg, $live_link, &$query_error, &$meta)
 {
     $safe_account = bacara_live_escape($account, $use_live_cfg, $live_link);
     $account_clause = "account = '{$safe_account}'";
-    $shoe_clause = bacara_live_shoe_start_clause($account_clause, $safe_table_name, $limit);
-    $sql = " select id, account, table_name, game_no, result, detected_at
-               from (
-                    select id, account, table_name, game_no, result, detected_at
-                      from `bacaraai`
-                     where {$account_clause}
-                       and table_name = '{$safe_table_name}'
-                       and result in ('P', 'B', 'T')
-                       and {$shoe_clause}
-                     order by id desc
-                     limit {$limit}
-               ) as recent_shoe
-              order by id asc ";
+    $meta = is_array($meta) ? $meta : array();
+
+    $shoe_start = bacara_live_shoe_start_id(
+        $account_clause,
+        $safe_table_name,
+        $use_live_cfg,
+        $live_link,
+        $query_error
+    );
+    if ($query_error !== '') {
+        return array();
+    }
+
+    if ($shoe_start === null) {
+        $fallback_sql = " select greatest(0, coalesce(max(id), 0) - {$limit} + 1) as sid
+                            from `bacaraai`
+                           where {$account_clause}
+                             and table_name = '{$safe_table_name}'
+                             and result in ('P', 'B', 'T') ";
+        $sid = bacara_live_query_scalar($fallback_sql, $use_live_cfg, $live_link, 'sid', $query_error);
+        if ($query_error !== '') {
+            return array();
+        }
+        $shoe_start = $sid === null ? 0 : (int) $sid;
+        $meta['shoe_start_mode'] = 'fallback';
+    } else {
+        $meta['shoe_start_mode'] = 'game_no_1';
+    }
+    $meta['shoe_start_id'] = $shoe_start;
+
+    $count_sql = " select count(*) as cnt
+                     from `bacaraai`
+                    where {$account_clause}
+                      and table_name = '{$safe_table_name}'
+                      and result in ('P', 'B', 'T')
+                      and id >= {$shoe_start} ";
+    $cnt = bacara_live_query_scalar($count_sql, $use_live_cfg, $live_link, 'cnt', $query_error);
+    if ($query_error !== '') {
+        return array();
+    }
+    $shoe_count = $cnt === null ? 0 : (int) $cnt;
+    $meta['shoe_count'] = $shoe_count;
+
+    if ($shoe_count > $limit) {
+        $meta['truncated'] = true;
+        $sql = " select id, account, table_name, game_no, result, detected_at
+                   from (
+                        select id, account, table_name, game_no, result, detected_at
+                          from `bacaraai`
+                         where {$account_clause}
+                           and table_name = '{$safe_table_name}'
+                           and result in ('P', 'B', 'T')
+                           and id >= {$shoe_start}
+                         order by id desc
+                         limit {$limit}
+                   ) as recent_shoe
+                  order by id asc ";
+    } else {
+        $meta['truncated'] = false;
+        $sql = " select id, account, table_name, game_no, result, detected_at
+                   from `bacaraai`
+                  where {$account_clause}
+                    and table_name = '{$safe_table_name}'
+                    and result in ('P', 'B', 'T')
+                    and id >= {$shoe_start}
+                  order by id asc
+                  limit {$limit} ";
+    }
+
     return bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, $query_error);
+}
+
+/**
+ * 같은 game_no 가 여러 번 감지되면 최신 id 만 남김 (재감지·오탐 보정).
+ */
+function bacara_live_dedupe_game_no($rows)
+{
+    if (!is_array($rows) || count($rows) === 0) {
+        return array();
+    }
+
+    $best = array();
+    $passthrough = array();
+    foreach ($rows as $row) {
+        $no = isset($row['game_no']) ? (int) $row['game_no'] : 0;
+        if ($no <= 0) {
+            $passthrough[] = $row;
+            continue;
+        }
+        if (!isset($best[$no]) || (int) $row['id'] > (int) $best[$no]['id']) {
+            $best[$no] = $row;
+        }
+    }
+
+    $out = array_merge(array_values($best), $passthrough);
+    usort($out, function ($a, $b) {
+        return (int) $a['id'] - (int) $b['id'];
+    });
+    return $out;
 }
 
 /**
@@ -220,15 +325,23 @@ $rows = array();
 $query_error = '';
 $used_account = null;
 $best_latest_id = -1;
+$used_meta = array(
+    'truncated' => false,
+    'shoe_count' => 0,
+    'shoe_start_id' => null,
+    'shoe_start_mode' => null,
+);
 
 foreach ($account_candidates as $candidate) {
+    $candidate_meta = array();
     $candidate_rows = bacara_live_query_for_account(
         $candidate,
         $safe_table_name,
         $limit,
         $use_live_cfg,
         $live_link,
-        $query_error
+        $query_error,
+        $candidate_meta
     );
     if ($query_error !== '') {
         break;
@@ -241,27 +354,69 @@ foreach ($account_candidates as $candidate) {
         $rows = $candidate_rows;
         $best_latest_id = $candidate_latest;
         $used_account = $candidate;
+        $used_meta = $candidate_meta;
     }
 }
 
-// 계정 매칭이 안 되면 해당 table_name 의 현재 슈 전체로 fallback
+// 계정 매칭이 안 되면 해당 table_name 의 현재 슈로 fallback
 if ($query_error === '' && count($rows) === 0) {
     $account_clause = '1=1';
-    $shoe_clause = bacara_live_shoe_start_clause($account_clause, $safe_table_name, $limit);
-    $sql = " select id, account, table_name, game_no, result, detected_at
-               from (
-                    select id, account, table_name, game_no, result, detected_at
-                      from `bacaraai`
-                     where table_name = '{$safe_table_name}'
-                       and result in ('P', 'B', 'T')
-                       and {$shoe_clause}
-                     order by id desc
-                     limit {$limit}
-               ) as recent_shoe
-              order by id asc ";
-    $rows = bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, $query_error);
-    if (count($rows) > 0) {
-        $used_account = $rows[0]['account'];
+    $shoe_start = bacara_live_shoe_start_id(
+        $account_clause,
+        $safe_table_name,
+        $use_live_cfg,
+        $live_link,
+        $query_error
+    );
+    if ($query_error === '') {
+        if ($shoe_start === null) {
+            $fallback_sql = " select greatest(0, coalesce(max(id), 0) - {$limit} + 1) as sid
+                                from `bacaraai`
+                               where table_name = '{$safe_table_name}'
+                                 and result in ('P', 'B', 'T') ";
+            $sid = bacara_live_query_scalar($fallback_sql, $use_live_cfg, $live_link, 'sid', $query_error);
+            $shoe_start = $sid === null ? 0 : (int) $sid;
+            $used_meta['shoe_start_mode'] = 'fallback';
+        } else {
+            $used_meta['shoe_start_mode'] = 'game_no_1';
+        }
+        $used_meta['shoe_start_id'] = $shoe_start;
+
+        $count_sql = " select count(*) as cnt
+                         from `bacaraai`
+                        where table_name = '{$safe_table_name}'
+                          and result in ('P', 'B', 'T')
+                          and id >= {$shoe_start} ";
+        $cnt = bacara_live_query_scalar($count_sql, $use_live_cfg, $live_link, 'cnt', $query_error);
+        $shoe_count = $cnt === null ? 0 : (int) $cnt;
+        $used_meta['shoe_count'] = $shoe_count;
+        $used_meta['truncated'] = $shoe_count > $limit;
+
+        if ($shoe_count > $limit) {
+            $sql = " select id, account, table_name, game_no, result, detected_at
+                       from (
+                            select id, account, table_name, game_no, result, detected_at
+                              from `bacaraai`
+                             where table_name = '{$safe_table_name}'
+                               and result in ('P', 'B', 'T')
+                               and id >= {$shoe_start}
+                             order by id desc
+                             limit {$limit}
+                       ) as recent_shoe
+                      order by id asc ";
+        } else {
+            $sql = " select id, account, table_name, game_no, result, detected_at
+                       from `bacaraai`
+                      where table_name = '{$safe_table_name}'
+                        and result in ('P', 'B', 'T')
+                        and id >= {$shoe_start}
+                      order by id asc
+                      limit {$limit} ";
+        }
+        $rows = bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, $query_error);
+        if (count($rows) > 0) {
+            $used_account = $rows[0]['account'];
+        }
     }
 }
 
@@ -276,6 +431,8 @@ if ($query_error !== '') {
 }
 
 $rows = bacara_live_trim_to_current_shoe($rows);
+$before_dedupe = count($rows);
+$rows = bacara_live_dedupe_game_no($rows);
 
 $latest = count($rows) ? $rows[count($rows) - 1] : null;
 $game_no = $latest && isset($latest['game_no']) ? $latest['game_no'] : null;
@@ -289,6 +446,10 @@ echo json_encode(array(
     'game_no' => $game_no,
     'source' => $use_live_cfg ? 'live_config' : 'g5',
     'count' => count($rows),
+    'shoe_count' => isset($used_meta['shoe_count']) ? (int) $used_meta['shoe_count'] : count($rows),
+    'truncated' => !empty($used_meta['truncated']),
+    'deduped' => $before_dedupe - count($rows),
+    'shoe_start_id' => isset($used_meta['shoe_start_id']) ? $used_meta['shoe_start_id'] : null,
     'latest_id' => $latest ? $latest['id'] : null,
     'latest_detected_at' => $latest ? $latest['detected_at'] : null,
     'results' => $rows,
