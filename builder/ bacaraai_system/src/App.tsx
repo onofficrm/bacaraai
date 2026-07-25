@@ -213,7 +213,7 @@ export default function App() {
       const table = tables.find((t) => t.id === targetId);
       if (!table?.live) return;
 
-      const hasPending = session.pendingBets.some((b) => b.tableId === table.id);
+      const hasPending = session.pendingBets.some((b) => b?.tableId === table.id);
       const soft = hasPending;
       const sec = getBettingRemainingSecForTable(table);
       const round = table.live.latestId ?? 0;
@@ -498,7 +498,7 @@ export default function App() {
       // (BB 후 Tie 로 끝이 그대로면 fingerprint 로 재진입 차단)
       for (const t of watchTables) {
         if (pendingRunTableId && t.id === pendingRunTableId) continue;
-        if (session.pendingBets.some((b) => b.source === 'auto' && b.tableId === t.id)) continue;
+        if (session.pendingBets.some((b) => b?.source === 'auto' && b.tableId === t.id)) continue;
         if (t.status === 'risk_blocked') continue;
         if (isCancelledRound(t)) continue;
         if (getBettingRemainingSecForTable(t) <= 0) continue;
@@ -528,7 +528,7 @@ export default function App() {
     } else {
       // AI 전략: 서버가 auto_bet_allowed=true 인 테이블만 자동 베팅
       for (const t of watchTables) {
-        if (session.pendingBets.some((b) => b.source === 'auto' && b.tableId === t.id)) continue;
+        if (session.pendingBets.some((b) => b?.source === 'auto' && b.tableId === t.id)) continue;
         if (t.status === 'risk_blocked') continue;
         if (isCancelledRound(t)) continue;
         if (getBettingRemainingSecForTable(t) < 5) continue;
@@ -887,7 +887,7 @@ export default function App() {
                     const { patternCases } = normalizePatternCases(session.config);
                     const patternCaseLabel =
                       patternRun?.caseLabel ||
-                      patternCases.find((c) => c.id === patternRun?.caseId)?.label ||
+                      patternCases.find((c) => c?.id === patternRun?.caseId)?.label ||
                       null;
                     void autoEventTick;
                     return filteredAndSortedTables.map((table) => {
@@ -895,9 +895,9 @@ export default function App() {
                       autoRunning &&
                       (table.live != null || table.id === 't1' || table.gameCode === 'MD2729');
                     const hasAutoPending = session.pendingBets.some(
-                      (b) => b.source === 'auto' && b.tableId === table.id,
+                      (b) => b?.source === 'auto' && b.tableId === table.id,
                     );
-                    const hasAnyPending = session.pendingBets.some((b) => b.tableId === table.id);
+                    const hasAnyPending = session.pendingBets.some((b) => b?.tableId === table.id);
                     const betBanners = resolveTableBetBanners({
                       table,
                       pendingBets: session.pendingBets,
@@ -992,7 +992,7 @@ export default function App() {
               onSkip={session.skipRound}
               onCancelBet={async (betId) => {
                 const pending =
-                  session.pendingBets.find((b) => b.id === betId) ||
+                  session.pendingBets.find((b) => b?.id === betId) ||
                   session.pendingBets[0];
                 if (pending?.source === 'auto') {
                   setPatternRunState(null);

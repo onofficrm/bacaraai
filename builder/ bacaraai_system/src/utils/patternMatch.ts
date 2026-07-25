@@ -220,7 +220,9 @@ export function normalizePatternCases(
 
   let patternCases: PatternCase[];
   if (rawCases && rawCases.length > 0) {
-    patternCases = rawCases.map((c, i) => sanitizeCase(c, i + 1));
+    patternCases = rawCases
+      .filter((c): c is PatternCase => Boolean(c && typeof c === 'object'))
+      .map((c, i) => sanitizeCase(c, i + 1));
   } else {
     const legacy = normalizePatternSegments({
       patternSegments: config?.patternSegments,
@@ -247,7 +249,7 @@ export function normalizePatternCases(
   }
 
   const primary =
-    patternCases.find((c) => c.enabled && c.patternSegments.length > 0) ||
+    patternCases.find((c) => c?.enabled && (c.patternSegments?.length || 0) > 0) ||
     patternCases[0] ||
     null;
 
@@ -260,7 +262,9 @@ export function normalizePatternCases(
 
 /** 켜진 경우 중 패턴이 2게임 이상인 것이 하나라도 있으면 OK */
 export function patternCasesReady(cases: PatternCase[]): boolean {
-  return cases.some((c) => c.enabled && patternTotalGames(c.patternSegments) >= 2);
+  return (cases || []).some(
+    (c) => c?.enabled && patternTotalGames(c.patternSegments || []) >= 2,
+  );
 }
 
 /** 히스토리에 맞는 첫 번째 활성 경우 (우선순위 = 목록 순서) */
@@ -268,9 +272,9 @@ export function findMatchingPatternCase(
   recentResults: GameResult[],
   cases: PatternCase[],
 ): PatternCase | null {
-  for (const c of cases) {
-    if (!c.enabled) continue;
-    if (patternTotalGames(c.patternSegments) < 1) continue;
+  for (const c of cases || []) {
+    if (!c?.enabled) continue;
+    if (patternTotalGames(c.patternSegments || []) < 1) continue;
     if (matchesPattern(recentResults, c.patternSegments)) return c;
   }
   return null;
@@ -315,9 +319,9 @@ export function findFreshMatchingPatternCase(
     return consumed[key];
   };
 
-  for (const c of cases) {
-    if (!c.enabled) continue;
-    if (patternTotalGames(c.patternSegments) < 1) continue;
+  for (const c of cases || []) {
+    if (!c?.enabled || !c.id) continue;
+    if (patternTotalGames(c.patternSegments || []) < 1) continue;
     const fp = patternMatchFingerprint(recentResults, c.patternSegments);
     if (!fp) continue;
     const key = `${tableId}:${c.id}`;
@@ -328,11 +332,14 @@ export function findFreshMatchingPatternCase(
 }
 
 export function formatPatternCaseSummary(c: PatternCase): string {
+  if (!c) return '';
   return `${c.label}: ${formatPattern(c.patternSegments)} → ${patternSideLabel(c.patternBetSide)}`;
 }
 
 export function formatAllPatternCases(cases: PatternCase[]): string {
-  const active = cases.filter((c) => c.enabled && c.patternSegments.length > 0);
+  const active = (cases || []).filter(
+    (c) => c?.enabled && (c.patternSegments?.length || 0) > 0,
+  );
   if (!active.length) return '(없음)';
   return active.map((c) => formatPatternCaseSummary(c)).join(' · ');
 }

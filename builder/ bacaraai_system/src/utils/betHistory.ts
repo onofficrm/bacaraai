@@ -30,8 +30,13 @@ export function loadBetHistory(): GameHistoryEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw) as GameHistoryEntry[];
-    return Array.isArray(parsed) ? parsed.map(normalizeHistoryEntry) : [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    // 새로고침 복원 시 null/손상 항목이 있으면 .id 접근으로 화면 전체가 멈춤
+    return parsed
+      .filter((e): e is GameHistoryEntry => Boolean(e && typeof e === 'object'))
+      .map((e) => normalizeHistoryEntry(e))
+      .filter((e) => typeof e.id === 'string' && e.id.length > 0);
   } catch {
     return [];
   }
@@ -108,8 +113,9 @@ function asOpinion(v: unknown): AiOpinion {
 }
 
 export function inferBetSource(
-  entry: Pick<GameHistoryEntry, 'betSource' | 'appliedRule' | 'id'>,
+  entry: Pick<GameHistoryEntry, 'betSource' | 'appliedRule' | 'id'> | null | undefined,
 ): 'manual' | 'auto' | 'unknown' {
+  if (!entry || typeof entry !== 'object') return 'unknown';
   if (entry.betSource === 'manual' || entry.betSource === 'auto') return entry.betSource;
   const rule = entry.appliedRule || '';
   if (/오토|auto/i.test(rule)) return 'auto';
@@ -120,6 +126,27 @@ export function inferBetSource(
 }
 
 export function normalizeHistoryEntry(entry: GameHistoryEntry): GameHistoryEntry {
+  if (!entry || typeof entry !== 'object') {
+    return {
+      id: `broken_${Date.now()}`,
+      time: '-',
+      tableName: '-',
+      shoeNumber: '-',
+      round: 0,
+      previousResult: '-',
+      gptOpinion: 'WAIT',
+      geminiOpinion: 'WAIT',
+      claudeOpinion: 'WAIT',
+      finalOpinion: 'WAIT',
+      userSelection: 'WAIT',
+      amount: 0,
+      actualResult: 'NONE',
+      pnl: 0,
+      martingaleStage: 1,
+      appliedRule: '-',
+      dataStatus: '취소',
+    };
+  }
   const betSource = inferBetSource(entry);
   const previousLooksLikeNote =
     !!entry.previousResult &&

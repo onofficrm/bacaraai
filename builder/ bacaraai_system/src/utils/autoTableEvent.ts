@@ -139,7 +139,7 @@ export function resolveTableBetBanners(
 ): TableBetBanner[] {
   const { table, pendingBets, strategy } = input;
   return pendingBets
-    .filter((b) => b.tableId === table.id)
+    .filter((b): b is PendingBet => Boolean(b && b.tableId === table.id && b.id))
     .sort((a, b) => {
       if (a.source === b.source) return a.placedAt - b.placedAt;
       return a.source === 'manual' ? -1 : 1;
@@ -185,7 +185,7 @@ export function resolveTableSettleBanner(
 
   // 팝업 종료 후 예약된 승리 플립
   if (
-    winTableFlip &&
+    winTableFlip?.result?.id &&
     winTableFlip.result.tableId === table.id &&
     winTableFlip.result.won === true &&
     now - winTableFlip.startedAt < WIN_FLIP_MS
@@ -271,11 +271,14 @@ export function resolveAutoTableEvent(
     };
   }
 
-  const tablePendings = pendingBets.filter((b) => b.tableId === table.id);
+  const tablePendings = pendingBets.filter(
+    (b): b is PendingBet => Boolean(b && b.tableId === table.id && b.id),
+  );
   if (tablePendings.length > 0) {
     const manual = tablePendings.find((b) => b.source === 'manual');
     const auto = tablePendings.find((b) => b.source === 'auto');
-    const primary = manual || auto!;
+    const primary = manual || auto;
+    if (!primary) return null;
     const isAuto = primary.source === 'auto';
     return {
       kind: 'pending',

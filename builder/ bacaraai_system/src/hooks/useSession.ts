@@ -263,12 +263,43 @@ function normalizePendingBets(raw: unknown): PendingBet[] {
 function mergePendingBets(a: PendingBet[], b: PendingBet[]): PendingBet[] {
   const map = new Map<string, PendingBet>();
   for (const bet of [...a, ...b]) {
+    if (!bet?.id) continue;
     const prev = map.get(bet.id);
     if (!prev || bet.placedAt >= prev.placedAt) {
       map.set(bet.id, bet);
     }
   }
   return Array.from(map.values()).sort((x, y) => x.placedAt - y.placedAt);
+}
+
+function normalizeLastBetResult(raw: unknown): LastBetResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<LastBetResult>;
+  if (typeof r.id !== 'string' || !r.id) return null;
+  if (typeof r.tableId !== 'string') return null;
+  if (r.side !== 'PLAYER' && r.side !== 'BANKER' && r.side !== 'TIE') return null;
+  const amount = Number(r.amount);
+  const at = Number(r.at);
+  if (!Number.isFinite(amount) || !Number.isFinite(at) || at <= 0) return null;
+  const outcome = r.outcome;
+  if (outcome !== 'P' && outcome !== 'B' && outcome !== 'T') return null;
+  return {
+    id: r.id,
+    tableId: r.tableId,
+    tableName: typeof r.tableName === 'string' ? r.tableName : r.tableId,
+    side: r.side,
+    amount,
+    outcome,
+    won: r.won === true ? true : r.won === false ? false : null,
+    pnlDelta: Number(r.pnlDelta) || 0,
+    message: typeof r.message === 'string' ? r.message : '',
+    at,
+    placedAt: typeof r.placedAt === 'number' ? r.placedAt : undefined,
+    source: r.source === 'auto' || r.source === 'manual' ? r.source : undefined,
+    appliedRule: typeof r.appliedRule === 'string' ? r.appliedRule : undefined,
+    martinStage: typeof r.martinStage === 'number' ? r.martinStage : undefined,
+    historyMeta: r.historyMeta,
+  };
 }
 
 function readStored(): SessionState {
@@ -285,9 +316,9 @@ function readStored(): SessionState {
       elapsedMs: Number(parsed.elapsedMs) || 0,
       // 새로고침 후에도 대기 베팅 유지 — 미정산 차감 유실 방지
       pendingBets: normalizePendingBets(parsed.pendingBets),
-      lastBetResult: parsed.lastBetResult ?? null,
-      lastManualResult: parsed.lastManualResult ?? null,
-      lastAutoResult: parsed.lastAutoResult ?? null,
+      lastBetResult: normalizeLastBetResult(parsed.lastBetResult),
+      lastManualResult: normalizeLastBetResult(parsed.lastManualResult),
+      lastAutoResult: normalizeLastBetResult(parsed.lastAutoResult),
       winCelebration: freshWinCelebration(parsed),
       winTableFlip: null,
       skippedCount: Number(parsed.skippedCount) || 0,
