@@ -100,7 +100,9 @@ function currentStreak(results: GameResult[]): string {
 /** API가 과거 슈를 섞어 줄 때를 대비해 game_no 감소 지점부터만 사용 */
 function trimToCurrentShoe(rows: LiveResultRow[]): LiveResultRow[] {
   if (rows.length === 0) return rows;
-  const sorted = [...rows].sort((a, b) => a.id - b.id);
+  const sorted = [...rows]
+    .filter((r): r is LiveResultRow => Boolean(r && typeof r.id === 'number'))
+    .sort((a, b) => a.id - b.id);
   let start = 0;
   let prevNo: number | null = null;
   for (let i = 0; i < sorted.length; i += 1) {
@@ -119,19 +121,23 @@ function buildRowsSignature(rows: LiveResultRow[]): string {
   let checksum = 0;
   for (let i = 0; i < rows.length; i += 1) {
     const r = rows[i];
+    if (!r || typeof r.id !== 'number') continue;
     const code = r.result === 'P' ? 1 : r.result === 'B' ? 2 : 3;
     // 정수 오버플로 방지를 위해 32-bit 범위로 접음
     checksum = (checksum * 31 + r.id * 4 + code) % 2147483647;
   }
   const first = rows[0];
   const last = rows[rows.length - 1];
+  if (!first?.id || !last?.id) return `${rows.length}`;
   return `${rows.length}:${first.id}:${last.id}:${last.result}:${checksum}`;
 }
 
 /** 같은 game_no 재감지는 연속 행만 최신으로 교체 (비연속 중복은 유지) */
 function dedupeByGameNo(rows: LiveResultRow[]): LiveResultRow[] {
   if (rows.length === 0) return rows;
-  const sorted = [...rows].sort((a, b) => a.id - b.id);
+  const sorted = [...rows]
+    .filter((r): r is LiveResultRow => Boolean(r && typeof r.id === 'number'))
+    .sort((a, b) => a.id - b.id);
   const out: LiveResultRow[] = [];
   for (const row of sorted) {
     const no = row.game_no ?? 0;

@@ -21,12 +21,13 @@ export default function GameFxChrome({
   useEffect(() => {
     if (!tickers.length) return;
     const latest = tickers[tickers.length - 1];
+    if (!latest?.id) return;
     setVisible((prev) => {
-      if (prev.some((x) => x.id === latest.id)) return prev;
-      return [...prev.filter((x) => x.id !== latest.id).slice(-1), latest];
+      if (prev.some((x) => x?.id === latest.id)) return prev;
+      return [...prev.filter((x) => x?.id && x.id !== latest.id).slice(-1), latest];
     });
     const t = window.setTimeout(() => {
-      setVisible((prev) => prev.filter((x) => x.id !== latest.id));
+      setVisible((prev) => prev.filter((x) => x?.id !== latest.id));
     }, intensity === 'high' ? 4200 : 2800);
     return () => window.clearTimeout(t);
   }, [tickers, intensity]);

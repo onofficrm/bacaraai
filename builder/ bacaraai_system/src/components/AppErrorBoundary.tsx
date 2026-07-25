@@ -1,21 +1,22 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 type Props = { children: ReactNode };
-type State = { error: Error | null };
+type State = { error: Error | null; stack: string };
 
 /**
  * 런타임 오류 시 검은 화면 대신 복구 UI 표시.
  * 기본 동작은 그냥 새로고침 — localStorage(대기 베팅·기록)를 지우지 않는다.
  */
 export default class AppErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+  state: State = { error: null, stack: '' };
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { error };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[bacaraai] render crash', error, info.componentStack);
+    this.setState({ stack: info.componentStack || '' });
   }
 
   plainReload = () => {
@@ -24,6 +25,13 @@ export default class AppErrorBoundary extends Component<Props, State> {
 
   render() {
     if (!this.state.error) return this.props.children;
+
+    const stackHint = this.state.stack
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, 4)
+      .join(' ← ');
 
     return (
       <div className="min-h-dvh w-full bg-zinc-950 text-zinc-200 flex items-center justify-center p-6">
@@ -38,6 +46,11 @@ export default class AppErrorBoundary extends Component<Props, State> {
           <p className="mt-3 text-[11px] font-mono text-zinc-600 break-all line-clamp-3">
             {this.state.error.message}
           </p>
+          {stackHint ? (
+            <p className="mt-2 text-[10px] font-mono text-zinc-700 break-all line-clamp-2 text-left">
+              {stackHint}
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={this.plainReload}

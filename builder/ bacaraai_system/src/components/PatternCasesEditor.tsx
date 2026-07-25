@@ -49,10 +49,11 @@ export default function PatternCasesEditor({
   tables = [],
   compact = false,
 }: Props) {
-  const cases =
+  const cases = (
     Array.isArray(config.patternCases) && config.patternCases.length > 0
       ? config.patternCases
-      : normalizePatternCases(config).patternCases;
+      : normalizePatternCases(config).patternCases
+  ).filter((c): c is PatternCase => Boolean(c && typeof c === 'object' && c.id));
   const [openId, setOpenId] = useState<string | null>(cases[0]?.id ?? null);
   const perCaseAmount = config.patternAmountScope === 'per_case';
 

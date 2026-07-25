@@ -365,7 +365,7 @@ export default function RightPanel({
     if (roundKeyRef.current === key) return;
     roundKeyRef.current = key;
     // 직접 베팅 대기 중이면 정산 직후 결과 핸들러에서 초기화 (대기 중 UI 유지)
-    if (pendingBets.some((b) => b.source === 'manual' && b.tableId === table.id)) {
+    if (pendingBets.some((b) => b?.source === 'manual' && b.tableId === table.id)) {
       return;
     }
     prepareNextRoundBet(table);
@@ -423,14 +423,19 @@ export default function RightPanel({
     ? ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(table.ai.finalOpinion)
     : true;
 
-  const manualPending =
-    pendingBets.find((b) => b.source === 'manual' && b.tableId === table.id) ?? null;
-  const autoPending =
-    pendingBets.find((b) => b.source === 'auto' && b.tableId === table.id) ?? null;
-  const otherManualPending =
-    pendingBets.find((b) => b.source === 'manual' && b.tableId !== table.id) ?? null;
-  const otherAutoPending =
-    pendingBets.find((b) => b.source === 'auto' && b.tableId !== table.id) ?? null;
+  // table 미선택(새로고침 직후)에도 패널은 마운트됨 — table.id 접근 금지
+  const manualPending = table
+    ? pendingBets.find((b) => b?.source === 'manual' && b.tableId === table.id) ?? null
+    : null;
+  const autoPending = table
+    ? pendingBets.find((b) => b?.source === 'auto' && b.tableId === table.id) ?? null
+    : null;
+  const otherManualPending = table
+    ? pendingBets.find((b) => b?.source === 'manual' && b.tableId !== table.id) ?? null
+    : pendingBets.find((b) => b?.source === 'manual') ?? null;
+  const otherAutoPending = table
+    ? pendingBets.find((b) => b?.source === 'auto' && b.tableId !== table.id) ?? null
+    : pendingBets.find((b) => b?.source === 'auto') ?? null;
   const isManualSettling = Boolean(manualPending);
   const isAutoSettling = Boolean(autoPending);
   const isSettling = isManualSettling || isAutoSettling;
