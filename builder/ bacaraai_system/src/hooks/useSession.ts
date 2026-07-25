@@ -923,29 +923,6 @@ export default function useSession() {
 
     const clientKey = makeWalletClientKey(`p_${resolvedSource}_${input.tableId}`);
     placeInFlightRef.current.add(flightKey);
-    let walletRes;
-    try {
-      walletRes = await walletPlaceBet({
-        amount,
-        side: input.side,
-        tableName: input.tableName,
-        source: resolvedSource,
-        round: input.historyMeta?.round,
-        shoeNumber: input.historyMeta?.shoeNumber || input.historyMeta?.gameCode,
-        clientKey,
-      });
-    } finally {
-      placeInFlightRef.current.delete(flightKey);
-    }
-    if (!walletRes.ok) {
-      return {
-        ok: false,
-        error: walletRes.message || '가상머니 차감에 실패했습니다. 로그인·잔액을 확인해 주세요.',
-      };
-    }
-    if (typeof walletRes.balance === 'number') {
-      emitWalletBalance(walletRes.balance);
-    }
 
     const waitForLiveResult = Boolean(input.waitForLiveResult);
     const baselineLatestId =
@@ -954,6 +931,7 @@ export default function useSession() {
 
     // 오토베팅은 반드시 라이브 결과로만 정산 — 랜덤 시뮬레이션 금지
     if (resolvedSource === 'auto' && !useLiveSettle) {
+      placeInFlightRef.current.delete(flightKey);
       return {
         ok: false,
         error: '오토베팅은 라이브 테이블에서만 가능합니다.',
@@ -982,6 +960,7 @@ export default function useSession() {
       },
     };
 
+    // 즉시 UI 반영 (테이블 BET 배너·진행 중 목록) — 지갑 API는 이어서 처리
     setState((curr) => ({
       ...curr,
       pendingBets: [
@@ -991,8 +970,41 @@ export default function useSession() {
         pending,
       ],
     }));
-
     armPendingWatchdog(pending);
+    emitWalletBalance(Math.max(0, available - amount));
+
+    let walletRes;
+    try {
+      walletRes = await walletPlaceBet({
+        amount,
+        side: input.side,
+        tableName: input.tableName,
+        source: resolvedSource,
+        round: input.historyMeta?.round,
+        shoeNumber: input.historyMeta?.shoeNumber || input.historyMeta?.gameCode,
+        clientKey,
+      });
+    } catch {
+      walletRes = { ok: false, message: '가상머니 차감 요청에 실패했습니다.' };
+    } finally {
+      placeInFlightRef.current.delete(flightKey);
+    }
+
+    if (!walletRes.ok) {
+      clearSettleTimer(pending.id);
+      setState((curr) => ({
+        ...curr,
+        pendingBets: curr.pendingBets.filter((b) => b.id !== pending.id),
+      }));
+      emitWalletBalance(available);
+      return {
+        ok: false,
+        error: walletRes.message || '가상머니 차감에 실패했습니다. 로그인·잔액을 확인해 주세요.',
+      };
+    }
+    if (typeof walletRes.balance === 'number') {
+      emitWalletBalance(walletRes.balance);
+    }
 
     return { ok: true };
   }, [applySettlement, armPendingWatchdog]);

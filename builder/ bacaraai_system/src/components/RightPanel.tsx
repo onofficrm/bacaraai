@@ -637,6 +637,21 @@ export default function RightPanel({
     submittingRef.current = true;
     setSubmitting(true);
     setBetError(null);
+    // 확정 즉시 피드백 — pending 은 placeBet 안에서 동기적으로 올라감
+    playSfx('betConfirm');
+    haptic('heavy');
+    setChipCelebrating(true);
+    window.setTimeout(() => setChipCelebrating(false), 900);
+    const preset = { side: selectedSide, amount: betAmount };
+    setLastBetPreset(preset);
+    try {
+      localStorage.setItem('bacara_last_manual_bet', JSON.stringify(preset));
+    } catch {
+      /* ignore */
+    }
+    if (!isDesktop) {
+      setSheetCollapsed(true);
+    }
     try {
       const result = await onPlaceBet({
         tableId: table.id,
@@ -664,22 +679,11 @@ export default function RightPanel({
       if (!result.ok) {
         setBetError(result.error);
         playSfx('error');
+        setChipCelebrating(false);
+        if (!isDesktop) {
+          setSheetCollapsed(false);
+        }
         return;
-      }
-
-      playSfx('betConfirm');
-      haptic('heavy');
-      setChipCelebrating(true);
-      window.setTimeout(() => setChipCelebrating(false), 900);
-      const preset = { side: selectedSide, amount: betAmount };
-      setLastBetPreset(preset);
-      try {
-        localStorage.setItem('bacara_last_manual_bet', JSON.stringify(preset));
-      } catch {
-        /* ignore */
-      }
-      if (!isDesktop) {
-        setSheetCollapsed(true);
       }
     } finally {
       submittingRef.current = false;
