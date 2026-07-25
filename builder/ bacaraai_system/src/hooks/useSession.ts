@@ -217,12 +217,9 @@ function normalizeConfig(partial?: Partial<SessionConfig>): SessionConfig {
   };
 }
 
-function freshWinCelebration(parsed: Partial<SessionState>): LastBetResult | null {
-  const win = parsed.winCelebration ?? null;
-  if (!win || win.won !== true || !(win.amount > 0)) return null;
-  // 새로고침 직후 오래된 승리는 카드로 다시 띄우지 않음
-  if (Date.now() - (win.at || 0) > 12_000) return null;
-  return win;
+function freshWinCelebration(_parsed: Partial<SessionState>): LastBetResult | null {
+  // 새로고침 시 승리 팝업을 다시 띄우지 않음 (기록·pending 은 유지)
+  return null;
 }
 
 function normalizePendingBets(raw: unknown): PendingBet[] {

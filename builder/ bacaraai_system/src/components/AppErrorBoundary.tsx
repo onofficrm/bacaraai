@@ -5,6 +5,7 @@ type State = { error: Error | null };
 
 /**
  * 런타임 오류 시 검은 화면 대신 복구 UI 표시.
+ * 기본 동작은 그냥 새로고침 — localStorage(대기 베팅·기록)를 지우지 않는다.
  */
 export default class AppErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
@@ -17,17 +18,7 @@ export default class AppErrorBoundary extends Component<Props, State> {
     console.error('[bacaraai] render crash', error, info.componentStack);
   }
 
-  clearAndReload = () => {
-    try {
-      const keys: string[] = [];
-      for (let i = 0; i < localStorage.length; i += 1) {
-        const k = localStorage.key(i);
-        if (k && /^bacara_/i.test(k)) keys.push(k);
-      }
-      keys.forEach((k) => localStorage.removeItem(k));
-    } catch {
-      /* ignore */
-    }
+  plainReload = () => {
     window.location.reload();
   };
 
@@ -42,25 +33,17 @@ export default class AppErrorBoundary extends Component<Props, State> {
           </p>
           <h1 className="mt-2 text-lg font-bold text-white">화면을 불러오지 못했습니다</h1>
           <p className="mt-2 text-[13px] text-zinc-400 leading-relaxed">
-            브라우저 캐시나 저장된 세션 데이터 문제일 수 있습니다. 아래 버튼으로 초기화 후
-            다시 열어 주세요.
+            새로고침하면 대기 베팅·게임 기록은 그대로 유지됩니다.
           </p>
           <p className="mt-3 text-[11px] font-mono text-zinc-600 break-all line-clamp-3">
             {this.state.error.message}
           </p>
           <button
             type="button"
-            onClick={this.clearAndReload}
+            onClick={this.plainReload}
             className="mt-5 w-full rounded-xl bg-amber-400 py-3 text-sm font-bold text-zinc-950"
           >
-            캐시·세션 초기화 후 새로고침
-          </button>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="mt-2 w-full rounded-xl border border-zinc-700 py-2.5 text-sm text-zinc-300"
-          >
-            그냥 새로고침
+            새로고침
           </button>
         </div>
       </div>
