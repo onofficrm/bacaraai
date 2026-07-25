@@ -60,7 +60,7 @@ type AiState = {
   data: AiAnalyzeResponse | null;
 };
 
-const POLL_MS = 2000;
+const POLL_MS = 1000;
 
 function buildRoadmap(results: GameResult[]): GameResult[][] {
   const columns: GameResult[][] = [];
@@ -128,21 +128,24 @@ function buildRowsSignature(rows: LiveResultRow[]): string {
   return `${rows.length}:${first.id}:${last.id}:${last.result}:${checksum}`;
 }
 
-/** 같은 game_no 재감지 시 최신 id 만 유지 */
+/** 같은 game_no 재감지는 연속 행만 최신으로 교체 (비연속 중복은 유지) */
 function dedupeByGameNo(rows: LiveResultRow[]): LiveResultRow[] {
   if (rows.length === 0) return rows;
-  const best = new Map<number, LiveResultRow>();
-  const passthrough: LiveResultRow[] = [];
-  for (const row of rows) {
+  const sorted = [...rows].sort((a, b) => a.id - b.id);
+  const out: LiveResultRow[] = [];
+  for (const row of sorted) {
     const no = row.game_no ?? 0;
-    if (!no || no <= 0) {
-      passthrough.push(row);
-      continue;
+    if (no > 0 && out.length > 0) {
+      const prev = out[out.length - 1];
+      const prevNo = prev.game_no ?? 0;
+      if (prevNo === no) {
+        out[out.length - 1] = row;
+        continue;
+      }
     }
-    const prev = best.get(no);
-    if (!prev || row.id > prev.id) best.set(no, row);
+    out.push(row);
   }
-  return [...best.values(), ...passthrough].sort((a, b) => a.id - b.id);
+  return out;
 }
 
 function fallbackModel(opinion: AiOpinion = 'WAIT'): AiModelAnalysis {

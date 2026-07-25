@@ -80,32 +80,8 @@ function bacara_live_output_payload($payload, $member_id, $cache_state)
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
 }
 
-$fresh_payload = bacara_live_cached_payload($live_cache_file, 1);
-if ($fresh_payload !== null) {
-    bacara_live_output_payload($fresh_payload, $member['mb_id'], 'fresh');
-    exit;
-}
-
-$live_cache_lock = @fopen($live_cache_lock_file, 'c');
-if ($live_cache_lock && !@flock($live_cache_lock, LOCK_EX | LOCK_NB)) {
-    // 다른 PHP worker가 DB를 갱신 중이면 게임 화면을 기다리게 하지 않는다.
-    $stale_payload = bacara_live_cached_payload($live_cache_file, 10);
-    if ($stale_payload !== null) {
-        @fclose($live_cache_lock);
-        bacara_live_output_payload($stale_payload, $member['mb_id'], 'stale');
-        exit;
-    }
-    // 최초 요청만 최대 짧게 대기. 이후에는 생성된 캐시를 사용한다.
-    @flock($live_cache_lock, LOCK_EX);
-    $fresh_payload = bacara_live_cached_payload($live_cache_file, 10);
-    if ($fresh_payload !== null) {
-        @flock($live_cache_lock, LOCK_UN);
-        @fclose($live_cache_lock);
-        bacara_live_output_payload($fresh_payload, $member['mb_id'], 'waited');
-        exit;
-    }
-}
-
+// 캐시 히트 전에도 DB에 연결해 MAX(id) 로 신선도를 검증한다.
+// (mtime만 보면 새 감지가 들어와도 1~10초 동안 옛 슈가 그대로 나갈 수 있음)
 $live_cfg_file = G5_DATA_PATH . '/bacaraai-live.config.php';
 $live_link = null;
 $use_live_cfg = false;
@@ -175,11 +151,13 @@ function bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, &$query_error)
                 'account' => isset($row['account']) ? $row['account'] : '',
                 'table_name' => $row['table_name'],
                 'game_no' => isset($row['game_no']) ? (int) $row['game_no'] : null,
-                'result' => $row['result'],
+                'result' => bacara_live_normalize_result(isset($row['result']) ? $row['result'] : ''),
                 'detected_at' => $row['detected_at'],
             );
         }
-        return $rows;
+        return array_values(array_filter($rows, function ($r) {
+            return in_array($r['result'], array('P', 'B', 'T'), true);
+        }));
     }
 
     $query = sql_query($sql, false);
@@ -193,11 +171,50 @@ function bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, &$query_error)
             'account' => isset($row['account']) ? $row['account'] : '',
             'table_name' => $row['table_name'],
             'game_no' => isset($row['game_no']) ? (int) $row['game_no'] : null,
-            'result' => $row['result'],
+            'result' => bacara_live_normalize_result(isset($row['result']) ? $row['result'] : ''),
             'detected_at' => $row['detected_at'],
         );
     }
-    return $rows;
+    return array_values(array_filter($rows, function ($r) {
+        return in_array($r['result'], array('P', 'B', 'T'), true);
+    }));
+}
+
+/**
+ * 감지기/DB 표기 편차를 P|B|T 로 통일
+ */
+function bacara_live_normalize_result($raw)
+{
+    $v = strtoupper(trim((string) $raw));
+    if ($v === 'P' || $v === 'B' || $v === 'T') {
+        return $v;
+    }
+    if ($v === 'PLAYER' || $v === '플레이어' || $v === '闲') {
+        return 'P';
+    }
+    if ($v === 'BANKER' || $v === '뱅커' || $v === '庄') {
+        return 'B';
+    }
+    if ($v === 'TIE' || $v === 'DRAW' || $v === '드로우' || $v === '타이' || $v === '和') {
+        return 'T';
+    }
+    // 한글 포함 원문 대비
+    $raw_str = (string) $raw;
+    if (strpos($raw_str, '플레이어') !== false || stripos($raw_str, 'player') !== false) {
+        return 'P';
+    }
+    if (strpos($raw_str, '뱅커') !== false || stripos($raw_str, 'banker') !== false) {
+        return 'B';
+    }
+    if (strpos($raw_str, '드로우') !== false
+        || strpos($raw_str, '타이') !== false
+        || strpos($raw_str, '和') !== false
+        || stripos($raw_str, 'tie') !== false
+        || stripos($raw_str, 'draw') !== false
+    ) {
+        return 'T';
+    }
+    return $v;
 }
 
 /**
@@ -323,7 +340,9 @@ function bacara_live_query_for_account($account, $safe_table_name, $limit, $use_
 }
 
 /**
- * 같은 game_no 가 여러 번 감지되면 최신 id 만 남김 (재감지·오탐 보정).
+ * 같은 game_no 재감지는 "연속된" 행만 최신으로 교체한다.
+ * 전역 game_no 유니크 병합은 비연속 중복(오인식·회차 꼬임) 때
+ * 실제 이후 회차를 덮어 지워 로드맵이 멈추거나 어긋나는 원인이 된다.
  */
 function bacara_live_dedupe_game_no($rows)
 {
@@ -331,23 +350,23 @@ function bacara_live_dedupe_game_no($rows)
         return array();
     }
 
-    $best = array();
-    $passthrough = array();
-    foreach ($rows as $row) {
-        $no = isset($row['game_no']) ? (int) $row['game_no'] : 0;
-        if ($no <= 0) {
-            $passthrough[] = $row;
-            continue;
-        }
-        if (!isset($best[$no]) || (int) $row['id'] > (int) $best[$no]['id']) {
-            $best[$no] = $row;
-        }
-    }
-
-    $out = array_merge(array_values($best), $passthrough);
-    usort($out, function ($a, $b) {
+    usort($rows, function ($a, $b) {
         return (int) $a['id'] - (int) $b['id'];
     });
+
+    $out = array();
+    foreach ($rows as $row) {
+        $no = isset($row['game_no']) ? (int) $row['game_no'] : 0;
+        if ($no > 0 && count($out) > 0) {
+            $prev = $out[count($out) - 1];
+            $prev_no = isset($prev['game_no']) ? (int) $prev['game_no'] : 0;
+            if ($prev_no === $no) {
+                $out[count($out) - 1] = $row;
+                continue;
+            }
+        }
+        $out[] = $row;
+    }
     return $out;
 }
 
@@ -387,12 +406,137 @@ function bacara_live_latest_id($rows)
     return isset($last['id']) ? (int) $last['id'] : 0;
 }
 
+/**
+ * 테이블 전체 최신 id (캐시 무효화용)
+ */
+function bacara_live_table_max_id($safe_table_name, $use_live_cfg, $live_link, &$query_error)
+{
+    $sql = " select coalesce(max(id), 0) as max_id
+               from `bacaraai`
+              where table_name = '{$safe_table_name}'
+                and result in ('P', 'B', 'T') ";
+    $val = bacara_live_query_scalar($sql, $use_live_cfg, $live_link, 'max_id', $query_error);
+    return $val === null ? 0 : (int) $val;
+}
+
+/**
+ * 계정별 최신 id — 가장 앞선 감지 스트림을 고른다.
+ *
+ * @return array<int, array{account:string,max_id:int}>
+ */
+function bacara_live_accounts_by_freshness($safe_table_name, $use_live_cfg, $live_link, &$query_error)
+{
+    $sql = " select account, max(id) as max_id
+               from `bacaraai`
+              where table_name = '{$safe_table_name}'
+                and result in ('P', 'B', 'T')
+                and account is not null
+                and account <> ''
+              group by account
+              order by max_id desc
+              limit 20 ";
+    $out = array();
+    $query_error = '';
+    if ($use_live_cfg) {
+        $q = @mysqli_query($live_link, $sql);
+        if (!$q) {
+            $query_error = mysqli_error($live_link);
+            return $out;
+        }
+        while ($row = mysqli_fetch_assoc($q)) {
+            $out[] = array(
+                'account' => (string) $row['account'],
+                'max_id' => (int) $row['max_id'],
+            );
+        }
+        return $out;
+    }
+    $q = sql_query($sql, false);
+    if (!$q) {
+        $query_error = 'sql_query failed';
+        return $out;
+    }
+    while ($row = sql_fetch_array($q)) {
+        $out[] = array(
+            'account' => (string) $row['account'],
+            'max_id' => (int) $row['max_id'],
+        );
+    }
+    return $out;
+}
+
+$query_error = '';
+$table_max_id = bacara_live_table_max_id($safe_table_name, $use_live_cfg, $live_link, $query_error);
+
+// 캐시: 시간이 신선해도 DB 최신 id 가 앞서면 반드시 재조회
+$fresh_payload = bacara_live_cached_payload($live_cache_file, 1);
+if ($fresh_payload !== null) {
+    $cached_latest = isset($fresh_payload['latest_id']) ? (int) $fresh_payload['latest_id'] : 0;
+    if ($query_error === '' && $cached_latest >= $table_max_id) {
+        bacara_live_output_payload($fresh_payload, $member['mb_id'], 'fresh');
+        exit;
+    }
+}
+
+$live_cache_lock = @fopen($live_cache_lock_file, 'c');
+if ($live_cache_lock && !@flock($live_cache_lock, LOCK_EX | LOCK_NB)) {
+    $stale_payload = bacara_live_cached_payload($live_cache_file, 10);
+    if ($stale_payload !== null) {
+        $cached_latest = isset($stale_payload['latest_id']) ? (int) $stale_payload['latest_id'] : 0;
+        // 새 결과가 있으면 stale 캐시를 쓰지 않는다 (감지 미반영의 주원인)
+        if ($query_error === '' && $cached_latest >= $table_max_id) {
+            @fclose($live_cache_lock);
+            bacara_live_output_payload($stale_payload, $member['mb_id'], 'stale');
+            exit;
+        }
+    }
+    @flock($live_cache_lock, LOCK_EX);
+    $fresh_payload = bacara_live_cached_payload($live_cache_file, 10);
+    if ($fresh_payload !== null) {
+        $cached_latest = isset($fresh_payload['latest_id']) ? (int) $fresh_payload['latest_id'] : 0;
+        if ($query_error === '' && $cached_latest >= $table_max_id) {
+            @flock($live_cache_lock, LOCK_UN);
+            @fclose($live_cache_lock);
+            bacara_live_output_payload($fresh_payload, $member['mb_id'], 'waited');
+            exit;
+        }
+    }
+}
+
+// 계정 선택: 테이블에서 id 가 가장 앞선 계정을 사용.
+// 설정 account 는 그 계정이 최신 선두와 같을 때만 우선 (뒤처진 고정 스트림 방지).
+$account_rank = bacara_live_accounts_by_freshness(
+    $safe_table_name,
+    $use_live_cfg,
+    $live_link,
+    $query_error
+);
+$preferred = !empty($live_cfg['account']) ? (string) $live_cfg['account'] : '';
 $account_candidates = array();
-if (!empty($live_cfg['account'])) {
-    // 운영 감지 계정이 명시되면 모든 사용자가 같은 단일 결과 스트림을 본다.
-    // 로그인 회원 ID를 추가 후보로 섞으면 첫 캐시 요청자의 개인 데이터가
-    // 전체 사용자에게 노출되거나 서로 다른 슈가 선택될 수 있다.
-    $account_candidates[] = (string) $live_cfg['account'];
+$leader_account = '';
+$leader_max_id = 0;
+if ($query_error === '' && count($account_rank) > 0) {
+    $leader_account = $account_rank[0]['account'];
+    $leader_max_id = (int) $account_rank[0]['max_id'];
+    $preferred_is_leader = false;
+    if ($preferred !== '') {
+        foreach ($account_rank as $rank) {
+            if ($rank['account'] === $preferred && (int) $rank['max_id'] === $leader_max_id) {
+                $preferred_is_leader = true;
+                break;
+            }
+        }
+    }
+    if ($preferred_is_leader) {
+        $account_candidates[] = $preferred;
+    } else {
+        $account_candidates[] = $leader_account;
+        if ($preferred !== '' && $preferred !== $leader_account) {
+            $account_candidates[] = $preferred;
+        }
+    }
+} elseif ($preferred !== '') {
+    $account_candidates[] = $preferred;
 } else {
     $account_candidates[] = (string) $member['mb_id'];
     $account_candidates[] = 'awesome';
@@ -400,7 +544,6 @@ if (!empty($live_cfg['account'])) {
 $account_candidates = array_values(array_unique(array_filter($account_candidates)));
 
 $rows = array();
-$query_error = '';
 $used_account = null;
 $best_latest_id = -1;
 $used_meta = array(
@@ -409,6 +552,7 @@ $used_meta = array(
     'shoe_start_id' => null,
     'shoe_start_mode' => null,
 );
+$account_switched = false;
 
 foreach ($account_candidates as $candidate) {
     $candidate_meta = array();
@@ -434,6 +578,9 @@ foreach ($account_candidates as $candidate) {
         $used_account = $candidate;
         $used_meta = $candidate_meta;
     }
+}
+if ($preferred !== '' && $used_account !== null && $used_account !== $preferred) {
+    $account_switched = true;
 }
 
 // 계정 매칭이 안 되면 해당 table_name 의 현재 슈로 fallback
@@ -518,6 +665,8 @@ $game_no = $latest && isset($latest['game_no']) ? $latest['game_no'] : null;
 $payload = array(
     'ok' => true,
     'account' => $used_account !== null ? $used_account : '',
+    'account_preferred' => $preferred,
+    'account_switched' => !empty($account_switched),
     'table_name' => $table_name,
     'game_no' => $game_no,
     'source' => $use_live_cfg ? 'live_config' : 'g5',
@@ -527,6 +676,7 @@ $payload = array(
     'deduped' => $before_dedupe - count($rows),
     'shoe_start_id' => isset($used_meta['shoe_start_id']) ? $used_meta['shoe_start_id'] : null,
     'latest_id' => $latest ? $latest['id'] : null,
+    'table_max_id' => $table_max_id,
     'latest_detected_at' => $latest ? $latest['detected_at'] : null,
     'results' => $rows,
 );

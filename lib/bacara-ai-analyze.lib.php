@@ -194,17 +194,55 @@ if (!function_exists('bacara_ai_fetch_table_history')) {
         $history_limit = max(100, min(5000, (int) $history_limit));
 
         global $member;
+        // 가장 최신 id 를 가진 계정 우선. 설정 account 는 선두와 같을 때만 고정.
+        $error = '';
+        $safe_for_rank = $safe_table;
+        $rank_sql = " select account, max(id) as max_id
+                        from `bacaraai`
+                       where table_name = '{$safe_for_rank}'
+                         and result in ('P','B','T')
+                         and account is not null and account <> ''
+                       group by account
+                       order by max_id desc
+                       limit 10 ";
+        $rank_rows = bacara_ai_live_query_rows($rank_sql, $use_live, $link, $error);
+        if ($error !== '') {
+            return array('ok' => false, 'account' => '', 'history' => array(), 'shoe' => array(), 'error' => $error);
+        }
+
         $candidates = array();
-        if (!empty($cfg['account'])) {
-            $candidates[] = (string) $cfg['account'];
+        $preferred = !empty($cfg['account']) ? (string) $cfg['account'] : '';
+        if ($rank_rows) {
+            $leader = (string) $rank_rows[0]['account'];
+            $leader_max = (int) $rank_rows[0]['max_id'];
+            $preferred_ok = false;
+            if ($preferred !== '') {
+                foreach ($rank_rows as $rr) {
+                    if ((string) $rr['account'] === $preferred && (int) $rr['max_id'] === $leader_max) {
+                        $preferred_ok = true;
+                        break;
+                    }
+                }
+            }
+            if ($preferred_ok) {
+                $candidates[] = $preferred;
+            } else {
+                $candidates[] = $leader;
+                if ($preferred !== '' && $preferred !== $leader) {
+                    $candidates[] = $preferred;
+                }
+            }
+        } else {
+            if ($preferred !== '') {
+                $candidates[] = $preferred;
+            }
+            if (!empty($member['mb_id'])) {
+                $candidates[] = (string) $member['mb_id'];
+            }
+            $candidates[] = 'awesome';
         }
-        if (!empty($member['mb_id'])) {
-            $candidates[] = (string) $member['mb_id'];
-        }
-        $candidates[] = 'awesome';
         $candidates = array_values(array_unique(array_filter($candidates)));
 
-        $error = '';
         $history = array();
         $used_account = '';
 

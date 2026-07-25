@@ -231,6 +231,33 @@ if (!function_exists('bacara_ops_fetch_next_result')) {
 
         $error = '';
         $rows = bacara_ai_live_query_rows($sql, $use_live, $link, $error);
+        // 설정 account 스트림에 없으면 테이블 전체에서 회차 고정 조회 (계정 불일치 시 미정산 방지)
+        if ($error === '' && !$rows && $account_clause !== '1=1') {
+            if ($baseline_result_id > 0) {
+                $sql = " select id, game_no, result, detected_at
+                           from `bacaraai`
+                          where table_name = '{$safe_table}'
+                            and result in ('P', 'B', 'T')
+                            and id > {$baseline_result_id}
+                          order by id asc
+                          limit 1 ";
+            } else {
+                $placed_sql = $placed_at !== ''
+                    ? ("'" . bacara_ai_live_escape($placed_at, $use_live, $link) . "'")
+                    : 'NULL';
+                $sql = " select id, game_no, result, detected_at
+                           from `bacaraai`
+                          where table_name = '{$safe_table}'
+                            and result in ('P', 'B', 'T')
+                            and (
+                                  (" . ($placed_sql === 'NULL' ? '0' : "detected_at >= {$placed_sql}") . ")
+                               or (" . ($round_no > 0 ? "game_no > {$round_no}" : '0') . ")
+                            )
+                          order by id asc
+                          limit 1 ";
+            }
+            $rows = bacara_ai_live_query_rows($sql, $use_live, $link, $error);
+        }
         if ($error !== '') {
             return array(
                 'ok' => false,
@@ -579,6 +606,15 @@ if (!function_exists('bacara_ops_detector_health')) {
                   limit 1 ";
         $error = '';
         $rows = bacara_ai_live_query_rows($sql, $use_live, $link, $error);
+        if (($error !== '' || !$rows) && $account_clause !== '1=1') {
+            $sql = " select id, result, detected_at, game_no
+                       from `bacaraai`
+                      where table_name = '{$safe_table}'
+                        and result in ('P', 'B', 'T')
+                      order by id desc
+                      limit 1 ";
+            $rows = bacara_ai_live_query_rows($sql, $use_live, $link, $error);
+        }
         if ($error !== '' || !$rows) {
             return array(
                 'ok' => false,
