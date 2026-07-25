@@ -1068,6 +1068,7 @@ export default function useSession() {
         round: input.historyMeta?.round,
         shoeNumber: input.historyMeta?.shoeNumber || input.historyMeta?.gameCode,
         clientKey,
+        baselineResultId: useLiveSettle ? (baselineLatestId ?? 0) : null,
       });
     } catch {
       walletRes = { ok: false, message: '가상머니 차감 요청에 실패했습니다.' };

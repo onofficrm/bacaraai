@@ -132,4 +132,37 @@ if ($mode === 'save_ai_keys') {
     goto_url(bacara_wallet_admin_url('ai_keys.php', array('saved' => '1')));
 }
 
+if ($mode === 'ops_save_token') {
+    include_once G5_LIB_PATH . '/bacara-ops.lib.php';
+
+    $token = isset($_POST['worker_token']) ? (string) $_POST['worker_token'] : '';
+    if (!empty($_POST['generate'])) {
+        try {
+            $token = bin2hex(random_bytes(16));
+        } catch (Exception $e) {
+            $token = md5(uniqid((string) mt_rand(), true));
+        }
+    }
+    $token = preg_replace('/[^a-zA-Z0-9_-]/', '', $token);
+    if (strlen($token) < 16) {
+        alert('워커 토큰은 16자 이상이어야 합니다.', bacara_wallet_admin_url('ops.php'));
+    }
+    if (!bacara_ops_config_save(array('worker_token' => $token))) {
+        alert('설정 파일 저장에 실패했습니다. data 폴더 쓰기 권한을 확인해 주세요.', bacara_wallet_admin_url('ops.php'));
+    }
+    goto_url(bacara_wallet_admin_url('ops.php', array('saved' => '1')));
+}
+
+if ($mode === 'ops_run_worker') {
+    include_once G5_LIB_PATH . '/bacara-ops.lib.php';
+    $result = bacara_ops_run_worker(50);
+    $msg = '정산 ' . (int) $result['settled']
+        . ' · 취소 ' . (int) $result['cancelled']
+        . ' · 대기 ' . (int) $result['skipped'];
+    if (!empty($result['errors'])) {
+        $msg .= ' · 오류 ' . count($result['errors']) . '건';
+    }
+    alert($msg, bacara_wallet_admin_url('ops.php', array('ran' => '1')));
+}
+
 alert('잘못된 요청입니다.', bacara_wallet_admin_url());

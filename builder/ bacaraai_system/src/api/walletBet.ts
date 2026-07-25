@@ -59,9 +59,11 @@ export async function walletPlaceBet(input: {
   round?: number;
   shoeNumber?: string;
   clientKey: string;
+  /** 접수 시점 마지막 라이브 결과 id — 그 다음 1회차에만 정산 */
+  baselineResultId?: number | null;
 }): Promise<BetApiResponse> {
   const source = input.source === 'auto' ? 'auto' : 'manual';
-  return postBet({
+  const body: Record<string, unknown> = {
     action: 'place',
     amount: input.amount,
     side: input.side,
@@ -70,7 +72,11 @@ export async function walletPlaceBet(input: {
     round: typeof input.round === 'number' ? input.round : 0,
     shoe: input.shoeNumber || '-',
     client_key: input.clientKey,
-  });
+  };
+  if (typeof input.baselineResultId === 'number' && input.baselineResultId > 0) {
+    body.baseline_result_id = input.baselineResultId;
+  }
+  return postBet(body);
 }
 
 /** 결과 정산 입금 (이미 차감된 원금 기준) */

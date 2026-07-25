@@ -40,7 +40,7 @@ if (!function_exists('bacara_wallet_install_tables')) {
         // CREATE/SHOW/ALTER를 매 HTTP 요청마다 실행하면 동시 접속 때
         // MySQL metadata lock으로 게임 화면과 베팅 API가 함께 지연될 수 있다.
         $schema_marker = defined('G5_DATA_PATH')
-            ? G5_DATA_PATH . '/.bacara-wallet-schema-v3'
+            ? G5_DATA_PATH . '/.bacara-wallet-schema-v4'
             : '';
         if ($schema_marker !== '' && is_file($schema_marker)) {
             return;
@@ -62,6 +62,7 @@ if (!function_exists('bacara_wallet_install_tables')) {
 
         // 서버 권위 베팅 원장. place_key 한 건은 pending → settled/cancelled 중
         // 하나로만 전이하여 여러 탭의 정산/취소 경합에서도 이중 입금을 막는다.
+        // baseline_result_id: 접수 시점 마지막 라이브 결과 id — 그 다음 1회차에만 정산
         sql_query(
             " CREATE TABLE IF NOT EXISTS `{$bet}` (
                 `id` bigint unsigned NOT NULL AUTO_INCREMENT,
@@ -73,6 +74,7 @@ if (!function_exists('bacara_wallet_install_tables')) {
                 `source` varchar(10) NOT NULL DEFAULT 'manual',
                 `round_no` int NOT NULL DEFAULT 0,
                 `shoe` varchar(80) NOT NULL DEFAULT '-',
+                `baseline_result_id` bigint unsigned NOT NULL DEFAULT 0,
                 `status` varchar(12) NOT NULL DEFAULT 'pending',
                 `outcome` char(1) NULL DEFAULT NULL,
                 `placed_at` datetime NOT NULL,
@@ -80,10 +82,21 @@ if (!function_exists('bacara_wallet_install_tables')) {
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `uq_mb_place_key` (`mb_id`, `place_key`),
                 KEY `idx_mb_status` (`mb_id`, `status`),
-                KEY `idx_table_status` (`table_name`, `status`)
+                KEY `idx_table_status` (`table_name`, `status`),
+                KEY `idx_status_placed` (`status`, `placed_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ",
             false
         );
+
+        // 기존 설치 마이그레이션: baseline_result_id
+        $base_col = sql_fetch(" SHOW COLUMNS FROM `{$bet}` LIKE 'baseline_result_id' ", false);
+        if (empty($base_col['Field'])) {
+            sql_query(
+                " ALTER TABLE `{$bet}`
+                    ADD `baseline_result_id` bigint unsigned NOT NULL DEFAULT 0 AFTER `shoe` ",
+                false
+            );
+        }
 
         sql_query(
             " CREATE TABLE IF NOT EXISTS `{$log}` (

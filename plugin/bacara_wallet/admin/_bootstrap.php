@@ -6,6 +6,8 @@ if (isset($_SERVER['SCRIPT_NAME'])) {
         $sub_menu = '200960';
     } elseif ($script === 'ai_usage.php') {
         $sub_menu = '200970';
+    } elseif ($script === 'ops.php') {
+        $sub_menu = '200950';
     }
 }
 
@@ -73,6 +75,7 @@ if (!function_exists('bacara_wallet_admin_nav')) {
             'create' => array('form.php', '회원 생성'),
             'charge' => array('charge.php', '머니 충전'),
             'log'    => array('log.php', '충전 내역'),
+            'ops'    => array('ops.php', '운영 상태'),
             'ai'     => array('ai_keys.php', 'AI API 설정'),
             'usage'  => array('ai_usage.php', 'AI API 요금'),
         );

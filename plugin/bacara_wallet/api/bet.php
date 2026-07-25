@@ -14,6 +14,7 @@
 include_once dirname(__FILE__) . '/../../../common.php';
 include_once G5_LIB_PATH . '/bacara-wallet.lib.php';
 include_once G5_LIB_PATH . '/bacara-ai-analyze.lib.php';
+include_once G5_LIB_PATH . '/bacara-ops.lib.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -70,6 +71,10 @@ $place_key_raw = isset($json['place_key'])
     ? (string) $json['place_key']
     : (isset($_POST['place_key']) ? (string) $_POST['place_key'] : '');
 $place_key = bacara_wallet_normalize_client_key($place_key_raw);
+$baseline_result_id = isset($json['baseline_result_id'])
+    ? (int) $json['baseline_result_id']
+    : (isset($_POST['baseline_result_id']) ? (int) $_POST['baseline_result_id'] : 0);
+$baseline_result_id = max(0, $baseline_result_id);
 
 $mb_id = $member['mb_id'];
 bacara_wallet_install_tables();
@@ -269,7 +274,7 @@ function bacara_bet_find_ledger($mb_id, $place_key)
     $key_esc = sql_real_escape_string($place_key);
     $row = sql_fetch(
         " select id, mb_id, place_key, table_name, side, amount, source,
-                 round_no, shoe, status, outcome, placed_at, resolved_at
+                 round_no, shoe, baseline_result_id, status, outcome, placed_at, resolved_at
             from `{$table}`
            where mb_id = '{$mb_esc}' and place_key = '{$key_esc}'
            limit 1 ",
@@ -278,7 +283,7 @@ function bacara_bet_find_ledger($mb_id, $place_key)
     return !empty($row['id']) ? $row : null;
 }
 
-function bacara_bet_insert_ledger($mb_id, $place_key, $table_name, $side, $amount, $source, $round, $shoe)
+function bacara_bet_insert_ledger($mb_id, $place_key, $table_name, $side, $amount, $source, $round, $shoe, $baseline_result_id = 0)
 {
     $table = bacara_wallet_bet_table();
     $mb_esc = sql_real_escape_string($mb_id);
@@ -289,6 +294,7 @@ function bacara_bet_insert_ledger($mb_id, $place_key, $table_name, $side, $amoun
     $shoe_esc = sql_real_escape_string(substr($shoe, 0, 80));
     $amount = (int) $amount;
     $round = (int) $round;
+    $baseline_result_id = max(0, (int) $baseline_result_id);
     $now = G5_TIME_YMDHIS;
 
     return sql_query(
@@ -301,6 +307,7 @@ function bacara_bet_insert_ledger($mb_id, $place_key, $table_name, $side, $amoun
                 source = '{$source_esc}',
                 round_no = '{$round}',
                 shoe = '{$shoe_esc}',
+                baseline_result_id = '{$baseline_result_id}',
                 status = 'pending',
                 placed_at = '{$now}' ",
         false
@@ -353,6 +360,22 @@ if ($action === 'place') {
         exit;
     }
 
+    $ledger_table = bacara_ops_normalize_table_code($table_name !== '' ? $table_name : 'MD2729');
+    $health = bacara_ops_detector_health($ledger_table !== '' ? $ledger_table : 'MD2729');
+    if (empty($health['allowed'])) {
+        http_response_code(503);
+        echo json_encode(array(
+            'ok' => false,
+            'message' => isset($health['message']) ? $health['message'] : '감지 이상으로 신규 베팅이 잠시 차단되었습니다.',
+            'detector' => $health,
+        ), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    // 클라이언트가 baseline 을 안 보내면 서버가 현재 마지막 결과 id 로 회차 고정
+    if ($baseline_result_id <= 0 && !empty($health['last_id'])) {
+        $baseline_result_id = (int) $health['last_id'];
+    }
+
     $label = $table_name !== '' ? $table_name : '테이블';
     $content = $note !== ''
         ? $note
@@ -393,11 +416,8 @@ if ($action === 'place') {
         exit;
     }
 
-    $ledger_table = $table_name;
-    if (preg_match('/\(([A-Z0-9_-]+)\)/i', $table_name, $tm)) {
-        $ledger_table = strtoupper($tm[1]);
-    } elseif (preg_match('/^(MD[0-9A-Z_-]+)/i', $table_name, $tm)) {
-        $ledger_table = strtoupper($tm[1]);
+    if ($ledger_table === '') {
+        $ledger_table = 'MD2729';
     }
 
     $ledger_ok = bacara_bet_insert_ledger(
@@ -408,7 +428,8 @@ if ($action === 'place') {
         $amount,
         $source,
         $round,
-        $shoe
+        $shoe,
+        $baseline_result_id
     );
     if (!$ledger_ok) {
         // 차감 후 원장 기록 실패 시 결정적 키로 즉시 보상한다.
@@ -568,9 +589,10 @@ if ($action === 'settle') {
     $round = (int) $ledger['round_no'];
     $shoe = (string) $ledger['shoe'];
     $placed_at = isset($ledger['placed_at']) ? (string) $ledger['placed_at'] : '';
+    $baseline = isset($ledger['baseline_result_id']) ? (int) $ledger['baseline_result_id'] : 0;
 
-    // 클라이언트 outcome 은 무시하고 라이브 DB 권위 결과를 사용한다.
-    $live = bacara_bet_fetch_authoritative_outcome($table_name, $placed_at, $round);
+    // 회차 고정: baseline_result_id 다음 첫 결과만 정산
+    $live = bacara_ops_fetch_next_result($table_name, $baseline, $placed_at, $round);
     if (empty($live['ok']) || empty($live['outcome'])) {
         bacara_bet_member_unlock($member_lock);
         http_response_code(409);
@@ -588,8 +610,8 @@ if ($action === 'settle') {
         : (isset($_POST['outcome']) ? strtoupper((string) $_POST['outcome']) : '');
     $outcome_overridden = ($client_outcome !== '' && $client_outcome !== $outcome);
 
-    $credit = bacara_bet_settle_credit($side, $amount, $outcome);
-    $pnl = bacara_bet_net_pnl($side, $amount, $outcome);
+    $credit = bacara_ops_settle_credit($side, $amount, $outcome);
+    $pnl = bacara_ops_net_pnl($side, $amount, $outcome);
     $label = $table_name !== '' ? $table_name : '테이블';
     $kind = $credit > 0 ? 'bet_win' : 'bet_lose';
     // SETTLE|source|table|SIDE|OUT|stake|pnl|round|shoe
