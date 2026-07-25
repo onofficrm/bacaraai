@@ -272,22 +272,20 @@ if (!function_exists('bacara_wallet_adjust')) {
         $has_client_col = !empty(sql_fetch(" SHOW COLUMNS FROM `{$log}` LIKE 'client_key' ", false)['Field']);
 
         $in_tx = (bool) sql_query(' START TRANSACTION ', false);
-
-        $row = $in_tx
-            ? sql_fetch(" select balance from `{$table}` where mb_id = '{$mb_esc}' FOR UPDATE ", false)
-            : null;
-        if (!$row) {
-            // FOR UPDATE 실패·미지원 시 일반 조회로 폴백
-            if ($in_tx) {
-                sql_query(' ROLLBACK ', false);
-                $in_tx = false;
-            }
-            $row = sql_fetch(" select balance from `{$table}` where mb_id = '{$mb_esc}' ", false);
+        if (!$in_tx) {
+            return array(
+                'ok' => false,
+                'balance' => bacara_wallet_get_balance($mb_id),
+                'message' => '안전한 잔액 트랜잭션을 시작할 수 없습니다.',
+            );
         }
+
+        $row = sql_fetch(
+            " select balance from `{$table}` where mb_id = '{$mb_esc}' FOR UPDATE ",
+            false
+        );
         if (!$row) {
-            if ($in_tx) {
-                sql_query(' ROLLBACK ', false);
-            }
+            sql_query(' ROLLBACK ', false);
             return array('ok' => false, 'balance' => 0, 'message' => '지갑을 찾을 수 없습니다.');
         }
 
@@ -371,8 +369,14 @@ if (!function_exists('bacara_wallet_adjust')) {
             );
         }
 
-        if ($in_tx) {
-            sql_query(' COMMIT ', false);
+        $committed = (bool) sql_query(' COMMIT ', false);
+        if (!$committed) {
+            sql_query(' ROLLBACK ', false);
+            return array(
+                'ok' => false,
+                'balance' => bacara_wallet_get_balance($mb_id),
+                'message' => '잔액 트랜잭션 확정에 실패했습니다.',
+            );
         }
 
         return array('ok' => true, 'balance' => $after, 'message' => '처리되었습니다.', 'idempotent' => false);
