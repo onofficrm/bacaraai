@@ -6,8 +6,6 @@ import {
   RefreshCw,
   Maximize2,
   Minimize2,
-  Volume2,
-  VolumeX,
   AlertTriangle,
   Loader2,
   Gauge,
@@ -16,9 +14,7 @@ import { playSfx } from '../audio/sfxEngine';
 import { fetchStreamViewerSession } from '../api/streamViewer';
 import {
   loadLiveModePref,
-  loadLiveMutePref,
   saveLiveModePref,
-  saveLiveMutePref,
   type StreamPlayMode,
 } from '../utils/liveStreamUrl';
 
@@ -45,7 +41,6 @@ export default function LiveStreamModal({
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
   const [mode, setMode] = useState<StreamPlayMode>(() => loadLiveModePref());
-  const [mutedHint, setMutedHint] = useState(() => loadLiveMutePref());
   const [playerUrl, setPlayerUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [iframeLoaded, setIframeLoaded] = useState(false);
@@ -149,13 +144,6 @@ export default function LiveStreamModal({
     setMode(next);
   };
 
-  const toggleMuteHint = () => {
-    playSfx('ui');
-    const next = !mutedHint;
-    setMutedHint(next);
-    saveLiveMutePref(next);
-  };
-
   if (!open) return null;
 
   return createPortal(
@@ -176,8 +164,8 @@ export default function LiveStreamModal({
             <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-rose-400/90 flex items-center gap-1.5">
               <Radio size={12} className={online && !stalled ? 'animate-pulse' : ''} />
               {online === false ? 'OFFLINE' : stalled ? 'STALL' : 'LIVE'}
-              <span className="ml-1 font-mono normal-case tracking-normal text-zinc-500">
-                · {mode.toUpperCase()} · ~{latencySec}s
+              <span className="ml-1 font-medium normal-case tracking-normal text-zinc-500">
+                · {mode === 'webrtc' ? '빠른 재생' : '안정 재생'} · 약 {latencySec}초 지연
               </span>
             </p>
             <h2 className="text-sm sm:text-base font-bold text-white truncate">
@@ -190,36 +178,24 @@ export default function LiveStreamModal({
               <button
                 type="button"
                 onClick={() => switchMode('hls')}
-                className={`px-2 py-1 text-[10px] font-bold ${
+                className={`px-2.5 py-1 text-[10px] font-bold ${
                   mode === 'hls' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'
                 }`}
+                title="끊김이 적고 안정적입니다. 화면이 실제보다 몇 초 늦을 수 있습니다."
               >
-                HLS
+                안정 재생
               </button>
               <button
                 type="button"
                 onClick={() => switchMode('webrtc')}
-                className={`px-2 py-1 text-[10px] font-bold ${
+                className={`px-2.5 py-1 text-[10px] font-bold ${
                   mode === 'webrtc' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'
                 }`}
-                title="저지연 (서버 WebRTC 포트 필요)"
+                title="지연이 짧습니다. 서버 설정이 필요할 수 있습니다."
               >
-                WebRTC
+                빠른 재생
               </button>
             </div>
-            <button
-              type="button"
-              onClick={toggleMuteHint}
-              className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 touch-manipulation"
-              aria-label={mutedHint ? '음소거 해제 안내' : '음소거 안내'}
-              title={
-                mutedHint
-                  ? '음소거 선호 저장됨 — 플레이어에서 소리를 켜세요'
-                  : '소리 ON 선호 — 플레이어 컨트롤 사용'
-              }
-            >
-              {mutedHint ? <VolumeX size={18} /> : <Volume2 size={18} />}
-            </button>
             <button
               type="button"
               onClick={toggleFs}
@@ -311,8 +287,8 @@ export default function LiveStreamModal({
                 {latestResultLabel ? ` · 감지 최신: ${latestResultLabel}` : ''}
               </span>
             </span>
-            <span className="font-mono shrink-0 opacity-60">
-              {mode === 'webrtc' ? 'WebRTC' : 'MediaMTX HLS'}
+            <span className="shrink-0 opacity-60">
+              {mode === 'webrtc' ? '빠른 재생' : '안정 재생'}
             </span>
           </div>
           {syncNote ? <p className="text-[10px] text-zinc-600 leading-snug">{syncNote}</p> : null}
@@ -326,7 +302,7 @@ export default function LiveStreamModal({
                   : 'border-zinc-700 text-zinc-400'
               }`}
             >
-              HLS 안정
+              안정 재생
             </button>
             <button
               type="button"
@@ -337,7 +313,7 @@ export default function LiveStreamModal({
                   : 'border-zinc-700 text-zinc-400'
               }`}
             >
-              WebRTC 저지연
+              빠른 재생
             </button>
           </div>
         </div>
