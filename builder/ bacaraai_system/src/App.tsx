@@ -11,6 +11,7 @@ import SessionModal from './components/SessionModal';
 import TableCard from './components/TableCard';
 import RightPanel from './components/RightPanel';
 import TableZoomModal from './components/TableZoomModal';
+import LiveStreamModal from './components/LiveStreamModal';
 import RuleCreationModal from './components/RuleCreationModal';
 import StopSessionModal from './components/StopSessionModal';
 import WinCelebration from './components/WinCelebration';
@@ -95,6 +96,7 @@ export default function App() {
   const sessionStartedAtRef = useRef<number | null>(null);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [zoomedTableId, setZoomedTableId] = useState<string | null>(null);
+  const [liveStreamTableId, setLiveStreamTableId] = useState<string | null>(null);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
 
   const [sortBy, setSortBy] = useState<SortOption>('table_number');
@@ -707,6 +709,14 @@ export default function App() {
     return tables.find(t => t.id === selectedTableId) || null;
   }, [selectedTableId, tables]);
 
+  const liveStreamTable = useMemo(() => {
+    return tables.find((t) => t.id === liveStreamTableId) || null;
+  }, [liveStreamTableId, tables]);
+
+  const openLiveStream = (id: string) => {
+    setLiveStreamTableId(id);
+  };
+
   const zoomedTable = useMemo(() => {
     return tables.find(t => t.id === zoomedTableId) || null;
   }, [zoomedTableId, tables]);
@@ -969,6 +979,7 @@ export default function App() {
                         onSelect={handleTableSelect}
                         onZoom={setZoomedTableId}
                         onToggleFavorite={toggleFavorite}
+                        onOpenLive={openLiveStream}
                       />
                     </motion.div>
                     );
@@ -1025,6 +1036,7 @@ export default function App() {
               onPauseAuto={session.pauseSession}
               onResumeAuto={session.resumeSession}
               onStopAuto={() => openStopReview('manual')}
+              onOpenLive={openLiveStream}
             />
           </>
         ) : activeView === 'insight' ? (
@@ -1085,6 +1097,12 @@ export default function App() {
       />
       <RuleCreationModal isOpen={isRuleModalOpen} onClose={() => setIsRuleModalOpen(false)} />
       <TableZoomModal table={zoomedTable} onClose={() => setZoomedTableId(null)} />
+      <LiveStreamModal
+        open={Boolean(liveStreamTable)}
+        tableName={liveStreamTable?.name || ''}
+        tableCode={liveStreamTable?.gameCode || ''}
+        onClose={() => setLiveStreamTableId(null)}
+      />
       <StopSessionModal
         type={stopSessionType}
         sessionPnl={stopSessionPnl}

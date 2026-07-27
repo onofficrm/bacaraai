@@ -1,5 +1,5 @@
 import { getResultColor, getResultLabel } from '../utils/colors';
-import { Activity, ChevronDown, ChevronUp, FileText, Info, Pause, Play, Settings2, Square, X } from 'lucide-react';
+import { Activity, ChevronDown, ChevronUp, FileText, Info, Pause, Play, Radio, Settings2, Square, X } from 'lucide-react';
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AiModelAnalysis, AiOpinion, GameResult, SessionConfig, TableData } from '../types';
@@ -147,6 +147,7 @@ interface RightPanelProps {
   onClearBetResult?: (source?: 'manual' | 'auto') => void;
   onPauseAuto?: () => void;
   onResumeAuto?: () => void;
+  onOpenLive?: (tableId: string) => void;
   onStopAuto?: () => void;
 }
 
@@ -178,6 +179,7 @@ export default function RightPanel({
   onPauseAuto,
   onResumeAuto,
   onStopAuto,
+  onOpenLive,
 }: RightPanelProps) {
   const [panelMode, setPanelMode] = useState<PanelMode>('manual');
   const [betAmount, setBetAmount] = useState<number>(10000);
@@ -944,6 +946,19 @@ export default function RightPanel({
                 )}
               </div>
               <div className="flex items-center gap-0.5 shrink-0">
+                {onOpenLive ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playSfx('ui');
+                      onOpenLive(table.id);
+                    }}
+                    className="inline-flex items-center gap-0.5 min-h-[32px] px-1.5 text-[10px] font-bold text-rose-200 border border-rose-400/40 bg-rose-500/15 rounded-md touch-manipulation"
+                  >
+                    <Radio size={11} />
+                    라이브
+                  </button>
+                ) : null}
                 {panelMode === 'manual' && (
                   <button
                     type="button"
@@ -996,6 +1011,19 @@ export default function RightPanel({
                     <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded shrink-0">
                       {isManualSettling || isAutoSettling ? '베팅 중' : '연결됨'}
                     </span>
+                    {onOpenLive ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playSfx('ui');
+                          onOpenLive(table.id);
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold text-rose-200 bg-rose-500/15 border border-rose-400/40 hover:bg-rose-500/25 touch-manipulation"
+                      >
+                        <Radio size={13} />
+                        라이브
+                      </button>
+                    ) : null}
                   </div>
                   <div className="text-[11px] text-zinc-500 font-mono mt-0.5 flex gap-1.5">
                     <span>{table.gameCode}</span>

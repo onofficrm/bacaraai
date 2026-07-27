@@ -1,6 +1,6 @@
 import { getResultColor, getResultLabel } from '../utils/colors';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Maximize2, Star, Zap } from 'lucide-react';
+import { Maximize2, Star, Zap, Radio } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AiOpinion, TableData } from '../types';
 import { STATUS_GUIDE } from '../help/glossary';
@@ -42,6 +42,8 @@ interface TableCardProps {
   onSelect?: (id: string) => void;
   onZoom?: (id: string) => void;
   onToggleFavorite?: (id: string, e: React.MouseEvent) => void;
+  /** 테이블 라이브 스트림 팝업 */
+  onOpenLive?: (id: string) => void;
 }
 
 function parseStreakCount(streak: string): number {
@@ -66,6 +68,7 @@ export default function TableCard({
   onSelect,
   onZoom,
   onToggleFavorite,
+  onOpenLive,
 }: TableCardProps) {
   const { reduced, enableRadar, intensity } = useFxIntensity();
   const [hitFlash, setHitFlash] = useState<'P' | 'B' | 'T' | null>(null);
@@ -680,9 +683,25 @@ export default function TableCard({
 
           <div
             className={`flex items-center gap-0.5 shrink-0 transition-opacity z-20 ${
-              compact || isFavorite ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              compact || isFavorite || onOpenLive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
             }`}
           >
+            {onOpenLive ? (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-[10px] font-bold tracking-wide text-rose-200 bg-rose-500/15 border border-rose-400/40 hover:bg-rose-500/25 touch-manipulation"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  playSfx('ui');
+                  onOpenLive(table.id);
+                }}
+                aria-label="라이브 보기"
+                title="라이브 보기"
+              >
+                <Radio size={compact ? 12 : 13} className="shrink-0" />
+                라이브
+              </button>
+            ) : null}
             <button
               type="button"
               className={`p-1.5 rounded transition-colors touch-manipulation ${

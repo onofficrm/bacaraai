@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Activity, LayoutGrid } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import TableCard from './components/TableCard';
+import LiveStreamModal from './components/LiveStreamModal';
 import AdminControlPanel from './components/admin/AdminControlPanel';
 import { MOCK_TABLES } from './data';
 import { useAdminLiveControl } from './hooks/useAdminLive';
@@ -15,7 +16,12 @@ import useCompactLayout from './hooks/useCompactLayout';
 export default function AdminApp() {
   const compact = useCompactLayout();
   const [selectedTableId, setSelectedTableId] = useState<string>(MOCK_TABLES[0].id);
+  const [liveStreamTableId, setLiveStreamTableId] = useState<string | null>(null);
   const ctrl = useAdminLiveControl(selectedTableId);
+  const liveStreamTable =
+    ctrl.tables.find((t) => t.id === liveStreamTableId) ||
+    MOCK_TABLES.find((t) => t.id === liveStreamTableId) ||
+    null;
 
   return (
     <div className="min-h-dvh w-full bg-zinc-950 text-zinc-100 flex flex-col">
@@ -80,6 +86,7 @@ export default function AdminApp() {
                     adminMode
                     isSelected={table.id === selectedTableId}
                     onSelect={setSelectedTableId}
+                    onOpenLive={setLiveStreamTableId}
                   />
                 </motion.div>
               ))}
@@ -109,6 +116,13 @@ export default function AdminApp() {
           />
         </aside>
       </div>
+
+      <LiveStreamModal
+        open={Boolean(liveStreamTable)}
+        tableName={liveStreamTable?.name || ''}
+        tableCode={liveStreamTable?.gameCode || ''}
+        onClose={() => setLiveStreamTableId(null)}
+      />
     </div>
   );
 }

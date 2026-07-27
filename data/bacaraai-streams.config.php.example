@@ -1,0 +1,21 @@
+<?php
+/**
+ * 테이블별 라이브 스트림 URL 설정
+ * 복사: data/bacaraai-streams.config.php
+ *
+ * {table} 플레이스홀더 → 테이블 코드(MD2729 등)로 치환
+ */
+if (!defined('_GNUBOARD_')) {
+    exit;
+}
+
+return array(
+    'enabled' => true,
+    /** 개별 URL 없을 때 사용 (비우면 해당 테이블은 스트림 없음) */
+    'url_template' => '',
+    /** 예: 'https://media.example.com/live/{table}/index.m3u8' */
+    'tables' => array(
+        // 'MD2729' => 'https://media.example.com/live/MD2729/index.m3u8',
+        // 'MD2710' => 'https://media.example.com/live/MD2710/index.m3u8',
+    ),
+);
