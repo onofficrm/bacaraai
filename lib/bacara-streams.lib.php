@@ -56,6 +56,20 @@ if (!function_exists('bacara_streams_default_config')) {
             'watchdog_key' => '',
             /** MediaMTX HTTP API (선택) 예: http://127.0.0.1:9997 */
             'mediamtx_api' => '',
+            /**
+             * 시청을 동일 출처 프록시로만 제공 (권장 true)
+             * iframe src = /plugin/bacara_wallet/stream/player.php?vt=...
+             */
+            'use_proxy_player' => true,
+            /**
+             * MediaMTX authHTTPAddress 연동 시 true
+             * read: query vt=시청토큰 검증 / publish: 아래 계정
+             */
+            'mediamtx_auth_enabled' => false,
+            'publish_user' => 'obs',
+            'publish_pass' => '',
+            /** bytesReceived 정체 시 정지 화면으로 판정 (초) */
+            'stall_sec' => 45,
             /** 예상 지연 표시(초) */
             'latency_hls_sec' => 5,
             'latency_webrtc_sec' => 1,
@@ -115,6 +129,11 @@ if (!function_exists('bacara_streams_export_config_php')) {
             'alert_webhook' => isset($cfg['alert_webhook']) ? (string) $cfg['alert_webhook'] : '',
             'watchdog_key' => isset($cfg['watchdog_key']) ? (string) $cfg['watchdog_key'] : '',
             'mediamtx_api' => isset($cfg['mediamtx_api']) ? (string) $cfg['mediamtx_api'] : '',
+            'use_proxy_player' => !empty($cfg['use_proxy_player']),
+            'mediamtx_auth_enabled' => !empty($cfg['mediamtx_auth_enabled']),
+            'publish_user' => isset($cfg['publish_user']) ? (string) $cfg['publish_user'] : 'obs',
+            'publish_pass' => isset($cfg['publish_pass']) ? (string) $cfg['publish_pass'] : '',
+            'stall_sec' => isset($cfg['stall_sec']) ? (int) $cfg['stall_sec'] : 45,
             'latency_hls_sec' => isset($cfg['latency_hls_sec']) ? (int) $cfg['latency_hls_sec'] : 5,
             'latency_webrtc_sec' => isset($cfg['latency_webrtc_sec']) ? (int) $cfg['latency_webrtc_sec'] : 1,
         );
@@ -142,6 +161,7 @@ if (!function_exists('bacara_streams_save_config')) {
             'url_template', 'tables', 'publish_keys', 'viewer_secret', 'viewer_ttl',
             'status_cache_ttl', 'alert_offline_sec', 'alert_webhook', 'watchdog_key',
             'mediamtx_api', 'latency_hls_sec', 'latency_webrtc_sec',
+            'use_proxy_player', 'mediamtx_auth_enabled', 'publish_user', 'publish_pass', 'stall_sec',
         );
         foreach ($allowed as $key) {
             if (!array_key_exists($key, $patch)) {
@@ -230,9 +250,15 @@ if (!function_exists('bacara_streams_admin_settings')) {
             'alert_offline_sec' => isset($cfg['alert_offline_sec']) ? (int) $cfg['alert_offline_sec'] : 90,
             'watchdog_key_set' => !empty($cfg['watchdog_key']),
             'mediamtx_api' => isset($cfg['mediamtx_api']) ? $cfg['mediamtx_api'] : '',
+            'use_proxy_player' => !array_key_exists('use_proxy_player', $cfg) || !empty($cfg['use_proxy_player']),
+            'mediamtx_auth_enabled' => !empty($cfg['mediamtx_auth_enabled']),
+            'publish_user' => isset($cfg['publish_user']) ? $cfg['publish_user'] : 'obs',
+            'publish_pass_set' => !empty($cfg['publish_pass']),
+            'stall_sec' => isset($cfg['stall_sec']) ? (int) $cfg['stall_sec'] : 45,
             'latency_hls_sec' => isset($cfg['latency_hls_sec']) ? (int) $cfg['latency_hls_sec'] : 5,
             'latency_webrtc_sec' => isset($cfg['latency_webrtc_sec']) ? (int) $cfg['latency_webrtc_sec'] : 1,
             'config_file_exists' => is_file(bacara_streams_config_path()),
+            'auth_endpoint' => (defined('G5_PLUGIN_URL') ? G5_PLUGIN_URL : '') . '/bacara_wallet/api/stream_auth.php',
             'publish_keys' => $out_keys,
         );
     }
@@ -499,6 +525,49 @@ if (!function_exists('bacara_streams_http_get')) {
     }
 }
 
+if (!function_exists('bacara_streams_code_from_publish_path')) {
+    function bacara_streams_code_from_publish_path($path)
+    {
+        $path = trim((string) $path, "/ \t\n\r");
+        if ($path === '') {
+            return '';
+        }
+        // MediaMTX path may be "pub_xxx" or "MD2729"
+        foreach (bacara_streams_known_codes() as $code) {
+            if (bacara_streams_publish_key($code) === $path) {
+                return $code;
+            }
+        }
+        $up = bacara_streams_norm_code($path);
+        if (in_array($up, bacara_streams_known_codes(), true)) {
+            return $up;
+        }
+        return '';
+    }
+}
+
+if (!function_exists('bacara_streams_append_query')) {
+    function bacara_streams_append_query($url, $params)
+    {
+        $url = trim((string) $url);
+        if ($url === '' || !is_array($params) || !$params) {
+            return $url;
+        }
+        $sep = (strpos($url, '?') === false) ? '?' : '&';
+        return $url . $sep . http_build_query($params);
+    }
+}
+
+if (!function_exists('bacara_streams_proxy_player_url')) {
+    function bacara_streams_proxy_player_url($viewer_token)
+    {
+        $base = defined('G5_PLUGIN_URL')
+            ? rtrim(G5_PLUGIN_URL, '/') . '/bacara_wallet/stream/player.php'
+            : '/plugin/bacara_wallet/stream/player.php';
+        return $base . '?vt=' . rawurlencode((string) $viewer_token);
+    }
+}
+
 if (!function_exists('bacara_streams_probe_online')) {
     /**
      * 서버에서만 플레이리스트/플레이어 생존 여부 확인 (브라우저 probe 금지 정책과 분리)
@@ -516,10 +585,16 @@ if (!function_exists('bacara_streams_probe_online')) {
             if ($res['ok'] && $res['body'] !== '') {
                 $json = json_decode($res['body'], true);
                 $ready = false;
+                $bytes = null;
                 if (is_array($json)) {
+                    if (isset($json['bytesReceived'])) {
+                        $bytes = (int) $json['bytesReceived'];
+                    } elseif (isset($json['bytesReceivedTotal'])) {
+                        $bytes = (int) $json['bytesReceivedTotal'];
+                    }
                     if (!empty($json['ready'])) {
                         $ready = true;
-                    } elseif (isset($json['bytesReceived']) && (int) $json['bytesReceived'] > 0) {
+                    } elseif ($bytes !== null && $bytes > 0) {
                         $ready = true;
                     } elseif (!empty($json['tracks']) && is_array($json['tracks']) && count($json['tracks']) > 0) {
                         $ready = true;
@@ -530,6 +605,7 @@ if (!function_exists('bacara_streams_probe_online')) {
                     'method' => 'mediamtx_api',
                     'http_status' => $res['status'],
                     'publish_key_set' => $publish !== $code,
+                    'bytes_received' => $bytes,
                 );
             }
         }
@@ -545,6 +621,7 @@ if (!function_exists('bacara_streams_probe_online')) {
             'method' => 'hls_playlist',
             'http_status' => $res['status'],
             'publish_key_set' => $publish !== $code,
+            'bytes_received' => null,
         );
     }
 }
@@ -571,21 +648,54 @@ if (!function_exists('bacara_streams_status_for')) {
         $prev_file = bacara_streams_cache_dir() . '/stream_last_' . $code . '.json';
         $last_online_at = null;
         $offline_since = null;
+        $last_bytes = null;
+        $last_bytes_at = null;
+        $stall_since = null;
         if (is_file($prev_file)) {
             $prev = json_decode((string) @file_get_contents($prev_file), true);
             if (is_array($prev)) {
                 $last_online_at = isset($prev['last_online_at']) ? (int) $prev['last_online_at'] : null;
                 $offline_since = isset($prev['offline_since']) ? (int) $prev['offline_since'] : null;
+                $last_bytes = isset($prev['last_bytes']) ? $prev['last_bytes'] : null;
+                $last_bytes_at = isset($prev['last_bytes_at']) ? (int) $prev['last_bytes_at'] : null;
+                $stall_since = isset($prev['stall_since']) ? (int) $prev['stall_since'] : null;
             }
+        }
+
+        $bytes = array_key_exists('bytes_received', $probe) ? $probe['bytes_received'] : null;
+        $stalled = false;
+        $stall_need = isset($cfg['stall_sec']) ? (int) $cfg['stall_sec'] : 45;
+        if ($stall_need < 15) {
+            $stall_need = 15;
         }
 
         if (!empty($probe['online'])) {
             $last_online_at = $now;
             $offline_since = null;
+
+            if ($bytes !== null) {
+                if ($last_bytes !== null && (int) $bytes === (int) $last_bytes) {
+                    if ($stall_since === null) {
+                        $stall_since = $last_bytes_at ? $last_bytes_at : $now;
+                    }
+                    if (($now - (int) $stall_since) >= $stall_need) {
+                        $stalled = true;
+                    }
+                } else {
+                    $stall_since = null;
+                    $last_bytes = $bytes;
+                    $last_bytes_at = $now;
+                }
+            } else {
+                // API 바이트 없으면 정지 판정 보류
+                $stall_since = null;
+            }
         } else {
             if ($offline_since === null) {
                 $offline_since = $now;
             }
+            $stall_since = null;
+            $stalled = false;
         }
 
         @file_put_contents(
@@ -594,6 +704,9 @@ if (!function_exists('bacara_streams_status_for')) {
                 'last_online_at' => $last_online_at,
                 'offline_since' => $offline_since,
                 'online' => !empty($probe['online']),
+                'last_bytes' => $last_bytes,
+                'last_bytes_at' => $last_bytes_at,
+                'stall_since' => $stall_since,
             ), JSON_UNESCAPED_UNICODE),
             LOCK_EX
         );
@@ -601,6 +714,9 @@ if (!function_exists('bacara_streams_status_for')) {
         $status = array(
             'table_name' => $code,
             'online' => !empty($probe['online']),
+            'stalled' => $stalled,
+            'stall_sec' => $stalled && $stall_since ? max(0, $now - (int) $stall_since) : 0,
+            'bytes_received' => $bytes,
             'method' => $probe['method'],
             'http_status' => $probe['http_status'],
             'publish_key_set' => !empty($probe['publish_key_set']),
@@ -622,17 +738,34 @@ if (!function_exists('bacara_streams_status_for')) {
 if (!function_exists('bacara_streams_maybe_alert')) {
     function bacara_streams_maybe_alert($status)
     {
-        if (!is_array($status) || !empty($status['online'])) {
+        if (!is_array($status)) {
             return;
         }
         $cfg = bacara_streams_load_config();
-        $need = isset($cfg['alert_offline_sec']) ? (int) $cfg['alert_offline_sec'] : 90;
-        $offline_sec = isset($status['offline_sec']) ? (int) $status['offline_sec'] : 0;
-        if ($offline_sec < $need) {
+        $code = isset($status['table_name']) ? $status['table_name'] : '';
+        if ($code === '') {
             return;
         }
-        $code = $status['table_name'];
-        $lock = bacara_streams_cache_dir() . '/stream_alert_' . $code . '.json';
+
+        $kind = '';
+        $msg = '';
+        if (!empty($status['stalled']) && !empty($status['online'])) {
+            $kind = 'stall';
+            $msg = '[BacaraAI] 스트림 정지 의심(STALL): ' . $code
+                . ' (' . (int) $status['stall_sec'] . 's, bytes 정체)';
+        } elseif (empty($status['online'])) {
+            $need = isset($cfg['alert_offline_sec']) ? (int) $cfg['alert_offline_sec'] : 90;
+            $offline_sec = isset($status['offline_sec']) ? (int) $status['offline_sec'] : 0;
+            if ($offline_sec < $need) {
+                return;
+            }
+            $kind = 'offline';
+            $msg = '[BacaraAI] 스트림 OFFLINE: ' . $code . ' (' . $offline_sec . 's)';
+        } else {
+            return;
+        }
+
+        $lock = bacara_streams_cache_dir() . '/stream_alert_' . $kind . '_' . $code . '.json';
         $last = 0;
         if (is_file($lock)) {
             $j = json_decode((string) @file_get_contents($lock), true);
@@ -640,11 +773,9 @@ if (!function_exists('bacara_streams_maybe_alert')) {
                 $last = (int) $j['at'];
             }
         }
-        // 동일 테이블 알림 쿨다운 10분
         if ($last && (time() - $last) < 600) {
             return;
         }
-        $msg = '[BacaraAI] 스트림 OFFLINE: ' . $code . ' (' . $offline_sec . 's)';
         $log = bacara_streams_cache_dir() . '/stream_alerts.log';
         @file_put_contents($log, date('c') . ' ' . $msg . "\n", FILE_APPEND | LOCK_EX);
 
@@ -660,7 +791,9 @@ if (!function_exists('bacara_streams_maybe_alert')) {
                     CURLOPT_POSTFIELDS => json_encode(array(
                         'text' => $msg,
                         'table' => $code,
-                        'offline_sec' => $offline_sec,
+                        'kind' => $kind,
+                        'offline_sec' => isset($status['offline_sec']) ? (int) $status['offline_sec'] : 0,
+                        'stall_sec' => isset($status['stall_sec']) ? (int) $status['stall_sec'] : 0,
                     ), JSON_UNESCAPED_UNICODE),
                 ));
                 @curl_exec($ch);
@@ -681,8 +814,11 @@ if (!function_exists('bacara_streams_viewer_payload')) {
         }
         $cfg = bacara_streams_load_config();
         $token = bacara_streams_make_viewer_token($code, $mb_id, $mode);
-        $player = bacara_streams_resolve_player_url($code, $mode);
-        $hls = bacara_streams_resolve_hls_url($code);
+        $direct = bacara_streams_resolve_player_url($code, $mode);
+        $use_proxy = !array_key_exists('use_proxy_player', $cfg) || !empty($cfg['use_proxy_player']);
+        $player = $use_proxy
+            ? bacara_streams_proxy_player_url($token['token'])
+            : bacara_streams_append_query($direct, array('vt' => $token['token']));
         $status = bacara_streams_status_for($code);
 
         return array(
@@ -690,8 +826,8 @@ if (!function_exists('bacara_streams_viewer_payload')) {
             'table_name' => $code,
             'mode' => $mode,
             'player_url' => $player,
-            'hls_url' => $hls,
-            'webrtc_url' => bacara_streams_resolve_player_url($code, 'webrtc'),
+            'proxy' => $use_proxy,
+            // 직접 MediaMTX URL은 클라이언트로 내리지 않음 (프록시/토큰 경로만)
             'viewer_token' => $token['token'],
             'expires_at' => $token['expires_at'],
             'ttl' => $token['ttl'],
@@ -701,11 +837,12 @@ if (!function_exists('bacara_streams_viewer_payload')) {
                 : (int) $cfg['latency_hls_sec'],
             'status' => array(
                 'online' => !empty($status['online']),
+                'stalled' => !empty($status['stalled']),
+                'stall_sec' => isset($status['stall_sec']) ? (int) $status['stall_sec'] : 0,
                 'checked_at' => $status['checked_at'],
                 'last_online_at' => $status['last_online_at'],
                 'offline_sec' => $status['offline_sec'],
             ),
-            // 결과 동기화 메타(클라이언트에서 테이블 최신 회차와 함께 표시)
             'sync' => array(
                 'note' => '영상은 참고용이며 정산은 live_results API가 권위입니다.',
                 'expected_delay_sec' => $mode === 'webrtc'
@@ -713,6 +850,54 @@ if (!function_exists('bacara_streams_viewer_payload')) {
                     : (int) $cfg['latency_hls_sec'],
             ),
         );
+    }
+}
+
+if (!function_exists('bacara_streams_auth_decide')) {
+    /**
+     * MediaMTX authHTTPAddress 요청 판정
+     * @return array{ok:bool,message?:string}
+     */
+    function bacara_streams_auth_decide($payload)
+    {
+        $cfg = bacara_streams_load_config();
+        if (empty($cfg['mediamtx_auth_enabled'])) {
+            // MediaMTX에 아직 연결 안 된 경우 — 호출되면 허용(개발 편의)
+            return array('ok' => true, 'message' => 'auth disabled');
+        }
+        if (!is_array($payload)) {
+            return array('ok' => false, 'message' => 'bad payload');
+        }
+        $action = isset($payload['action']) ? strtolower((string) $payload['action']) : '';
+        $path = isset($payload['path']) ? trim((string) $payload['path'], '/') : '';
+        $query = isset($payload['query']) ? (string) $payload['query'] : '';
+        $user = isset($payload['user']) ? (string) $payload['user'] : '';
+        $password = isset($payload['password']) ? (string) $payload['password'] : '';
+
+        if ($action === 'publish') {
+            $expect_user = isset($cfg['publish_user']) ? (string) $cfg['publish_user'] : 'obs';
+            $expect_pass = isset($cfg['publish_pass']) ? (string) $cfg['publish_pass'] : '';
+            if ($expect_pass === '') {
+                return array('ok' => false, 'message' => 'publish_pass not set');
+            }
+            if (!hash_equals($expect_user, $user) || !hash_equals($expect_pass, $password)) {
+                return array('ok' => false, 'message' => 'publish denied');
+            }
+            return array('ok' => true);
+        }
+
+        // read / playback / get 등 시청
+        parse_str($query, $q);
+        $vt = isset($q['vt']) ? (string) $q['vt'] : '';
+        if ($vt === '') {
+            return array('ok' => false, 'message' => 'viewer token required');
+        }
+        $code = bacara_streams_code_from_publish_path($path);
+        $verified = bacara_streams_verify_viewer_token($vt, $code);
+        if ($verified === false) {
+            return array('ok' => false, 'message' => 'invalid token');
+        }
+        return array('ok' => true);
     }
 }
 
@@ -727,6 +912,9 @@ if (!function_exists('bacara_streams_admin_overview')) {
             $rows[] = array(
                 'table_name' => $code,
                 'online' => !empty($st['online']),
+                'stalled' => !empty($st['stalled']),
+                'stall_sec' => isset($st['stall_sec']) ? (int) $st['stall_sec'] : 0,
+                'bytes_received' => isset($st['bytes_received']) ? $st['bytes_received'] : null,
                 'checked_at' => $st['checked_at'],
                 'last_online_at' => $st['last_online_at'],
                 'offline_sec' => $st['offline_sec'],

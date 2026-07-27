@@ -3,6 +3,9 @@ import { PLATFORM_LINKS } from '../constants';
 export type AdminStreamRow = {
   table_name: string;
   online: boolean;
+  stalled?: boolean;
+  stall_sec?: number;
+  bytes_received?: number | null;
   checked_at: number;
   last_online_at: number | null;
   offline_sec: number;
@@ -37,6 +40,12 @@ export type AdminStreamSettings = {
   alert_offline_sec: number;
   watchdog_key_set: boolean;
   mediamtx_api: string;
+  use_proxy_player?: boolean;
+  mediamtx_auth_enabled?: boolean;
+  publish_user?: string;
+  publish_pass_set?: boolean;
+  stall_sec?: number;
+  auth_endpoint?: string;
   latency_hls_sec: number;
   latency_webrtc_sec: number;
   config_file_exists: boolean;
@@ -115,6 +124,11 @@ export async function saveAdminStreamSettings(
     mediamtx_api: string;
     latency_hls_sec: number;
     latency_webrtc_sec: number;
+    use_proxy_player: boolean;
+    mediamtx_auth_enabled: boolean;
+    publish_user: string;
+    publish_pass: string;
+    stall_sec: number;
   }>,
 ): Promise<AdminStreamSettings> {
   return postAdminStreamAction(token, {

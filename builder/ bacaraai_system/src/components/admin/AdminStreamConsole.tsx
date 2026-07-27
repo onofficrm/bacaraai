@@ -45,6 +45,11 @@ export default function AdminStreamConsole({ selectedCode, onPreview }: Props) {
   const [webhook, setWebhook] = useState('');
   const [offlineSec, setOfflineSec] = useState(90);
   const [webrtcTpl, setWebrtcTpl] = useState('');
+  const [mediamtxApi, setMediamtxApi] = useState('');
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [publishUser, setPublishUser] = useState('obs');
+  const [publishPass, setPublishPass] = useState('');
+  const [stallSec, setStallSec] = useState(45);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<Record<string, string>>({});
 
@@ -66,6 +71,11 @@ export default function AdminStreamConsole({ selectedCode, onPreview }: Props) {
       setWebhook(st.alert_webhook || '');
       setOfflineSec(st.alert_offline_sec || 90);
       setWebrtcTpl(st.webrtc_template || '');
+      setMediamtxApi(st.mediamtx_api || '');
+      setAuthEnabled(Boolean(st.mediamtx_auth_enabled));
+      setPublishUser(st.publish_user || 'obs');
+      setPublishPass('');
+      setStallSec(st.stall_sec || 45);
       const nextReveal: Record<string, string> = {};
       Object.entries(st.publish_keys || {}).forEach(([code, info]) => {
         nextReveal[code] = info.publish_key;
@@ -114,6 +124,11 @@ export default function AdminStreamConsole({ selectedCode, onPreview }: Props) {
         alert_webhook: webhook.trim(),
         alert_offline_sec: offlineSec,
         webrtc_template: webrtcTpl.trim(),
+        mediamtx_api: mediamtxApi.trim(),
+        mediamtx_auth_enabled: authEnabled,
+        publish_user: publishUser.trim() || 'obs',
+        stall_sec: stallSec,
+        ...(publishPass.trim() ? { publish_pass: publishPass.trim() } : {}),
       });
       await load(false);
       flash('운영 설정 저장됨');
@@ -245,6 +260,61 @@ export default function AdminStreamConsole({ selectedCode, onPreview }: Props) {
               className="mt-1 w-full rounded-md bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100 font-mono"
             />
           </label>
+          <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wide">
+            MediaMTX API (정지 감지)
+            <input
+              value={mediamtxApi}
+              onChange={(e) => setMediamtxApi(e.target.value)}
+              placeholder="http://127.0.0.1:9997"
+              className="mt-1 w-full rounded-md bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100 font-mono"
+            />
+          </label>
+          <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wide">
+            Stall 판정 (초)
+            <input
+              type="number"
+              min={15}
+              max={600}
+              value={stallSec}
+              onChange={(e) => setStallSec(Number(e.target.value) || 45)}
+              className="mt-1 w-full rounded-md bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-[11px] text-zinc-300">
+            <input
+              type="checkbox"
+              checked={authEnabled}
+              onChange={(e) => setAuthEnabled(e.target.checked)}
+            />
+            MediaMTX HTTP Auth 사용
+          </label>
+          {authEnabled ? (
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wide">
+                OBS user
+                <input
+                  value={publishUser}
+                  onChange={(e) => setPublishUser(e.target.value)}
+                  className="mt-1 w-full rounded-md bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100"
+                />
+              </label>
+              <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wide">
+                OBS pass {settings?.publish_pass_set ? '(설정됨)' : ''}
+                <input
+                  type="password"
+                  value={publishPass}
+                  onChange={(e) => setPublishPass(e.target.value)}
+                  placeholder={settings?.publish_pass_set ? '변경 시에만 입력' : '필수'}
+                  className="mt-1 w-full rounded-md bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs text-zinc-100"
+                />
+              </label>
+            </div>
+          ) : null}
+          {settings?.auth_endpoint ? (
+            <p className="text-[10px] text-zinc-600 break-all">
+              authHTTPAddress: {settings.auth_endpoint}
+            </p>
+          ) : null}
           <button
             type="button"
             onClick={() => void saveSettings()}
@@ -279,10 +349,14 @@ export default function AdminStreamConsole({ selectedCode, onPreview }: Props) {
                     </span>
                     <span
                       className={`text-[10px] font-bold ${
-                        row.online ? 'text-emerald-400' : 'text-zinc-500'
+                        row.stalled
+                          ? 'text-amber-400'
+                          : row.online
+                            ? 'text-emerald-400'
+                            : 'text-zinc-500'
                       }`}
                     >
-                      {row.online ? 'LIVE' : 'OFF'}
+                      {row.stalled ? 'STALL' : row.online ? 'LIVE' : 'OFF'}
                     </span>
                     {row.publish_key_is_public ? (
                       <span className="text-[9px] text-amber-400/90 border border-amber-500/30 rounded px-1">

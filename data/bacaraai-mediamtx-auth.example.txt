@@ -1,0 +1,23 @@
+# MediaMTX auth 연동 예시 (서버 운영자용)
+#
+# 1) 사이트 config (관리자 스트림 관제 → 설정 또는 data/bacaraai-streams.config.php)
+#    mediamtx_auth_enabled => true
+#    publish_user / publish_pass 설정
+#    mediamtx_api => http://127.0.0.1:9997  (정지 화면 감지용)
+#
+# 2) mediamtx.yml 핵심
+#
+# authMethod: http
+# authHTTPAddress: https://YOUR_SITE/plugin/bacara_wallet/api/stream_auth.php
+# authHTTPExclude: []
+#
+# OBS 송출:
+#   서버: rtmp://media.aitablelive.com:1935/pub_xxxx
+#   또는 인증이 필요하면 MediaMTX 문서의 RTMP credentials 형식 사용
+#
+# 시청:
+#   웹은 /plugin/bacara_wallet/stream/player.php?vt=TOKEN 만 사용
+#   MediaMTX 직접 URL은 로그인·토큰 없이 차단됨(auth 연동 후)
+#
+# 3) cron (선택)
+# */2 * * * * curl -s 'https://YOUR_SITE/plugin/bacara_wallet/api/stream_watchdog.php?key=WATCHDOG_KEY'

@@ -987,6 +987,7 @@ export default function App() {
                             ? streamStatuses[table.gameCode].online
                             : null
                         }
+                        streamStalled={Boolean(streamStatuses[table.gameCode]?.stalled)}
                       />
                     </motion.div>
                     );

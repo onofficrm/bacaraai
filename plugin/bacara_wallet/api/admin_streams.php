@@ -53,6 +53,7 @@ if ($method === 'POST') {
             'enabled', 'media_origin', 'player_template', 'hls_template', 'webrtc_template',
             'alert_webhook', 'alert_offline_sec', 'watchdog_key', 'mediamtx_api',
             'latency_hls_sec', 'latency_webrtc_sec',
+            'use_proxy_player', 'mediamtx_auth_enabled', 'publish_user', 'publish_pass', 'stall_sec',
         ) as $k) {
             if (array_key_exists($k, $body)) {
                 $patch[$k] = $body[$k];
@@ -61,8 +62,17 @@ if ($method === 'POST') {
         if (isset($patch['enabled'])) {
             $patch['enabled'] = !empty($patch['enabled']);
         }
+        if (isset($patch['use_proxy_player'])) {
+            $patch['use_proxy_player'] = !empty($patch['use_proxy_player']);
+        }
+        if (isset($patch['mediamtx_auth_enabled'])) {
+            $patch['mediamtx_auth_enabled'] = !empty($patch['mediamtx_auth_enabled']);
+        }
         if (isset($patch['alert_offline_sec'])) {
             $patch['alert_offline_sec'] = max(30, min(3600, (int) $patch['alert_offline_sec']));
+        }
+        if (isset($patch['stall_sec'])) {
+            $patch['stall_sec'] = max(15, min(600, (int) $patch['stall_sec']));
         }
         $result = bacara_streams_save_config($patch);
         if (empty($result['ok'])) {

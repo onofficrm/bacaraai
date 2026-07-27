@@ -51,6 +51,7 @@ export default function LiveStreamModal({
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [online, setOnline] = useState<boolean | null>(null);
+  const [stalled, setStalled] = useState(false);
   const [latencySec, setLatencySec] = useState(5);
   const [syncNote, setSyncNote] = useState('');
   const [expiresAt, setExpiresAt] = useState(0);
@@ -65,6 +66,7 @@ export default function LiveStreamModal({
       const session = await fetchStreamViewerSession(tableCode, mode);
       setPlayerUrl(session.player_url || '');
       setOnline(session.status?.online ?? null);
+      setStalled(Boolean(session.status?.stalled));
       setLatencySec(session.latency_sec || session.sync?.expected_delay_sec || 5);
       setSyncNote(session.sync?.note || '');
       setExpiresAt(session.expires_at || 0);
@@ -172,8 +174,8 @@ export default function LiveStreamModal({
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-800">
           <div className="min-w-0">
             <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-rose-400/90 flex items-center gap-1.5">
-              <Radio size={12} className={online ? 'animate-pulse' : ''} />
-              {online === false ? 'OFFLINE' : 'LIVE'}
+              <Radio size={12} className={online && !stalled ? 'animate-pulse' : ''} />
+              {online === false ? 'OFFLINE' : stalled ? 'STALL' : 'LIVE'}
               <span className="ml-1 font-mono normal-case tracking-normal text-zinc-500">
                 · {mode.toUpperCase()} · ~{latencySec}s
               </span>
@@ -288,7 +290,12 @@ export default function LiveStreamModal({
             </div>
           ) : null}
 
-          {online === false && !error ? (
+          {stalled && online !== false && !error ? (
+            <div className="absolute top-2 left-2 right-2 sm:right-auto rounded-md bg-amber-500/15 border border-amber-500/40 px-2 py-1 text-[11px] text-amber-100">
+              송출은 연결됐지만 프레임이 멈춘 것으로 보입니다(정지 화면 감지)
+            </div>
+          ) : null}
+          {online === false && !error && !stalled ? (
             <div className="absolute top-2 left-2 right-2 sm:right-auto rounded-md bg-amber-500/15 border border-amber-500/40 px-2 py-1 text-[11px] text-amber-100">
               서버 상태: 송출 없음 또는 점검 중 — 플레이어는 유지됩니다
             </div>

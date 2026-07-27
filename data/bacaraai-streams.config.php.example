@@ -4,6 +4,7 @@
  * 복사: data/bacaraai-streams.config.php
  *
  * gameCode(공개 UI) ≠ publish_key(OBS 비밀 경로) 권장
+ * MediaMTX auth 연동: data/bacaraai-mediamtx-auth.example.txt 참고
  */
 if (!defined('_GNUBOARD_')) {
     exit;
@@ -13,39 +14,30 @@ return array(
     'enabled' => true,
     'media_origin' => 'https://media.aitablelive.com',
 
-    /** MediaMTX HLS 공식 플레이어 (iframe) */
     'player_template' => 'https://media.aitablelive.com/{PUBLISH_KEY}/',
-    /** HLS playlist */
     'hls_template' => 'https://media.aitablelive.com/{PUBLISH_KEY}/index.m3u8',
-    /** WebRTC 플레이어 — 미사용 시 player_template 로 폴백 */
     'webrtc_template' => 'https://media.aitablelive.com:8889/{PUBLISH_KEY}/',
-
-    /** 하위 호환 (구 url_template) */
     'url_template' => 'https://media.aitablelive.com/{STREAM_KEY}/index.m3u8',
     'tables' => array(),
-
-    /**
-     * OBS 송출 비밀 키 (권장).
-     * 비우면 gameCode 와 동일 → URL만 알아도 시청 가능(취약).
-     * 예:
-     * 'MD2729' => 'pub_x7k9m2q1',
-     */
     'publish_keys' => array(),
 
-    /** 시청 토큰 HMAC — 비우면 서버에서 파생 */
     'viewer_secret' => '',
     'viewer_ttl' => 600,
+    'use_proxy_player' => true,
 
-    /** 서버 상태 캐시(초). 브라우저 m3u8 probe 하지 않음 */
     'status_cache_ttl' => 12,
-    /** offline 지속 시 알림 (초) */
     'alert_offline_sec' => 90,
-    /** Slack Incoming Webhook 등 */
+    'stall_sec' => 45,
     'alert_webhook' => '',
-    /** cron 워커 키 — stream_watchdog.php?key=... */
     'watchdog_key' => '',
-    /** MediaMTX Control API (선택) http://127.0.0.1:9997 */
+
+    /** 정지 화면 감지에 권장 */
     'mediamtx_api' => '',
+
+    /** MediaMTX authHTTPAddress 연동 */
+    'mediamtx_auth_enabled' => false,
+    'publish_user' => 'obs',
+    'publish_pass' => '',
 
     'latency_hls_sec' => 5,
     'latency_webrtc_sec' => 1,

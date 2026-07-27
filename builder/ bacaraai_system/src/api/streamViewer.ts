@@ -16,10 +16,13 @@ export type StreamViewerSession = {
   latency_sec: number;
   status?: {
     online: boolean;
+    stalled?: boolean;
+    stall_sec?: number;
     checked_at: number;
     last_online_at: number | null;
     offline_sec: number;
   };
+  proxy?: boolean;
   sync?: {
     note: string;
     expected_delay_sec: number;

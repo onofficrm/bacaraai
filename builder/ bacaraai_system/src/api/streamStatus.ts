@@ -4,6 +4,9 @@ import { normalizeStreamKey } from '../utils/liveStreamUrl';
 export type StreamStatus = {
   table_name: string;
   online: boolean;
+  stalled?: boolean;
+  stall_sec?: number;
+  bytes_received?: number | null;
   method?: string;
   http_status?: number;
   checked_at: number;
