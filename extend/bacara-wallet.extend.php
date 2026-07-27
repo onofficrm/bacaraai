@@ -47,6 +47,12 @@ if (!function_exists('bacara_wallet_admin_menu')) {
             G5_PLUGIN_URL . '/bacara_wallet/admin/ai_usage.php',
             'bacara_ai_usage',
         );
+        $admin_menu['menu200'][] = array(
+            '200980',
+            '라이브 테이블 제어',
+            G5_PLUGIN_URL . '/bacara_wallet/admin/live_control.php',
+            'bacara_live_control',
+        );
 
         return $admin_menu;
     }

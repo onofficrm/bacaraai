@@ -21,6 +21,8 @@ type LiveResponse = {
   game_no?: number | null;
   latest_id?: number | null;
   latest_detected_at?: string | null;
+  shuffle_active?: boolean;
+  manual_mode?: boolean;
   results?: LiveResultRow[];
 };
 
@@ -50,6 +52,8 @@ type LiveState = {
   gameNo: number | null;
   latestId: number | null;
   latestDetectedAt: string | null;
+  shuffleActive: boolean;
+  manualMode: boolean;
   error: string | null;
 };
 
@@ -177,6 +181,8 @@ export default function useLiveTable(
     gameNo: null,
     latestId: null,
     latestDetectedAt: null,
+    shuffleActive: false,
+    manualMode: false,
     error: null,
   });
   const [aiState, setAiState] = useState<AiState>({
@@ -242,6 +248,8 @@ export default function useLiveTable(
           gameNo: nextGameNo,
           latestId: nextLatestId,
           latestDetectedAt: nextDetectedAt,
+          shuffleActive: Boolean(data.shuffle_active),
+          manualMode: Boolean(data.manual_mode),
           error: null,
         });
       } catch (error) {
@@ -379,6 +387,8 @@ export default function useLiveTable(
           latestDetectedAt: state.latestDetectedAt,
           error: state.error,
           gameNo: state.gameNo,
+          shuffleActive: state.shuffleActive,
+          manualMode: state.manualMode,
         },
         roadmap: [],
         stats: {
@@ -454,6 +464,8 @@ export default function useLiveTable(
         latestDetectedAt: state.latestDetectedAt,
         error: state.error,
         gameNo: state.gameNo,
+        shuffleActive: state.shuffleActive,
+        manualMode: state.manualMode,
       },
       roadmap: buildRoadmap(results),
       stats: {

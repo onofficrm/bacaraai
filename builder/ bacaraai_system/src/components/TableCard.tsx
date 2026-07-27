@@ -12,6 +12,7 @@ import { playLockOn, playSfx } from '../audio/sfxEngine';
 import WinFlipOverlay from './WinFlipOverlay';
 import BetInOverlay from './BetInOverlay';
 import TableEventOverlay from './TableEventOverlay';
+import ShuffleOverlay from './ShuffleOverlay';
 import {
   autoEventCardClass,
   type AutoTableEvent,
@@ -36,6 +37,8 @@ interface TableCardProps {
   betBanners?: TableBetBanner[];
   /** 최근 정산 플래시 */
   settleBanner?: TableBetBanner | null;
+  /** 관리자 화면 — 베팅·오토 연출 숨김 */
+  adminMode?: boolean;
   onSelect?: (id: string) => void;
   onZoom?: (id: string) => void;
   onToggleFavorite?: (id: string, e: React.MouseEvent) => void;
@@ -59,6 +62,7 @@ export default function TableCard({
   autoEvent = null,
   betBanners = [],
   settleBanner = null,
+  adminMode = false,
   onSelect,
   onZoom,
   onToggleFavorite,
@@ -293,6 +297,8 @@ export default function TableCard({
 
   const bettingOpen = betSec > 0 && betSec > 5;
   const bettingUrgent = betSec > 0 && betSec <= 5;
+  const shuffleActive = Boolean(table.live?.shuffleActive);
+  const showBetFx = !adminMode;
 
   return (
     <div
@@ -309,12 +315,13 @@ export default function TableCard({
         />
       )}
       <AnimatePresence>
-        {showWinFlip && settleBanner && (
+        {showBetFx && showWinFlip && settleBanner && (
           <WinFlipOverlay key={settleBanner.id} banner={settleBanner} compact={compact} />
         )}
       </AnimatePresence>
+      {shuffleActive ? <ShuffleOverlay compact={compact} /> : null}
       {/* 베팅 창: 골드 헤어라인 / 마감 임박: 로즈 */}
-      {betSec > 0 && (
+      {showBetFx && betSec > 0 && (
         <div
           className={`pointer-events-none absolute inset-0 rounded-xl z-[1] ${
             bettingOpen && !reduced ? 'betting-gold-line' : ''
@@ -332,7 +339,7 @@ export default function TableCard({
       )}
 
       <AnimatePresence>
-        {lockBurst && !betStartBurst && betBanners.length === 0 && !reduced && (
+        {showBetFx && lockBurst && !betStartBurst && betBanners.length === 0 && !reduced && (
           <motion.div
             key="lock-burst"
             className="pointer-events-none absolute inset-0 z-[25] flex items-center justify-center overflow-hidden rounded-xl"
@@ -691,10 +698,10 @@ export default function TableCard({
       <div className="relative z-[2]">
         <Roadmap data={table.roadmap} results={table.stats.recentResults} size="sm" />
         {/* betStart 연출(0.8s) 동안은 BET 뱃지만 — BetInOverlay 와 중앙 겹침 방지 */}
-        {!showWinFlip && !autoHit && !betStartBurst && betBanners.length > 0 && (
+        {showBetFx && !showWinFlip && !autoHit && !betStartBurst && betBanners.length > 0 && (
           <BetInOverlay banners={betBanners} compact={compact} />
         )}
-        {!showWinFlip && !autoHit && betBanners.length === 0 && (
+        {showBetFx && !showWinFlip && !autoHit && betBanners.length === 0 && (
           <TableEventOverlay
             settle={settleBanner && settleBanner.tone !== 'hit' ? settleBanner : null}
             event={

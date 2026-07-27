@@ -43,6 +43,19 @@ if (!preg_match('/^[A-Z0-9_-]{1,40}$/', $table_name)) {
 $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 800;
 $limit = max(1, min(1000, $limit));
 
+// 관리자 수동 모드 — 외부 DB 대신 G5 관리 테이블 결과 반환
+if (is_file(G5_LIB_PATH . '/bacara-live-admin.lib.php')) {
+    include_once G5_LIB_PATH . '/bacara-live-admin.lib.php';
+    bacara_live_admin_install_tables();
+    if (bacara_live_admin_is_manual($table_name)) {
+        $admin_payload = bacara_live_admin_build_payload($table_name, $limit);
+        if (is_array($admin_payload) && !empty($admin_payload['ok'])) {
+            bacara_live_output_payload($admin_payload, $member['mb_id'], 'admin');
+            exit;
+        }
+    }
+}
+
 /**
  * 모든 로그인 사용자가 같은 라이브 테이블을 조회하므로 짧은 공유 캐시 사용.
  * - fresh 1초: 즉시 반환
@@ -678,6 +691,8 @@ $payload = array(
     'latest_id' => $latest ? $latest['id'] : null,
     'table_max_id' => $table_max_id,
     'latest_detected_at' => $latest ? $latest['detected_at'] : null,
+    'manual_mode' => false,
+    'shuffle_active' => false,
     'results' => $rows,
 );
 

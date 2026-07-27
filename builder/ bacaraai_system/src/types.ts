@@ -44,6 +44,9 @@ export interface TableData {
     latestDetectedAt: string | null;
     error: string | null;
     gameNo?: number | null;
+    /** 관리자 셔플 중 — 게임·관리 화면 오버레이 */
+    shuffleActive?: boolean;
+    manualMode?: boolean;
   };
   roadmap: GameResult[][]; // 2D array for columns
   stats: TableStats;

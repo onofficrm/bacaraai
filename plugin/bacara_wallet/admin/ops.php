@@ -18,6 +18,12 @@ $ran = isset($_GET['ran']) ? (string) $_GET['ran'] : '';
 <?php bacara_wallet_admin_shell_start('운영 상태', '감지기 헬스 · pending 자동 정산 · 지갑/원장 대사를 한곳에서 확인합니다.'); ?>
 <?php bacara_wallet_admin_nav('ops'); ?>
 
+<p class="bw-notice" style="margin-bottom:12px">
+    테이블 결과를 수동 입력·셔플·새 게임으로 제어하려면
+    <a href="<?php echo htmlspecialchars(bacara_wallet_admin_url('live_control.php'), ENT_QUOTES, 'UTF-8'); ?>" style="color:#fbbf24;font-weight:700">라이브 테이블 제어</a>
+    화면을 사용하세요.
+</p>
+
 <?php if ($saved === '1') { ?>
     <p class="bw-notice">워커 토큰이 저장되었습니다.</p>
 <?php } ?>
