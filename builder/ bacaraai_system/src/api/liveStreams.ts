@@ -1,4 +1,5 @@
 import { PLATFORM_LINKS } from '../constants';
+import { buildTableHlsUrl, normalizeStreamKey } from '../utils/liveStreamUrl';
 
 export type LiveStreamInfo = {
   stream_url: string;
@@ -22,33 +23,43 @@ type OneStreamResponse = {
 };
 
 const cache = new Map<string, { at: number; info: LiveStreamInfo }>();
-const CACHE_MS = 30_000;
+const CACHE_MS = 15_000;
 
 export async function fetchTableStreamUrl(tableCode: string): Promise<LiveStreamInfo> {
-  const code = String(tableCode || '')
-    .trim()
-    .toUpperCase();
+  const code = normalizeStreamKey(tableCode);
   if (!code) return { stream_url: '', available: false };
 
   const hit = cache.get(code);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.info;
 
-  const q = new URLSearchParams({ table_name: code });
-  const res = await fetch(`${PLATFORM_LINKS.liveStreams}?${q}`, {
-    credentials: 'same-origin',
-    headers: { Accept: 'application/json' },
-    cache: 'no-store',
-  });
-  const data = (await res.json()) as OneStreamResponse;
-  if (!res.ok || !data.ok) {
-    throw new Error(data.message || '스트림 정보를 불러오지 못했습니다.');
+  const fallbackUrl = buildTableHlsUrl(code);
+
+  try {
+    const q = new URLSearchParams({ table_name: code });
+    const res = await fetch(`${PLATFORM_LINKS.liveStreams}?${q}`, {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    const data = (await res.json()) as OneStreamResponse;
+    if (!res.ok || !data.ok) {
+      // 로그인·API 장애 시에도 알려진 HLS 규칙으로 재생 시도
+      const info: LiveStreamInfo = { stream_url: fallbackUrl, available: Boolean(fallbackUrl) };
+      cache.set(code, { at: Date.now(), info });
+      return info;
+    }
+    const stream_url = data.stream_url || fallbackUrl;
+    const info: LiveStreamInfo = {
+      stream_url,
+      available: Boolean(stream_url),
+    };
+    cache.set(code, { at: Date.now(), info });
+    return info;
+  } catch {
+    const info: LiveStreamInfo = { stream_url: fallbackUrl, available: Boolean(fallbackUrl) };
+    cache.set(code, { at: Date.now(), info });
+    return info;
   }
-  const info: LiveStreamInfo = {
-    stream_url: data.stream_url || '',
-    available: Boolean(data.available && data.stream_url),
-  };
-  cache.set(code, { at: Date.now(), info });
-  return info;
 }
 
 export async function fetchAllStreamMap(): Promise<Record<string, LiveStreamInfo>> {
