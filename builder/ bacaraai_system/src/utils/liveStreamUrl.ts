@@ -7,32 +7,16 @@ export function normalizeStreamKey(gameCode: string): string {
     .toUpperCase();
 }
 
-/** https://media.aitablelive.com/{gameCode}/index.m3u8 */
+/** MediaMTX 공식 HLS 플레이어 페이지 (iframe용) */
+export function buildTablePlayerUrl(gameCode: string): string {
+  const key = normalizeStreamKey(gameCode);
+  if (!key) return '';
+  return `${LIVE_MEDIA_ORIGIN}/${encodeURIComponent(key)}/`;
+}
+
+/** HLS 플레이리스트 (참고/설정용 — 팝업 재생에는 사용하지 않음) */
 export function buildTableHlsUrl(gameCode: string): string {
   const key = normalizeStreamKey(gameCode);
   if (!key) return '';
   return `${LIVE_MEDIA_ORIGIN}/${encodeURIComponent(key)}/index.m3u8`;
-}
-
-/** 플레이리스트가 실제로 응답하는지 확인 (OBS 송출 여부) */
-export async function probeHlsPlaylist(
-  url: string,
-  signal?: AbortSignal,
-): Promise<{ ok: boolean; status: number }> {
-  if (!url) return { ok: false, status: 0 };
-  try {
-    const res = await fetch(url, {
-      method: 'GET',
-      mode: 'cors',
-      cache: 'no-store',
-      signal,
-      headers: { Accept: 'application/vnd.apple.mpegurl,application/x-mpegURL,*/*' },
-    });
-    if (!res.ok) return { ok: false, status: res.status };
-    const text = await res.text();
-    const ok = text.includes('#EXTM3U');
-    return { ok, status: res.status };
-  } catch {
-    return { ok: false, status: 0 };
-  }
 }

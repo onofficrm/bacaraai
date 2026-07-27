@@ -25,6 +25,7 @@ type OneStreamResponse = {
 const cache = new Map<string, { at: number; info: LiveStreamInfo }>();
 const CACHE_MS = 15_000;
 
+/** API 또는 기본 규칙으로 HLS URL만 조회 (재생은 MediaMTX iframe 사용) */
 export async function fetchTableStreamUrl(tableCode: string): Promise<LiveStreamInfo> {
   const code = normalizeStreamKey(tableCode);
   if (!code) return { stream_url: '', available: false };
@@ -42,13 +43,7 @@ export async function fetchTableStreamUrl(tableCode: string): Promise<LiveStream
       cache: 'no-store',
     });
     const data = (await res.json()) as OneStreamResponse;
-    if (!res.ok || !data.ok) {
-      // 로그인·API 장애 시에도 알려진 HLS 규칙으로 재생 시도
-      const info: LiveStreamInfo = { stream_url: fallbackUrl, available: Boolean(fallbackUrl) };
-      cache.set(code, { at: Date.now(), info });
-      return info;
-    }
-    const stream_url = data.stream_url || fallbackUrl;
+    const stream_url = (res.ok && data.ok && data.stream_url) || fallbackUrl;
     const info: LiveStreamInfo = {
       stream_url,
       available: Boolean(stream_url),
