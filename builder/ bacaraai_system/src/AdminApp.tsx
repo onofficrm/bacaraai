@@ -9,19 +9,30 @@ import { AnimatePresence, motion } from 'motion/react';
 import TableCard from './components/TableCard';
 import LiveStreamModal from './components/LiveStreamModal';
 import AdminControlPanel from './components/admin/AdminControlPanel';
+import AdminStreamConsole from './components/admin/AdminStreamConsole';
 import { MOCK_TABLES } from './data';
 import { useAdminLiveControl } from './hooks/useAdminLive';
 import useCompactLayout from './hooks/useCompactLayout';
+import useStreamStatus from './hooks/useStreamStatus';
 
 export default function AdminApp() {
   const compact = useCompactLayout();
   const [selectedTableId, setSelectedTableId] = useState<string>(MOCK_TABLES[0].id);
   const [liveStreamTableId, setLiveStreamTableId] = useState<string | null>(null);
   const ctrl = useAdminLiveControl(selectedTableId);
+  const { statuses: streamStatuses } = useStreamStatus(true);
   const liveStreamTable =
     ctrl.tables.find((t) => t.id === liveStreamTableId) ||
     MOCK_TABLES.find((t) => t.id === liveStreamTableId) ||
     null;
+
+  const openPreviewByCode = (tableCode: string) => {
+    const code = tableCode.toUpperCase();
+    const hit =
+      ctrl.tables.find((t) => t.gameCode === code) ||
+      MOCK_TABLES.find((t) => t.gameCode === code);
+    if (hit) setLiveStreamTableId(hit.id);
+  };
 
   return (
     <div className="min-h-dvh w-full bg-zinc-950 text-zinc-100 flex flex-col">
@@ -36,7 +47,7 @@ export default function AdminApp() {
           </h1>
         </div>
         <div className="text-right text-[11px] text-zinc-500">
-          {ctrl.loading ? '동기화 중…' : '감지=표시 · 1초 검증'}
+          {ctrl.loading ? '동기화 중…' : '감지=표시 · 스트림 관제'}
           {ctrl.error ? (
             <p className="text-rose-400 mt-0.5 max-w-[220px] truncate">{ctrl.error}</p>
           ) : null}
@@ -87,6 +98,11 @@ export default function AdminApp() {
                     isSelected={table.id === selectedTableId}
                     onSelect={setSelectedTableId}
                     onOpenLive={setLiveStreamTableId}
+                    streamOnline={
+                      streamStatuses[table.gameCode]
+                        ? streamStatuses[table.gameCode].online
+                        : null
+                    }
                   />
                 </motion.div>
               ))}
@@ -114,6 +130,10 @@ export default function AdminApp() {
             onToggleShuffle={ctrl.setShuffle}
             onResumeAuto={ctrl.resumeAuto}
           />
+          <AdminStreamConsole
+            selectedCode={ctrl.selectedCode}
+            onPreview={openPreviewByCode}
+          />
         </aside>
       </div>
 
@@ -121,6 +141,13 @@ export default function AdminApp() {
         open={Boolean(liveStreamTable)}
         tableName={liveStreamTable?.name || ''}
         tableCode={liveStreamTable?.gameCode || ''}
+        latestResultLabel={
+          liveStreamTable
+            ? `#${liveStreamTable.stats.currentRound || '-'} ${
+                liveStreamTable.stats.recentResults?.slice(-1)[0] || ''
+              }`.trim()
+            : undefined
+        }
         onClose={() => setLiveStreamTableId(null)}
       />
     </div>

@@ -8,6 +8,9 @@ export const PLATFORM_LINKS = {
   walletBetHistory: '/plugin/bacara_wallet/api/history.php',
   liveResults: '/plugin/bacara_wallet/api/live_results.php',
   liveStreams: '/plugin/bacara_wallet/api/live_streams.php',
+  streamViewer: '/plugin/bacara_wallet/api/stream_viewer.php',
+  streamStatus: '/plugin/bacara_wallet/api/stream_status.php',
+  adminStreams: '/plugin/bacara_wallet/api/admin_streams.php',
   aiAnalyze: '/plugin/bacara_wallet/api/ai_analyze.php',
   aiSessionReview: '/plugin/bacara_wallet/api/ai_session_review.php',
 };

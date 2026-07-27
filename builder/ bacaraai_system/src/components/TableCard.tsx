@@ -44,7 +44,9 @@ interface TableCardProps {
   onToggleFavorite?: (id: string, e: React.MouseEvent) => void;
   /** 테이블 라이브 스트림 팝업 */
   onOpenLive?: (id: string) => void;
-}
+  /** 서버 방송 상태 (true=ON, false=OFF, null/undefined=모름) */
+  streamOnline?: boolean | null;
+};
 
 function parseStreakCount(streak: string): number {
   const m = streak.match(/(\d+)\s*연속/);
@@ -69,6 +71,7 @@ export default function TableCard({
   onZoom,
   onToggleFavorite,
   onOpenLive,
+  streamOnline,
 }: TableCardProps) {
   const { reduced, enableRadar, intensity } = useFxIntensity();
   const [hitFlash, setHitFlash] = useState<'P' | 'B' | 'T' | null>(null);
@@ -689,15 +692,36 @@ export default function TableCard({
             {onOpenLive ? (
               <button
                 type="button"
-                className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-[10px] font-bold tracking-wide text-rose-200 bg-rose-500/15 border border-rose-400/40 hover:bg-rose-500/25 touch-manipulation"
+                className={`inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-[10px] font-bold tracking-wide touch-manipulation border ${
+                  streamOnline === true
+                    ? 'text-rose-100 bg-rose-500/25 border-rose-400/50 hover:bg-rose-500/35'
+                    : streamOnline === false
+                      ? 'text-zinc-400 bg-zinc-800/80 border-zinc-600 hover:bg-zinc-800'
+                      : 'text-rose-200 bg-rose-500/15 border-rose-400/40 hover:bg-rose-500/25'
+                }`}
                 onClick={(e) => {
                   e.stopPropagation();
                   playSfx('ui');
                   onOpenLive(table.id);
                 }}
                 aria-label="라이브 보기"
-                title="라이브 보기"
+                title={
+                  streamOnline === true
+                    ? '라이브 송출 중'
+                    : streamOnline === false
+                      ? '송출 없음 — 클릭하여 플레이어 열기'
+                      : '라이브 보기'
+                }
               >
+                <span
+                  className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                    streamOnline === true
+                      ? 'bg-emerald-400 animate-pulse'
+                      : streamOnline === false
+                        ? 'bg-zinc-500'
+                        : 'bg-rose-400/80'
+                  }`}
+                />
                 <Radio size={compact ? 12 : 13} className="shrink-0" />
                 라이브
               </button>

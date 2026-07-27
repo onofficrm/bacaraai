@@ -29,6 +29,7 @@ import { TableData } from './types';
 import TableToolbar, { SortOption, FilterOption } from './components/TableToolbar';
 import useBeginnerMode from './hooks/useBeginnerMode';
 import useSession from './hooks/useSession';
+import useStreamStatus from './hooks/useStreamStatus';
 import useLiveTable from './hooks/useLiveTable';
 import useCompactLayout from './hooks/useCompactLayout';
 import { getBettingRemainingSecForTable } from './hooks/useBettingWindow';
@@ -59,6 +60,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<ViewType>('multitable');
   const { beginnerMode, toggleBeginnerMode, setBeginnerMode } = useBeginnerMode();
   const compact = useCompactLayout();
+  const { statuses: streamStatuses } = useStreamStatus(true);
   const session = useSession();
   const wallet = useWallet();
   const availableBankroll = wallet.loggedIn
@@ -980,6 +982,11 @@ export default function App() {
                         onZoom={setZoomedTableId}
                         onToggleFavorite={toggleFavorite}
                         onOpenLive={openLiveStream}
+                        streamOnline={
+                          streamStatuses[table.gameCode]
+                            ? streamStatuses[table.gameCode].online
+                            : null
+                        }
                       />
                     </motion.div>
                     );
@@ -1101,6 +1108,13 @@ export default function App() {
         open={Boolean(liveStreamTable)}
         tableName={liveStreamTable?.name || ''}
         tableCode={liveStreamTable?.gameCode || ''}
+        latestResultLabel={
+          liveStreamTable
+            ? `#${liveStreamTable.stats.currentRound || '-'} ${
+                liveStreamTable.stats.recentResults?.slice(-1)[0] || ''
+              }`.trim()
+            : undefined
+        }
         onClose={() => setLiveStreamTableId(null)}
       />
       <StopSessionModal

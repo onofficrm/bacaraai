@@ -1,11 +1,12 @@
 <?php
 /**
- * 테이블 라이브 스트림 URL API (로그인 회원)
+ * 테이블 라이브 스트림 URL API (로그인 회원) — 하위 호환
  *
  * GET              → 전체 맵
- * GET table_name=MD2729 → 단일
+ * GET table_name=  → 단일
  */
 include_once dirname(__FILE__) . '/../../../common.php';
+include_once G5_LIB_PATH . '/bacara-streams.lib.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -21,79 +22,37 @@ if (empty($is_member) || empty($member['mb_id'])) {
     exit;
 }
 
-$cfg_file = G5_DATA_PATH . '/bacaraai-streams.config.php';
-/** 운영 중계 기본값 — config 없어도 테이블 코드로 HLS URL 생성 */
-$cfg = array(
-    'enabled' => true,
-    'url_template' => 'https://media.aitablelive.com/{STREAM_KEY}/index.m3u8',
-    'tables' => array(),
-);
-if (is_file($cfg_file)) {
-    $loaded = include $cfg_file;
-    if (is_array($loaded)) {
-        $cfg = array_merge($cfg, $loaded);
-    }
-}
-
+$cfg = bacara_streams_load_config();
 $enabled = !empty($cfg['enabled']);
-$template = isset($cfg['url_template']) ? trim((string) $cfg['url_template']) : '';
-$tables_cfg = isset($cfg['tables']) && is_array($cfg['tables']) ? $cfg['tables'] : array();
 
-$known = array(
-    'MD2729', 'MD2710', 'MD2711', 'MD2712', 'MD2713', 'MD2714', 'MD2715', 'MD2716',
-);
-
-/**
- * STREAM_KEY = 테이블 gameCode (OBS RTMP 경로와 동일)
- */
-function bacara_stream_resolve_url($table, $tables_cfg, $template)
-{
-    $table = strtoupper(trim((string) $table));
-    if (isset($tables_cfg[$table]) && trim((string) $tables_cfg[$table]) !== '') {
-        return trim((string) $tables_cfg[$table]);
-    }
-    if ($template !== '') {
-        return str_replace(
-            array(
-                '{STREAM_KEY}', '{stream_key}',
-                '{table}', '{TABLE}',
-                '{code}', '{CODE}',
-            ),
-            array(
-                $table, $table,
-                $table, $table,
-                $table, $table,
-            ),
-            $template
-        );
-    }
-    return '';
-}
-
-$one = isset($_GET['table_name']) ? strtoupper(trim((string) $_GET['table_name'])) : '';
+$one = isset($_GET['table_name']) ? bacara_streams_norm_code($_GET['table_name']) : '';
 if ($one !== '') {
     if (!preg_match('/^[A-Z0-9_-]{1,40}$/', $one)) {
         http_response_code(400);
         echo json_encode(array('ok' => false, 'message' => '잘못된 테이블 코드'), JSON_UNESCAPED_UNICODE);
         exit;
     }
-    $url = $enabled ? bacara_stream_resolve_url($one, $tables_cfg, $template) : '';
+    $url = $enabled ? bacara_streams_resolve_hls_url($one) : '';
     echo json_encode(array(
         'ok' => true,
         'enabled' => $enabled,
         'table_name' => $one,
         'stream_url' => $url,
+        'player_url' => $enabled ? bacara_streams_resolve_player_url($one, 'hls') : '',
         'available' => $url !== '',
+        'publish_key_configured' => bacara_streams_publish_key($one) !== $one,
     ), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 $streams = array();
-foreach ($known as $code) {
-    $url = $enabled ? bacara_stream_resolve_url($code, $tables_cfg, $template) : '';
+foreach (bacara_streams_known_codes() as $code) {
+    $url = $enabled ? bacara_streams_resolve_hls_url($code) : '';
     $streams[$code] = array(
         'stream_url' => $url,
+        'player_url' => $enabled ? bacara_streams_resolve_player_url($code, 'hls') : '',
         'available' => $url !== '',
+        'publish_key_configured' => bacara_streams_publish_key($code) !== $code,
     );
 }
 

@@ -66,7 +66,7 @@ async function readJson<T>(res: Response): Promise<T> {
   return data;
 }
 
-async function fetchAdminToken(): Promise<string> {
+export async function fetchAdminToken(): Promise<string> {
   if (typeof window === 'undefined') return '';
 
   const w = window as Window & {
