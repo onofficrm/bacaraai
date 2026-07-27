@@ -8,15 +8,10 @@ import {
   Minimize2,
   AlertTriangle,
   Loader2,
-  Gauge,
+  Info,
 } from 'lucide-react';
 import { playSfx } from '../audio/sfxEngine';
 import { fetchStreamViewerSession } from '../api/streamViewer';
-import {
-  loadLiveModePref,
-  saveLiveModePref,
-  type StreamPlayMode,
-} from '../utils/liveStreamUrl';
 
 type Props = {
   open: boolean;
@@ -28,7 +23,7 @@ type Props = {
 };
 
 /**
- * MediaMTX 공식 플레이어 iframe.
+ * MediaMTX 공식 플레이어 iframe (HLS 안정 재생 전용).
  * 재생 URL은 stream_viewer API에서만 발급 (클라이언트에서 gameCode로 조합하지 않음).
  */
 export default function LiveStreamModal({
@@ -40,7 +35,6 @@ export default function LiveStreamModal({
 }: Props) {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
-  const [mode, setMode] = useState<StreamPlayMode>(() => loadLiveModePref());
   const [playerUrl, setPlayerUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [iframeLoaded, setIframeLoaded] = useState(false);
@@ -58,7 +52,7 @@ export default function LiveStreamModal({
     setError(null);
     setIframeLoaded(false);
     try {
-      const session = await fetchStreamViewerSession(tableCode, mode);
+      const session = await fetchStreamViewerSession(tableCode, 'hls');
       setPlayerUrl(session.player_url || '');
       setOnline(session.status?.online ?? null);
       setStalled(Boolean(session.status?.stalled));
@@ -75,7 +69,7 @@ export default function LiveStreamModal({
     } finally {
       setLoading(false);
     }
-  }, [tableCode, mode]);
+  }, [tableCode]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,7 +98,7 @@ export default function LiveStreamModal({
       return;
     }
     void reloadSession();
-  }, [open, tableCode, mode, reloadSession]);
+  }, [open, tableCode, reloadSession]);
 
   useEffect(() => {
     const onFs = () => setIsFs(Boolean(document.fullscreenElement));
@@ -137,13 +131,6 @@ export default function LiveStreamModal({
     }
   };
 
-  const switchMode = (next: StreamPlayMode) => {
-    if (next === mode) return;
-    playSfx('ui');
-    saveLiveModePref(next);
-    setMode(next);
-  };
-
   if (!open) return null;
 
   return createPortal(
@@ -165,7 +152,7 @@ export default function LiveStreamModal({
               <Radio size={12} className={online && !stalled ? 'animate-pulse' : ''} />
               {online === false ? 'OFFLINE' : stalled ? 'STALL' : 'LIVE'}
               <span className="ml-1 font-medium normal-case tracking-normal text-zinc-500">
-                · {mode === 'webrtc' ? '빠른 재생' : '안정 재생'} · 약 {latencySec}초 지연
+                · 약 {latencySec}초 지연
               </span>
             </p>
             <h2 className="text-sm sm:text-base font-bold text-white truncate">
@@ -174,28 +161,6 @@ export default function LiveStreamModal({
             </h2>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <div className="hidden sm:flex items-center rounded-lg border border-zinc-700 overflow-hidden mr-1">
-              <button
-                type="button"
-                onClick={() => switchMode('hls')}
-                className={`px-2.5 py-1 text-[10px] font-bold ${
-                  mode === 'hls' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'
-                }`}
-                title="끊김이 적고 안정적입니다. 화면이 실제보다 몇 초 늦을 수 있습니다."
-              >
-                안정 재생
-              </button>
-              <button
-                type="button"
-                onClick={() => switchMode('webrtc')}
-                className={`px-2.5 py-1 text-[10px] font-bold ${
-                  mode === 'webrtc' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'
-                }`}
-                title="지연이 짧습니다. 서버 설정이 필요할 수 있습니다."
-              >
-                빠른 재생
-              </button>
-            </div>
             <button
               type="button"
               onClick={toggleFs}
@@ -279,43 +244,17 @@ export default function LiveStreamModal({
         </div>
 
         <div className="px-4 py-2.5 border-t border-zinc-800 space-y-1.5">
-          <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-500">
-            <span className="flex items-center gap-1 min-w-0">
-              <Gauge size={12} className="shrink-0" />
-              <span className="truncate">
-                예상 지연 ~{latencySec}초
-                {latestResultLabel ? ` · 감지 최신: ${latestResultLabel}` : ''}
-              </span>
+          <p className="flex items-start gap-1.5 text-[11px] text-zinc-400 leading-snug">
+            <Info size={13} className="shrink-0 mt-0.5 text-zinc-500" />
+            <span>
+              중계는 실제보다 약 {latencySec}초 늦을 수 있어요. 경기 결과에는 영향 없고, 참고용으로
+              봐 주세요.
+              {latestResultLabel ? (
+                <span className="text-zinc-600"> · 감지 최신: {latestResultLabel}</span>
+              ) : null}
             </span>
-            <span className="shrink-0 opacity-60">
-              {mode === 'webrtc' ? '빠른 재생' : '안정 재생'}
-            </span>
-          </div>
-          {syncNote ? <p className="text-[10px] text-zinc-600 leading-snug">{syncNote}</p> : null}
-          <div className="sm:hidden flex gap-1">
-            <button
-              type="button"
-              onClick={() => switchMode('hls')}
-              className={`flex-1 py-1.5 rounded text-[11px] font-bold border ${
-                mode === 'hls'
-                  ? 'border-zinc-500 bg-zinc-800 text-white'
-                  : 'border-zinc-700 text-zinc-400'
-              }`}
-            >
-              안정 재생
-            </button>
-            <button
-              type="button"
-              onClick={() => switchMode('webrtc')}
-              className={`flex-1 py-1.5 rounded text-[11px] font-bold border ${
-                mode === 'webrtc'
-                  ? 'border-zinc-500 bg-zinc-800 text-white'
-                  : 'border-zinc-700 text-zinc-400'
-              }`}
-            >
-              빠른 재생
-            </button>
-          </div>
+          </p>
+          {syncNote ? <p className="text-[10px] text-zinc-600 leading-snug pl-[19px]">{syncNote}</p> : null}
         </div>
       </div>
     </div>,
