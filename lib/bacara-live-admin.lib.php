@@ -312,6 +312,16 @@ if (!function_exists('bacara_live_admin_enable_manual')) {
                WHERE table_name = '{$safe}' ",
             false
         );
+
+        // 수동 전환 시점의 감지 tip 을 baseline 으로 고정 — 이후 감지 전진 시 자동 복귀
+        if (is_file(G5_LIB_PATH . '/bacara-live-integrity.lib.php')) {
+            include_once G5_LIB_PATH . '/bacara-live-integrity.lib.php';
+        }
+        if (function_exists('bacara_live_detector_tip') && function_exists('bacara_live_manual_baseline_set')) {
+            $tip = bacara_live_detector_tip($table_name);
+            $max_id = !empty($tip['ok']) ? (int) $tip['max_id'] : 0;
+            bacara_live_manual_baseline_set($table_name, $max_id);
+        }
         return true;
     }
 }
@@ -491,6 +501,12 @@ if (!function_exists('bacara_live_admin_disable_manual')) {
         );
         bacara_live_admin_audit($table_name, 'resume_auto', 'manual_mode=0', $admin_id);
         bacara_live_admin_invalidate_cache($table_name);
+        if (is_file(G5_LIB_PATH . '/bacara-live-integrity.lib.php')) {
+            include_once G5_LIB_PATH . '/bacara-live-integrity.lib.php';
+        }
+        if (function_exists('bacara_live_manual_baseline_clear')) {
+            bacara_live_manual_baseline_clear($table_name);
+        }
 
         return array(
             'ok' => true,

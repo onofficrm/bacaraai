@@ -623,6 +623,18 @@ export default function TableCard({
                     />
                     {table.live.connected ? 'LIVE' : table.live.loading ? '연결 중' : '연결 오류'}
                   </span>
+                  {table.live.syncWarning ? (
+                    <span
+                      title={table.live.syncWarning}
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-amber-400/50 bg-amber-500/15 text-amber-200 font-bold max-w-[140px] truncate"
+                    >
+                      동기화
+                    </span>
+                  ) : table.live.integritySynced === false ? (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded border border-rose-400/50 bg-rose-500/15 text-rose-200 font-bold">
+                      불일치
+                    </span>
+                  ) : null}
                   {!compact && table.live.gameNo != null && (
                     <span className="text-[10px] font-mono text-zinc-500">G{table.live.gameNo}</span>
                   )}

@@ -47,6 +47,11 @@ export interface TableData {
     /** 관리자 셔플 중 — 게임·관리 화면 오버레이 */
     shuffleActive?: boolean;
     manualMode?: boolean;
+    /** 서버 results_fp */
+    resultsFp?: string | null;
+    /** 감지↔표시 동기화 경고 */
+    syncWarning?: string | null;
+    integritySynced?: boolean;
   };
   roadmap: GameResult[][]; // 2D array for columns
   stats: TableStats;

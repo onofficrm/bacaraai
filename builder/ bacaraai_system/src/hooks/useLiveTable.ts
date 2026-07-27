@@ -10,6 +10,11 @@ import {
   recommendBetAmount,
   type RecommendBetContext,
 } from '../utils/recommendBetAmount';
+import {
+  verifyLiveFeedIntegrity,
+  type LiveFeedResponse,
+  type LiveIntegrity,
+} from '../utils/liveIntegrity';
 
 type LiveResultRow = {
   id: number;
@@ -19,15 +24,7 @@ type LiveResultRow = {
   detected_at: string;
 };
 
-type LiveResponse = {
-  ok: boolean;
-  message?: string;
-  table_name?: string;
-  game_no?: number | null;
-  latest_id?: number | null;
-  latest_detected_at?: string | null;
-  shuffle_active?: boolean;
-  manual_mode?: boolean;
+type LiveResponse = LiveFeedResponse & {
   results?: LiveResultRow[];
 };
 
@@ -61,6 +58,8 @@ type LiveState = {
   latestDetectedAt: string | null;
   shuffleActive: boolean;
   manualMode: boolean;
+  integrity: LiveIntegrity | null;
+  syncWarning: string | null;
   error: string | null;
 };
 
@@ -108,24 +107,6 @@ function currentStreak(results: GameResult[]): string {
   return `${decisive === 'P' ? 'Player' : 'Banker'} ${count}연속`;
 }
 
-/** API가 과거 슈를 섞어 줄 때를 대비해 game_no 감소 지점부터만 사용 */
-function trimToCurrentShoe(rows: LiveResultRow[]): LiveResultRow[] {
-  if (rows.length === 0) return rows;
-  const sorted = [...rows]
-    .filter((r): r is LiveResultRow => Boolean(r && typeof r.id === 'number'))
-    .sort((a, b) => a.id - b.id);
-  let start = 0;
-  let prevNo: number | null = null;
-  for (let i = 0; i < sorted.length; i += 1) {
-    const no = sorted[i].game_no ?? null;
-    if (prevNo !== null && no !== null && no > 0 && prevNo > 0 && no < prevNo) {
-      start = i;
-    }
-    if (no !== null && no > 0) prevNo = no;
-  }
-  return start === 0 ? sorted : sorted.slice(start);
-}
-
 /** 변경 감지용 경량 시그니처 (id·결과·개수) — 매 폴링 전체 문자열화 없이 안전 비교 */
 function buildRowsSignature(rows: LiveResultRow[]): string {
   if (rows.length === 0) return '0';
@@ -141,28 +122,6 @@ function buildRowsSignature(rows: LiveResultRow[]): string {
   const last = rows[rows.length - 1];
   if (!first?.id || !last?.id) return `${rows.length}`;
   return `${rows.length}:${first.id}:${last.id}:${last.result}:${checksum}`;
-}
-
-/** 같은 game_no 재감지는 연속 행만 최신으로 교체 (비연속 중복은 유지) */
-function dedupeByGameNo(rows: LiveResultRow[]): LiveResultRow[] {
-  if (rows.length === 0) return rows;
-  const sorted = [...rows]
-    .filter((r): r is LiveResultRow => Boolean(r && typeof r.id === 'number'))
-    .sort((a, b) => a.id - b.id);
-  const out: LiveResultRow[] = [];
-  for (const row of sorted) {
-    const no = row.game_no ?? 0;
-    if (no > 0 && out.length > 0) {
-      const prev = out[out.length - 1];
-      const prevNo = prev.game_no ?? 0;
-      if (prevNo === no) {
-        out[out.length - 1] = row;
-        continue;
-      }
-    }
-    out.push(row);
-  }
-  return out;
 }
 
 function fallbackModel(opinion: AiOpinion = 'WAIT'): AiModelAnalysis {
@@ -190,6 +149,8 @@ export default function useLiveTable(
     latestDetectedAt: null,
     shuffleActive: false,
     manualMode: false,
+    integrity: null,
+    syncWarning: null,
     error: null,
   });
   const [aiState, setAiState] = useState<AiState>({
@@ -246,25 +207,51 @@ export default function useLiveTable(
         }
         if (cancelled) return;
 
-        const rows = dedupeByGameNo(
-          trimToCurrentShoe(
-            (data.results || [])
-              .map((row) => ({
-                ...row,
-                result: String(row.result || '')
-                  .trim()
-                  .toUpperCase() as GameResult,
-              }))
-              .filter((row) => ['P', 'B', 'T'].includes(row.result)),
-          ),
-        );
+        // 서버가 이미 슈 정리·중복 제거한 결과를 그대로 표시 (클라이언트 재가공 금지)
+        const rows = (data.results || [])
+          .map((row) => ({
+            ...row,
+            id: Number(row.id),
+            result: String(row.result || '')
+              .trim()
+              .toUpperCase() as GameResult,
+            detected_at: String(row.detected_at || ''),
+            table_name: String(row.table_name || tableName),
+          }))
+          .filter(
+            (row) =>
+              Number.isFinite(row.id) &&
+              row.id > 0 &&
+              ['P', 'B', 'T'].includes(row.result),
+          )
+          .sort((a, b) => a.id - b.id);
+
+        const check = await verifyLiveFeedIntegrity({ ...data, results: rows });
+        if (!check.fpMatch) {
+          // 지문 불일치 → 이번 틱은 버리고 다음 폴링에서 재시도
+          setState((prev) => ({
+            ...prev,
+            loading: false,
+            connected: true,
+            syncWarning: check.message,
+            error: null,
+          }));
+          return;
+        }
+
         const latest = rows.length ? rows[rows.length - 1] : null;
         const nextGameNo = latest?.game_no ?? data.game_no ?? null;
         const nextLatestId = latest?.id ?? data.latest_id ?? null;
         const nextDetectedAt = latest?.detected_at ?? data.latest_detected_at ?? null;
+        const syncWarning =
+          check.healed
+            ? check.message || '감지 새 결과로 표시를 자동 복구했습니다.'
+            : !check.synced
+              ? check.message
+              : null;
 
-        // 데이터가 실제로 바뀐 경우에만 상태 갱신 — 2초마다 전체 재렌더/재계산 방지
-        const sig = `ok|${buildRowsSignature(rows)}|${nextGameNo ?? ''}|${nextLatestId ?? ''}`;
+        // 데이터가 실제로 바뀐 경우에만 상태 갱신
+        const sig = `ok|${buildRowsSignature(rows)}|${nextGameNo ?? ''}|${nextLatestId ?? ''}|${data.integrity?.results_fp || ''}|${syncWarning || ''}`;
         if (lastSyncSigRef.current === sig) {
           return;
         }
@@ -279,6 +266,8 @@ export default function useLiveTable(
           latestDetectedAt: nextDetectedAt,
           shuffleActive: Boolean(data.shuffle_active),
           manualMode: Boolean(data.manual_mode),
+          integrity: data.integrity || null,
+          syncWarning,
           error: null,
         });
       } catch (error) {
@@ -438,6 +427,9 @@ export default function useLiveTable(
           gameNo: state.gameNo,
           shuffleActive: state.shuffleActive,
           manualMode: state.manualMode,
+          resultsFp: state.integrity?.results_fp ?? null,
+          syncWarning: state.syncWarning,
+          integritySynced: state.integrity ? state.integrity.synced !== false : true,
         },
         roadmap: [],
         stats: {
@@ -530,6 +522,9 @@ export default function useLiveTable(
         gameNo: state.gameNo,
         shuffleActive: state.shuffleActive,
         manualMode: state.manualMode,
+        resultsFp: state.integrity?.results_fp ?? null,
+        syncWarning: state.syncWarning,
+        integritySynced: state.integrity ? state.integrity.synced !== false : true,
       },
       roadmap: buildRoadmap(results),
       stats: {

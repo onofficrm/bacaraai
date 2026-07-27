@@ -30,9 +30,12 @@ export default function AdminApp() {
           </h1>
         </div>
         <div className="text-right text-[11px] text-zinc-500">
-          {ctrl.loading ? '동기화 중…' : '1초 자동 갱신'}
+          {ctrl.loading ? '동기화 중…' : '감지=표시 · 1초 검증'}
           {ctrl.error ? (
-            <p className="text-rose-400 mt-0.5 max-w-[200px] truncate">{ctrl.error}</p>
+            <p className="text-rose-400 mt-0.5 max-w-[220px] truncate">{ctrl.error}</p>
+          ) : null}
+          {ctrl.toast ? (
+            <p className="text-amber-300 mt-0.5 max-w-[220px] truncate">{ctrl.toast}</p>
           ) : null}
         </div>
       </header>
@@ -41,6 +44,14 @@ export default function AdminApp() {
         <div className="shrink-0 px-4 pt-2">
           <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 text-center">
             {ctrl.toast}
+          </div>
+        </div>
+      ) : null}
+
+      {ctrl.selectedTable?.live?.syncWarning ? (
+        <div className="shrink-0 px-4 pt-2">
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 text-center">
+            {ctrl.selectedTable.live.syncWarning}
           </div>
         </div>
       ) : null}

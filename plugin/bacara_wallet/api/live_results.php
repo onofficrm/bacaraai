@@ -43,15 +43,32 @@ if (!preg_match('/^[A-Z0-9_-]{1,40}$/', $table_name)) {
 $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 800;
 $limit = max(1, min(1000, $limit));
 
-// 관리자 수동 모드 — 외부 DB 대신 G5 관리 테이블 결과 반환
+if (is_file(G5_LIB_PATH . '/bacara-live-integrity.lib.php')) {
+    include_once G5_LIB_PATH . '/bacara-live-integrity.lib.php';
+}
+
+// 관리자 수동 모드 — 단, 감지가 수동 전환 이후 새 결과를 내면 즉시 감지 피드로 복귀
+$live_sync_healed = false;
 if (is_file(G5_LIB_PATH . '/bacara-live-admin.lib.php')) {
     include_once G5_LIB_PATH . '/bacara-live-admin.lib.php';
     bacara_live_admin_install_tables();
     if (bacara_live_admin_is_manual($table_name)) {
-        $admin_payload = bacara_live_admin_build_payload($table_name, $limit);
-        if (is_array($admin_payload) && !empty($admin_payload['ok'])) {
-            bacara_live_output_payload($admin_payload, $member['mb_id'], 'admin');
-            exit;
+        $should_yield = function_exists('bacara_live_manual_should_yield_to_detector')
+            && bacara_live_manual_should_yield_to_detector($table_name);
+        if ($should_yield) {
+            bacara_live_admin_disable_manual($table_name, 'system-sync');
+            $live_sync_healed = true;
+            // 캐시에 수동 결과가 남아 있으면 감지로 복귀해도 옛 표시가 나갈 수 있음
+            if (function_exists('bacara_live_admin_invalidate_cache')) {
+                bacara_live_admin_invalidate_cache($table_name);
+            }
+            // fall through → 감지 DB
+        } else {
+            $admin_payload = bacara_live_admin_build_payload($table_name, $limit);
+            if (is_array($admin_payload) && !empty($admin_payload['ok'])) {
+                bacara_live_output_payload($admin_payload, $member['mb_id'], 'admin');
+                exit;
+            }
         }
     }
 }
@@ -87,6 +104,17 @@ function bacara_live_cached_payload($file, $max_age)
 
 function bacara_live_output_payload($payload, $member_id, $cache_state)
 {
+    global $live_sync_healed;
+    if (function_exists('bacara_live_attach_integrity')) {
+        $extra = array('policy' => !empty($payload['manual_mode']) ? 'manual_frozen' : 'detector');
+        if (!empty($live_sync_healed)) {
+            $extra['healed'] = true;
+            $extra['message'] = '감지 새 결과 감지 → 표시를 자동 감지 피드로 복구했습니다.';
+            $extra['synced'] = true;
+            $extra['policy'] = 'detector';
+        }
+        $payload = bacara_live_attach_integrity($payload, $extra);
+    }
     $payload['logged_in'] = true;
     $payload['member_id'] = $member_id;
     $payload['cache'] = $cache_state;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { PLATFORM_LINKS } from '../constants';
 import { MOCK_TABLES } from '../data';
 import type { GameResult, TableData } from '../types';
 import {
@@ -6,10 +7,13 @@ import {
   fetchAdminState,
   postAdminAction,
   type AdminAuditRow,
-  type AdminLivePayload,
-  type AdminLiveRow,
   type AdminTableOverview,
 } from '../api/adminLive';
+import {
+  verifyLiveFeedIntegrity,
+  type LiveFeedResponse,
+  type LiveIntegrity,
+} from '../utils/liveIntegrity';
 
 function buildRoadmap(results: GameResult[]): GameResult[][] {
   const columns: GameResult[][] = [];
@@ -39,92 +43,106 @@ function currentStreak(results: GameResult[]): string {
   return `${decisive === 'P' ? 'Player' : 'Banker'} ${count}연속`;
 }
 
-function normalizeRows(rows: AdminLiveRow[] | undefined): AdminLiveRow[] {
-  if (!Array.isArray(rows)) return [];
-  return rows.filter((r) => r && ['P', 'B', 'T'].includes(String(r.result || '').toUpperCase()));
-}
+type NormalizedLive = {
+  code: string;
+  rows: Array<{
+    id: number;
+    result: GameResult;
+    game_no?: number | null;
+    detected_at: string;
+  }>;
+  gameNo: number | null;
+  latestId: number | null;
+  latestDetectedAt: string | null;
+  shuffleActive: boolean;
+  manualMode: boolean;
+  source: string;
+  integrity: LiveIntegrity | null;
+  syncWarning: string | null;
+  error: string | null;
+};
 
-function tableFromPayload(
-  base: TableData,
-  payload: AdminLivePayload | null,
-  shuffleActive: boolean,
-  sourceLabel: string,
-): TableData {
-  const rows = normalizeRows(payload?.results);
-  const results = rows.map((r) => String(r.result).toUpperCase() as GameResult);
-  const gameNo = payload?.game_no ?? (results.length ? results.length : null);
-  const latestId = payload?.latest_id ?? (rows.length ? rows[rows.length - 1].id : null);
-  const manualMode = Boolean(payload?.manual_mode);
-  const appliedRule = shuffleActive
-    ? '셔플 중'
-    : manualMode
-      ? '관리자 수동 입력'
-      : sourceLabel === 'detector'
-        ? '자동 감지'
-        : '실시간';
-
-  if (!results.length) {
-    return {
-      ...base,
-      status: shuffleActive ? 'paused' : 'observing',
-      live: {
-        connected: true,
-        loading: false,
-        latestId,
-        latestDetectedAt: payload?.latest_detected_at ?? null,
-        error: payload?.detector_error || null,
-        gameNo: gameNo || null,
-        shuffleActive,
-        manualMode,
-      },
-      roadmap: [],
-      stats: {
-        ...base.stats,
-        player: 0,
-        banker: 0,
-        tie: 0,
-        currentStreak: shuffleActive ? '셔플 중' : '결과 대기',
-        shoeNumber: gameNo ? `G${gameNo}` : base.stats.shoeNumber,
-        currentRound: 0,
-        recentResults: [],
-        shoeProgress: 0,
-      },
-      ai: {
-        ...base.ai,
-        finalOpinion: 'WAIT',
-        consensus: manualMode ? '수동' : '감지',
-        appliedRule,
-        recommendedAmount: 0,
-        autoBetAllowed: false,
-        shadowMode: true,
-      },
-    };
+async function fetchCanonicalLive(tableCode: string): Promise<NormalizedLive> {
+  const query = new URLSearchParams({ table_name: tableCode, limit: '800' });
+  const res = await fetch(`${PLATFORM_LINKS.liveResults}?${query}`, {
+    credentials: 'same-origin',
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  });
+  const data = (await res.json()) as LiveFeedResponse;
+  if (!res.ok || !data.ok) {
+    throw new Error(data.message || `${tableCode} 라이브 조회 실패`);
   }
 
-  const player = results.filter((r) => r === 'P').length;
-  const banker = results.filter((r) => r === 'B').length;
-  const tie = results.filter((r) => r === 'T').length;
+  const rows = (data.results || [])
+    .map((row) => ({
+      id: Number(row.id),
+      result: String(row.result || '')
+        .trim()
+        .toUpperCase() as GameResult,
+      game_no: row.game_no ?? null,
+      detected_at: String(row.detected_at || ''),
+    }))
+    .filter((r) => Number.isFinite(r.id) && r.id > 0 && ['P', 'B', 'T'].includes(r.result))
+    .sort((a, b) => a.id - b.id);
+
+  const check = await verifyLiveFeedIntegrity({ ...data, results: rows });
+  if (!check.fpMatch) {
+    throw new Error(check.message || '결과 지문 불일치 — 재시도');
+  }
+
+  const latest = rows.length ? rows[rows.length - 1] : null;
+  return {
+    code: tableCode,
+    rows,
+    gameNo: latest?.game_no ?? data.game_no ?? null,
+    latestId: latest?.id ?? data.latest_id ?? null,
+    latestDetectedAt: latest?.detected_at ?? data.latest_detected_at ?? null,
+    shuffleActive: Boolean(data.shuffle_active),
+    manualMode: Boolean(data.manual_mode),
+    source: String(data.source || (data.manual_mode ? 'admin_manual' : 'detector')),
+    integrity: data.integrity || null,
+    syncWarning: check.healed
+      ? check.message || '감지 새 결과로 자동 복구됨'
+      : !check.synced
+        ? check.message
+        : null,
+    error: null,
+  };
+}
+
+function tableFromLive(base: TableData, live: NormalizedLive): TableData {
+  const results = live.rows.map((r) => r.result);
+  const gameNo = live.gameNo;
+  const appliedRule = live.shuffleActive
+    ? '셔플 중'
+    : live.manualMode
+      ? '관리자 수동 입력'
+      : '자동 감지(동일 피드)';
 
   return {
     ...base,
-    status: shuffleActive ? 'paused' : 'observing',
+    status: live.shuffleActive ? 'paused' : 'observing',
     live: {
-      connected: true,
+      connected: !live.error,
       loading: false,
-      latestId,
-      latestDetectedAt: payload?.latest_detected_at ?? null,
-      error: null,
-      gameNo: gameNo || null,
-      shuffleActive,
-      manualMode,
+      latestId: live.latestId,
+      latestDetectedAt: live.latestDetectedAt,
+      error: live.error,
+      gameNo,
+      shuffleActive: live.shuffleActive,
+      manualMode: live.manualMode,
+      resultsFp: live.integrity?.results_fp ?? null,
+      syncWarning: live.syncWarning,
+      integritySynced: live.integrity ? live.integrity.synced !== false : true,
     },
     roadmap: buildRoadmap(results),
     stats: {
       ...base.stats,
-      player,
-      banker,
-      tie,
-      currentStreak: shuffleActive ? '셔플 중' : currentStreak(results),
+      player: results.filter((r) => r === 'P').length,
+      banker: results.filter((r) => r === 'B').length,
+      tie: results.filter((r) => r === 'T').length,
+      currentStreak: live.shuffleActive ? '셔플 중' : currentStreak(results),
       shoeNumber: gameNo ? `G${gameNo}` : base.stats.shoeNumber,
       currentRound: typeof gameNo === 'number' ? gameNo : results.length,
       recentResults: results,
@@ -133,7 +151,7 @@ function tableFromPayload(
     ai: {
       ...base.ai,
       finalOpinion: 'WAIT',
-      consensus: manualMode ? '수동' : '감지',
+      consensus: live.manualMode ? '수동' : '감지',
       appliedRule,
       recommendedAmount: 0,
       autoBetAllowed: false,
@@ -142,26 +160,9 @@ function tableFromPayload(
   };
 }
 
-function overviewToPayload(ov: AdminTableOverview): AdminLivePayload {
-  return {
-    ok: true,
-    table_name: ov.table_name,
-    game_no: ov.game_no || null,
-    latest_id: ov.latest_id ?? null,
-    latest_detected_at: ov.latest_detected_at ?? null,
-    count: ov.count,
-    source: ov.source || (ov.manual_mode ? 'admin' : 'detector'),
-    manual_mode: ov.manual_mode,
-    shuffle_active: ov.shuffle_active,
-    results: normalizeRows(ov.results),
-  };
-}
-
 export function useAdminLiveControl(selectedTableId: string | null) {
   const [overview, setOverview] = useState<AdminTableOverview[]>([]);
-  const [payload, setPayload] = useState<AdminLivePayload | null>(null);
-  const [manualMode, setManualMode] = useState(false);
-  const [shuffleActive, setShuffleActive] = useState(false);
+  const [lives, setLives] = useState<Record<string, NormalizedLive>>({});
   const [audit, setAudit] = useState<AdminAuditRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -176,15 +177,48 @@ export function useAdminLiveControl(selectedTableId: string | null) {
 
   const refresh = useCallback(async () => {
     try {
+      // 1) 게임과 동일한 live_results 파이프 (표시=감지 보장)
+      const liveList = await Promise.all(
+        MOCK_TABLES.map(async (t) => {
+          try {
+            return await fetchCanonicalLive(t.gameCode);
+          } catch (e) {
+            return {
+              code: t.gameCode,
+              rows: [],
+              gameNo: null,
+              latestId: null,
+              latestDetectedAt: null,
+              shuffleActive: false,
+              manualMode: false,
+              source: 'error',
+              integrity: null,
+              syncWarning: null,
+              error: e instanceof Error ? e.message : '조회 실패',
+            } satisfies NormalizedLive;
+          }
+        }),
+      );
+      const liveMap: Record<string, NormalizedLive> = {};
+      liveList.forEach((l) => {
+        liveMap[l.code] = l;
+      });
+      setLives(liveMap);
+
+      // 2) 감사 로그·플래그 (선택 테이블)
       const [ov, st] = await Promise.all([
-        fetchAdminOverview(),
-        fetchAdminState(selectedCode),
+        fetchAdminOverview().catch(() => [] as AdminTableOverview[]),
+        fetchAdminState(selectedCode).catch(() => null),
       ]);
       setOverview(ov);
-      setPayload(st.payload);
-      setManualMode(st.manual_mode);
-      setShuffleActive(st.shuffle_active);
-      setAudit(st.audit);
+      if (st) setAudit(st.audit);
+
+      const healed = liveList.find((l) => l.syncWarning)?.syncWarning;
+      if (healed) {
+        setToast(healed);
+        window.setTimeout(() => setToast(null), 3600);
+      }
+
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : '불러오기 실패');
@@ -199,30 +233,56 @@ export function useAdminLiveControl(selectedTableId: string | null) {
     return () => window.clearInterval(id);
   }, [refresh]);
 
-  const tables = useMemo(() => {
-    const ovMap = new Map(overview.map((o) => [o.table_name, o]));
-    return MOCK_TABLES.map((base) => {
-      const ov = ovMap.get(base.gameCode);
-      const isSelected = base.id === (selectedTableId || MOCK_TABLES[0].id);
-      const source = ov?.source || (ov?.manual_mode ? 'admin' : 'detector');
-      let livePayload: AdminLivePayload | null = null;
-      let shuffle = Boolean(ov?.shuffle_active);
-
-      if (isSelected && payload) {
-        livePayload = payload;
-        shuffle = shuffleActive;
-      } else if (ov) {
-        livePayload = overviewToPayload(ov);
-      }
-
-      return tableFromPayload(base, livePayload, shuffle, source);
-    });
-  }, [overview, payload, shuffleActive, selectedTableId]);
+  const tables = useMemo(
+    () =>
+      MOCK_TABLES.map((base) => {
+        const live = lives[base.gameCode];
+        if (!live) {
+          return {
+            ...base,
+            status: 'observing' as const,
+            live: {
+              connected: false,
+              loading: true,
+              latestId: null,
+              latestDetectedAt: null,
+              error: null,
+              shuffleActive: false,
+              manualMode: false,
+            },
+            roadmap: [],
+            stats: {
+              ...base.stats,
+              player: 0,
+              banker: 0,
+              tie: 0,
+              currentStreak: '결과 대기',
+              currentRound: 0,
+              recentResults: [],
+              shoeProgress: 0,
+            },
+            ai: {
+              ...base.ai,
+              finalOpinion: 'WAIT' as const,
+              recommendedAmount: 0,
+              autoBetAllowed: false,
+              shadowMode: true,
+            },
+          };
+        }
+        return tableFromLive(base, live);
+      }),
+    [lives],
+  );
 
   const selectedTable = useMemo(
     () => tables.find((t) => t.id === (selectedTableId || MOCK_TABLES[0].id)) || tables[0],
     [tables, selectedTableId],
   );
+
+  const selectedLive = lives[selectedCode];
+  const manualMode = Boolean(selectedLive?.manualMode);
+  const shuffleActive = Boolean(selectedLive?.shuffleActive);
 
   const runAction = useCallback(
     async (
@@ -236,9 +296,9 @@ export function useAdminLiveControl(selectedTableId: string | null) {
           table_name: selectedCode,
           ...extra,
         });
-        if (res.payload) setPayload(res.payload);
         setToast(res.message || '완료');
         window.setTimeout(() => setToast(null), 2800);
+        // 변이 직후 반드시 live_results 재조회 (캐시 무효화 반영)
         await refresh();
         return res;
       } catch (e) {
