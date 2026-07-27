@@ -52,6 +52,8 @@ if (!function_exists('bacara_streams_default_config')) {
             'alert_offline_sec' => 90,
             /** 웹훅 URL (Slack/Telegram 등) — 비우면 로그만 */
             'alert_webhook' => '',
+            /** cron 워커 키 */
+            'watchdog_key' => '',
             /** MediaMTX HTTP API (선택) 예: http://127.0.0.1:9997 */
             'mediamtx_api' => '',
             /** 예상 지연 표시(초) */
@@ -61,23 +63,178 @@ if (!function_exists('bacara_streams_default_config')) {
     }
 }
 
+if (!function_exists('bacara_streams_config_path')) {
+    function bacara_streams_config_path()
+    {
+        return (defined('G5_DATA_PATH') ? G5_DATA_PATH : '') . '/bacaraai-streams.config.php';
+    }
+}
+
+if (!function_exists('bacara_streams_invalidate_config')) {
+    function bacara_streams_invalidate_config()
+    {
+        $GLOBALS['bacara_streams_cfg_cache'] = null;
+    }
+}
+
 if (!function_exists('bacara_streams_load_config')) {
     function bacara_streams_load_config()
     {
-        static $cached = null;
-        if (is_array($cached)) {
-            return $cached;
+        if (isset($GLOBALS['bacara_streams_cfg_cache']) && is_array($GLOBALS['bacara_streams_cfg_cache'])) {
+            return $GLOBALS['bacara_streams_cfg_cache'];
         }
         $cfg = bacara_streams_default_config();
-        $file = (defined('G5_DATA_PATH') ? G5_DATA_PATH : '') . '/bacaraai-streams.config.php';
+        $file = bacara_streams_config_path();
         if ($file && is_file($file)) {
             $loaded = include $file;
             if (is_array($loaded)) {
                 $cfg = array_merge($cfg, $loaded);
             }
         }
-        $cached = $cfg;
+        $GLOBALS['bacara_streams_cfg_cache'] = $cfg;
         return $cfg;
+    }
+}
+
+if (!function_exists('bacara_streams_export_config_php')) {
+    function bacara_streams_export_config_php($cfg)
+    {
+        $export = array(
+            'enabled' => !empty($cfg['enabled']),
+            'media_origin' => isset($cfg['media_origin']) ? (string) $cfg['media_origin'] : '',
+            'player_template' => isset($cfg['player_template']) ? (string) $cfg['player_template'] : '',
+            'hls_template' => isset($cfg['hls_template']) ? (string) $cfg['hls_template'] : '',
+            'webrtc_template' => isset($cfg['webrtc_template']) ? (string) $cfg['webrtc_template'] : '',
+            'url_template' => isset($cfg['url_template']) ? (string) $cfg['url_template'] : '',
+            'tables' => isset($cfg['tables']) && is_array($cfg['tables']) ? $cfg['tables'] : array(),
+            'publish_keys' => isset($cfg['publish_keys']) && is_array($cfg['publish_keys']) ? $cfg['publish_keys'] : array(),
+            'viewer_secret' => isset($cfg['viewer_secret']) ? (string) $cfg['viewer_secret'] : '',
+            'viewer_ttl' => isset($cfg['viewer_ttl']) ? (int) $cfg['viewer_ttl'] : 600,
+            'status_cache_ttl' => isset($cfg['status_cache_ttl']) ? (int) $cfg['status_cache_ttl'] : 12,
+            'alert_offline_sec' => isset($cfg['alert_offline_sec']) ? (int) $cfg['alert_offline_sec'] : 90,
+            'alert_webhook' => isset($cfg['alert_webhook']) ? (string) $cfg['alert_webhook'] : '',
+            'watchdog_key' => isset($cfg['watchdog_key']) ? (string) $cfg['watchdog_key'] : '',
+            'mediamtx_api' => isset($cfg['mediamtx_api']) ? (string) $cfg['mediamtx_api'] : '',
+            'latency_hls_sec' => isset($cfg['latency_hls_sec']) ? (int) $cfg['latency_hls_sec'] : 5,
+            'latency_webrtc_sec' => isset($cfg['latency_webrtc_sec']) ? (int) $cfg['latency_webrtc_sec'] : 1,
+        );
+        $php = "<?php\n";
+        $php .= "/**\n * Auto-saved by admin stream console\n * Do not commit secrets to git.\n */\n";
+        $php .= "if (!defined('_GNUBOARD_')) {\n    exit;\n}\n\n";
+        $php .= 'return ' . var_export($export, true) . ";\n";
+        return $php;
+    }
+}
+
+if (!function_exists('bacara_streams_save_config')) {
+    /**
+     * @param array $patch 부분 갱신 (publish_keys 는 병합)
+     * @return array{ok:bool,message?:string,path?:string}
+     */
+    function bacara_streams_save_config($patch)
+    {
+        if (!is_array($patch)) {
+            return array('ok' => false, 'message' => '잘못된 설정');
+        }
+        $cfg = bacara_streams_load_config();
+        $allowed = array(
+            'enabled', 'media_origin', 'player_template', 'hls_template', 'webrtc_template',
+            'url_template', 'tables', 'publish_keys', 'viewer_secret', 'viewer_ttl',
+            'status_cache_ttl', 'alert_offline_sec', 'alert_webhook', 'watchdog_key',
+            'mediamtx_api', 'latency_hls_sec', 'latency_webrtc_sec',
+        );
+        foreach ($allowed as $key) {
+            if (!array_key_exists($key, $patch)) {
+                continue;
+            }
+            if ($key === 'publish_keys' || $key === 'tables') {
+                if (!is_array($patch[$key])) {
+                    continue;
+                }
+                $merged = isset($cfg[$key]) && is_array($cfg[$key]) ? $cfg[$key] : array();
+                foreach ($patch[$key] as $k => $v) {
+                    $code = bacara_streams_norm_code($k);
+                    $val = trim((string) $v);
+                    if ($val === '' || $val === '__CLEAR__') {
+                        unset($merged[$code]);
+                    } else {
+                        if ($key === 'publish_keys' && !preg_match('/^[A-Za-z0-9_-]{4,64}$/', $val)) {
+                            return array('ok' => false, 'message' => 'publish_key 형식 오류: ' . $code);
+                        }
+                        $merged[$code] = $val;
+                    }
+                }
+                $cfg[$key] = $merged;
+            } else {
+                $cfg[$key] = $patch[$key];
+            }
+        }
+
+        $path = bacara_streams_config_path();
+        if ($path === '' || !defined('G5_DATA_PATH')) {
+            return array('ok' => false, 'message' => 'G5_DATA_PATH 없음');
+        }
+        $dir = dirname($path);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        $php = bacara_streams_export_config_php($cfg);
+        $tmp = $path . '.tmp.' . getmypid();
+        if (@file_put_contents($tmp, $php, LOCK_EX) === false) {
+            return array('ok' => false, 'message' => '설정 파일 쓰기 실패');
+        }
+        if (!@rename($tmp, $path)) {
+            @unlink($tmp);
+            return array('ok' => false, 'message' => '설정 파일 교체 실패');
+        }
+        @chmod($path, 0640);
+        bacara_streams_invalidate_config();
+        return array('ok' => true, 'path' => $path);
+    }
+}
+
+if (!function_exists('bacara_streams_generate_publish_key')) {
+    function bacara_streams_generate_publish_key()
+    {
+        try {
+            $hex = bin2hex(random_bytes(8));
+        } catch (Exception $e) {
+            $hex = substr(md5(uniqid((string) mt_rand(), true)), 0, 16);
+        }
+        return 'pub_' . $hex;
+    }
+}
+
+if (!function_exists('bacara_streams_admin_settings')) {
+    function bacara_streams_admin_settings()
+    {
+        $cfg = bacara_streams_load_config();
+        $keys = isset($cfg['publish_keys']) && is_array($cfg['publish_keys']) ? $cfg['publish_keys'] : array();
+        $out_keys = array();
+        foreach (bacara_streams_known_codes() as $code) {
+            $pub = isset($keys[$code]) ? (string) $keys[$code] : '';
+            $out_keys[$code] = array(
+                'publish_key' => $pub !== '' ? $pub : $code,
+                'is_custom' => $pub !== '',
+                'obs_server' => 'rtmp://media.aitablelive.com:1935/' . ($pub !== '' ? $pub : $code),
+            );
+        }
+        return array(
+            'ok' => true,
+            'enabled' => !empty($cfg['enabled']),
+            'media_origin' => isset($cfg['media_origin']) ? $cfg['media_origin'] : '',
+            'player_template' => isset($cfg['player_template']) ? $cfg['player_template'] : '',
+            'hls_template' => isset($cfg['hls_template']) ? $cfg['hls_template'] : '',
+            'webrtc_template' => isset($cfg['webrtc_template']) ? $cfg['webrtc_template'] : '',
+            'alert_webhook' => isset($cfg['alert_webhook']) ? $cfg['alert_webhook'] : '',
+            'alert_offline_sec' => isset($cfg['alert_offline_sec']) ? (int) $cfg['alert_offline_sec'] : 90,
+            'watchdog_key_set' => !empty($cfg['watchdog_key']),
+            'mediamtx_api' => isset($cfg['mediamtx_api']) ? $cfg['mediamtx_api'] : '',
+            'latency_hls_sec' => isset($cfg['latency_hls_sec']) ? (int) $cfg['latency_hls_sec'] : 5,
+            'latency_webrtc_sec' => isset($cfg['latency_webrtc_sec']) ? (int) $cfg['latency_webrtc_sec'] : 1,
+            'config_file_exists' => is_file(bacara_streams_config_path()),
+            'publish_keys' => $out_keys,
+        );
     }
 }
 

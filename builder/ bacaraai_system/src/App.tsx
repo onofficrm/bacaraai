@@ -1044,6 +1044,11 @@ export default function App() {
               onResumeAuto={session.resumeSession}
               onStopAuto={() => openStopReview('manual')}
               onOpenLive={openLiveStream}
+              streamOnline={
+                selectedTable && streamStatuses[selectedTable.gameCode]
+                  ? streamStatuses[selectedTable.gameCode].online
+                  : null
+              }
             />
           </>
         ) : activeView === 'insight' ? (

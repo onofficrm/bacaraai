@@ -148,6 +148,8 @@ interface RightPanelProps {
   onPauseAuto?: () => void;
   onResumeAuto?: () => void;
   onOpenLive?: (tableId: string) => void;
+  /** 서버 방송 상태 */
+  streamOnline?: boolean | null;
   onStopAuto?: () => void;
 }
 
@@ -180,6 +182,7 @@ export default function RightPanel({
   onResumeAuto,
   onStopAuto,
   onOpenLive,
+  streamOnline,
 }: RightPanelProps) {
   const [panelMode, setPanelMode] = useState<PanelMode>('manual');
   const [betAmount, setBetAmount] = useState<number>(10000);
@@ -953,8 +956,30 @@ export default function RightPanel({
                       playSfx('ui');
                       onOpenLive(table.id);
                     }}
-                    className="inline-flex items-center gap-0.5 min-h-[32px] px-1.5 text-[10px] font-bold text-rose-200 border border-rose-400/40 bg-rose-500/15 rounded-md touch-manipulation"
+                    className={`inline-flex items-center gap-0.5 min-h-[32px] px-1.5 text-[10px] font-bold rounded-md touch-manipulation border ${
+                      streamOnline === true
+                        ? 'text-rose-100 border-rose-400/50 bg-rose-500/25'
+                        : streamOnline === false
+                          ? 'text-zinc-400 border-zinc-600 bg-zinc-800/80'
+                          : 'text-rose-200 border-rose-400/40 bg-rose-500/15'
+                    }`}
+                    title={
+                      streamOnline === true
+                        ? '송출 중'
+                        : streamOnline === false
+                          ? '송출 없음'
+                          : '라이브'
+                    }
                   >
+                    <span
+                      className={`inline-block w-1.5 h-1.5 rounded-full ${
+                        streamOnline === true
+                          ? 'bg-emerald-400 animate-pulse'
+                          : streamOnline === false
+                            ? 'bg-zinc-500'
+                            : 'bg-rose-400/80'
+                      }`}
+                    />
                     <Radio size={11} />
                     라이브
                   </button>
@@ -1018,8 +1043,30 @@ export default function RightPanel({
                           playSfx('ui');
                           onOpenLive(table.id);
                         }}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold text-rose-200 bg-rose-500/15 border border-rose-400/40 hover:bg-rose-500/25 touch-manipulation"
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold touch-manipulation border ${
+                          streamOnline === true
+                            ? 'text-rose-100 bg-rose-500/25 border-rose-400/50 hover:bg-rose-500/35'
+                            : streamOnline === false
+                              ? 'text-zinc-400 bg-zinc-800/80 border-zinc-600 hover:bg-zinc-800'
+                              : 'text-rose-200 bg-rose-500/15 border-rose-400/40 hover:bg-rose-500/25'
+                        }`}
+                        title={
+                          streamOnline === true
+                            ? '송출 중'
+                            : streamOnline === false
+                              ? '송출 없음'
+                              : '라이브'
+                        }
                       >
+                        <span
+                          className={`inline-block w-1.5 h-1.5 rounded-full ${
+                            streamOnline === true
+                              ? 'bg-emerald-400 animate-pulse'
+                              : streamOnline === false
+                                ? 'bg-zinc-500'
+                                : 'bg-rose-400/80'
+                          }`}
+                        />
                         <Radio size={13} />
                         라이브
                       </button>
