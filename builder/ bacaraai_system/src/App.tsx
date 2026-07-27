@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import Header from './components/Header';
 import type { ViewType } from './components/TopNav';
 import SessionBar from './components/SessionBar';
@@ -12,6 +12,7 @@ import TableCard from './components/TableCard';
 import RightPanel from './components/RightPanel';
 import TableZoomModal from './components/TableZoomModal';
 import LiveStreamModal from './components/LiveStreamModal';
+import LiveWatchResultToast from './components/LiveWatchResultToast';
 import RuleCreationModal from './components/RuleCreationModal';
 import StopSessionModal from './components/StopSessionModal';
 import WinCelebration from './components/WinCelebration';
@@ -719,6 +720,25 @@ export default function App() {
     setLiveStreamTableId(id);
   };
 
+  const handleWinCelebrationDismiss = useCallback(() => {
+    const closed = session.winCelebration;
+    // ① 해당 테이블 포커스 → ② 플립(winTableFlip) → ③ 손익
+    if (closed?.tableId) {
+      setSelectedTableId(closed.tableId);
+      window.requestAnimationFrame(() => {
+        const el = document.querySelector(
+          `[data-table-id="${CSS.escape(closed.tableId)}"]`,
+        );
+        el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      });
+    }
+    session.clearWinCelebration(closed?.id);
+    if (closed?.source === 'auto' && closed.tableId) {
+      setAutoHitTableId(closed.tableId);
+      window.setTimeout(() => setAutoHitTableId(null), 1600);
+    }
+  }, [session]);
+
   const zoomedTable = useMemo(() => {
     return tables.find(t => t.id === zoomedTableId) || null;
   }, [zoomedTableId, tables]);
@@ -1123,6 +1143,20 @@ export default function App() {
         }
         onClose={() => setLiveStreamTableId(null)}
       />
+      {liveStreamTable ? (
+        <LiveWatchResultToast
+          liveTableId={liveStreamTable.id}
+          winCelebration={session.winCelebration}
+          lastManualResult={session.lastManualResult}
+          lastAutoResult={session.lastAutoResult}
+          onDismissWin={handleWinCelebrationDismiss}
+        />
+      ) : (
+        <WinCelebration
+          result={session.winCelebration}
+          onDismiss={handleWinCelebrationDismiss}
+        />
+      )}
       <StopSessionModal
         type={stopSessionType}
         sessionPnl={stopSessionPnl}
@@ -1140,27 +1174,6 @@ export default function App() {
           setStopSessionType(null);
           session.stopSession();
           sessionStartedAtRef.current = null;
-        }}
-      />
-      <WinCelebration
-        result={session.winCelebration}
-        onDismiss={() => {
-          const closed = session.winCelebration;
-          // ① 해당 테이블 포커스 → ② 플립(winTableFlip) → ③ 손익
-          if (closed?.tableId) {
-            setSelectedTableId(closed.tableId);
-            window.requestAnimationFrame(() => {
-              const el = document.querySelector(
-                `[data-table-id="${CSS.escape(closed.tableId)}"]`,
-              );
-              el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-            });
-          }
-          session.clearWinCelebration(closed?.id);
-          if (closed?.source === 'auto' && closed.tableId) {
-            setAutoHitTableId(closed.tableId);
-            window.setTimeout(() => setAutoHitTableId(null), 1600);
-          }
         }}
       />
       <GameFxChrome
