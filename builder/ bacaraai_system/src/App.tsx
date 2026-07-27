@@ -592,18 +592,19 @@ export default function App() {
     const stage = Math.min(Math.max(1, stageRaw), plan.maxMartin);
     if (stageRaw > plan.maxMartin) return;
     let betAmount = resolveBetAmountFromPlan(plan, stage);
-    // AI 전략 + 방향·금액 모드: 서버 AI 금액 우선
+    // AI 전략 + 방향·금액 모드: 서버 AI 금액 우선 (0이면 마틴/단계 유지)
     if (
       strategy === 'ai' &&
       (session.config.aiSuggestScope || 'side') === 'both' &&
       target.ai.recommendedAmount > 0
     ) {
-      betAmount = Math.min(
-        target.ai.recommendedAmount,
-        plan.maxBet > 0 ? plan.maxBet : target.ai.recommendedAmount,
-        availableBankroll > 0 ? availableBankroll : target.ai.recommendedAmount,
-      );
-      betAmount = Math.floor(betAmount / 1000) * 1000;
+      const caps = [target.ai.recommendedAmount];
+      if (plan.maxBet > 0) caps.push(plan.maxBet);
+      if (availableBankroll > 0) caps.push(availableBankroll);
+      const aiAmt = Math.floor(Math.min(...caps) / 1000) * 1000;
+      if (aiAmt >= 1000) {
+        betAmount = aiAmt;
+      }
     }
     if (betAmount <= 0) return;
     if (wallet.loggedIn && betAmount > wallet.balance) return;

@@ -314,7 +314,6 @@ export default function useLiveTable(
     if (!latestId || !state.connected) return;
     const runKey = `${latestId}:${analyzeKey}`;
     if (analyzedIdRef.current === runKey) return;
-    if (analyzeActive.current) return;
 
     let cancelled = false;
     analyzeActive.current = true;
@@ -367,13 +366,17 @@ export default function useLiveTable(
           error: error instanceof Error ? error.message : 'AI 분석 오류',
         }));
       } finally {
-        analyzeActive.current = false;
+        if (!cancelled) {
+          analyzeActive.current = false;
+        }
       }
     };
 
     void run();
     return () => {
+      // 스코프/한도 변경 시 이전 요청을 버리고 바로 재분석 가능하게
       cancelled = true;
+      analyzeActive.current = false;
     };
   }, [state.latestId, state.connected, tableName, analyzeKey, suggestScope, recommendCtx]);
 

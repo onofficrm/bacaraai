@@ -1247,10 +1247,10 @@ export default function RightPanel({
                         confidence={table.ai.finalConfidence}
                       />
                       <p className="text-[11px] text-zinc-500 mt-0.5">
-                        {isPassive
-                          ? '지금은 관망 추천입니다'
-                          : amountSuggestOn && table.ai.recommendedAmount > 0
-                            ? `AI 금액 ${table.ai.recommendedAmount.toLocaleString()}원`
+                        {amountSuggestOn && table.ai.recommendedAmount > 0
+                          ? `AI 금액 ${table.ai.recommendedAmount.toLocaleString()}원`
+                          : isPassive
+                            ? '지금은 관망 추천입니다'
                             : recommendedSide
                               ? '방향 추천 · 금액은 설정 따름'
                               : '참고용 추천입니다'}

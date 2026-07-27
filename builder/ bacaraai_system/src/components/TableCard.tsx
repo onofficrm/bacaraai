@@ -260,9 +260,9 @@ export default function TableCard({
   }
 
   const betProgress = betSec > 0 ? betSec / 30 : 0;
-  const amountText = isPassive
-    ? '-'
-    : table.ai.recommendedAmount > 0
+  // 금액만 모드는 방향 WAIT 여도 서버 금액이 있으면 표시
+  const amountText =
+    table.ai.recommendedAmount > 0
       ? `${table.ai.recommendedAmount.toLocaleString()}원`
       : '-';
   const aiModeLabel = table.ai.autoBetAllowed
