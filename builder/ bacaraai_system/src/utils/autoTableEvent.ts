@@ -88,8 +88,8 @@ function pendingBanner(bet: PendingBet, strategy: AutoBetStrategy): TableBetBann
     id: bet.id,
     tone: isAuto ? (strategy === 'pattern' ? 'pattern' : 'pending') : 'manual',
     badge: isAuto ? (strategy === 'pattern' ? '오토·패턴' : '오토') : '직접',
-    label: `BET ${bet.amount.toLocaleString()}`,
-    hint: `${side} · 결과 대기`,
+    label: `${side} · ${formatWon(bet.amount)} · 결과 대기`,
+    hint: '베팅 접수됨 · 결과 대기 중',
     amount: bet.amount,
     side,
   };
@@ -315,8 +315,8 @@ export function resolveAutoTableEvent(
           kind: 'signal',
           tone,
           label: sideHint
-            ? `${caseLabel} · ${sideHint} · BET ${betSec}s`
-            : `${caseLabel} · BET ${betSec}s`,
+            ? `${caseLabel} · ${sideHint} · 베팅 ${betSec}초`
+            : `${caseLabel} · 베팅 ${betSec}초`,
           badge,
           betSec,
           progress: betSec / BET_WINDOW_SEC,
@@ -340,7 +340,7 @@ export function resolveAutoTableEvent(
         return {
           kind: 'signal',
           tone,
-          label: `AI ${sideShort(opinion)}${conf} · BET ${betSec}s`,
+          label: `AI ${sideShort(opinion)}${conf} · 베팅 ${betSec}초`,
           badge,
           betSec,
           progress: betSec / BET_WINDOW_SEC,

@@ -216,10 +216,20 @@ export default function TableCard({
       compact ? 'p-2.5 gap-2' : 'p-3 sm:p-3.5 gap-2.5'
     } `;
   const hasBetMarker = betBanners.length > 0 || Boolean(settleBanner);
+  const pendingSide = (betBanners[0]?.side || '').toUpperCase();
+  const pendingRingCls =
+    pendingSide === 'BANKER' || pendingSide === 'B'
+      ? 'ring-2 ring-red-400/80 border-red-400/55 shadow-lg shadow-red-900/25 pending-wait-ring-b'
+      : pendingSide === 'TIE' || pendingSide === 'T'
+        ? 'ring-2 ring-emerald-400/80 border-emerald-400/55 shadow-lg shadow-emerald-900/25 pending-wait-ring-t'
+        : 'ring-2 ring-sky-400/80 border-sky-400/55 shadow-lg shadow-sky-900/25 pending-wait-ring-p';
   // 진행 중 베팅/정산이 선택 테두리보다 우선 — 어디에 걸었는지 유지
   if (isSelected && !hasBetMarker && !autoEvent) {
     cardClass +=
       ' ring-2 ring-amber-500 border-amber-500/60 shadow-lg shadow-amber-900/20 selected-pulse ';
+  } else if (betBanners.length > 0 && !autoEvent) {
+    cardClass += ` ${pendingRingCls} `;
+    if (isSelected) cardClass += ' selected-pulse ';
   } else if (isSelected && (hasBetMarker || autoEvent)) {
     cardClass +=
       ' ring-2 ring-sky-500/70 border-sky-500/50 shadow-lg shadow-sky-900/25 selected-pulse pending-wait-ring ';
@@ -387,7 +397,7 @@ export default function TableCard({
         )}
       </AnimatePresence>
 
-      {/* 베팅 시작 핀포인트 — 사이드 컬러 링 + BET 뱃지 */}
+      {/* 베팅 시작 핀포인트 — 사이드 컬러 링 + 한국어 상태 */}
       <AnimatePresence>
         {betStartBurst && (
           <motion.div
@@ -434,21 +444,33 @@ export default function TableCard({
               animate={{ scale: 1.8, opacity: 0 }}
               transition={{ duration: 0.65, ease: 'easeOut', delay: 0.04 }}
             />
-            <motion.span
-              className={`relative z-[1] text-sm sm:text-base font-black tracking-[0.28em] px-3 py-1 rounded-md border-2 bg-black/75 ${
+            <motion.div
+              className={`relative z-[1] text-center px-3 py-1.5 rounded-lg border-2 bg-black/80 ${
                 betStartBurst.side === 'P'
                   ? 'text-blue-100 border-blue-400/90 shadow-[0_0_22px_rgba(59,130,246,0.55)]'
                   : betStartBurst.side === 'B'
                     ? 'text-red-100 border-red-400/90 shadow-[0_0_22px_rgba(248,113,113,0.55)]'
                     : 'text-emerald-100 border-emerald-400/90 shadow-[0_0_22px_rgba(52,211,153,0.55)]'
               }`}
-              initial={{ scale: 1.35, opacity: 0, y: 6 }}
+              initial={{ scale: 1.2, opacity: 0, y: 6 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.92, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 420, damping: 20 }}
             >
-              BET
-            </motion.span>
+              <p className="text-[11px] sm:text-xs font-black tracking-tight">
+                {betStartBurst.side === 'P'
+                  ? 'Player'
+                  : betStartBurst.side === 'B'
+                    ? 'Banker'
+                    : 'Tie'}
+                {betBanners[0]?.amount
+                  ? ` · ${betBanners[0].amount.toLocaleString()}원`
+                  : ''}
+              </p>
+              <p className="text-[9px] sm:text-[10px] font-bold opacity-90 mt-0.5">
+                베팅 접수됨 · 결과 대기
+              </p>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -545,21 +567,30 @@ export default function TableCard({
                 const side = primary?.side || '';
                 const sideCls =
                   side === 'Banker' || side === 'B'
-                    ? 'text-red-300 bg-red-500/15 border-red-400/45'
+                    ? 'text-red-200 bg-red-500/15 border-red-400/45'
                     : side === 'Tie' || side === 'T'
-                      ? 'text-emerald-300 bg-emerald-500/15 border-emerald-400/45'
-                      : 'text-sky-300 bg-sky-500/15 border-sky-400/45';
+                      ? 'text-emerald-200 bg-emerald-500/15 border-emerald-400/45'
+                      : 'text-sky-200 bg-sky-500/15 border-sky-400/45';
+                const sideLabel =
+                  side === 'Banker' || side === 'B'
+                    ? 'Banker'
+                    : side === 'Tie' || side === 'T'
+                      ? 'Tie'
+                      : side === 'Player' || side === 'P'
+                        ? 'Player'
+                        : '';
                 const amt =
                   primary?.amount != null
-                    ? `BET ${primary.amount.toLocaleString()}`
-                    : primary?.label || '베팅 대기';
+                    ? `${primary.amount.toLocaleString()}원`
+                    : '';
                 return (
                   <span
-                    className={`text-[9px] font-black tracking-wide border px-1.5 py-0.5 rounded animate-pulse ${sideCls}`}
-                    title={primary?.hint || '결과 대기'}
+                    className={`text-[9px] font-black tracking-tight border px-1.5 py-0.5 rounded animate-pulse ${sideCls}`}
+                    title={primary?.hint || '베팅 접수됨 · 결과 대기'}
                   >
-                    {amt}
-                    {side ? ` · ${side === 'Player' ? 'P' : side === 'Banker' ? 'B' : 'T'}` : ''}
+                    {sideLabel || '베팅'}
+                    {amt ? ` · ${amt}` : ''}
+                    {' · 대기'}
                   </span>
                 );
               })()}
@@ -697,7 +728,7 @@ export default function TableCard({
 
       <div className="relative z-[2]">
         <Roadmap data={table.roadmap} results={table.stats.recentResults} size="sm" />
-        {/* betStart 연출(0.8s) 동안은 BET 뱃지만 — BetInOverlay 와 중앙 겹침 방지 */}
+        {/* betStart 연출(0.8s) 동안은 상태 뱃지만 — BetInOverlay 와 중앙 겹침 방지 */}
         {showBetFx && !showWinFlip && !autoHit && !betStartBurst && betBanners.length > 0 && (
           <BetInOverlay banners={betBanners} compact={compact} />
         )}
@@ -783,9 +814,30 @@ export default function TableCard({
         .pending-wait-ring {
           animation: pendingWaitRing 1.8s ease-in-out infinite;
         }
+        .pending-wait-ring-p {
+          animation: pendingWaitRingP 1.8s ease-in-out infinite;
+        }
+        .pending-wait-ring-b {
+          animation: pendingWaitRingB 1.8s ease-in-out infinite;
+        }
+        .pending-wait-ring-t {
+          animation: pendingWaitRingT 1.8s ease-in-out infinite;
+        }
         @keyframes pendingWaitRing {
           0%, 100% { box-shadow: 0 0 0 0 rgba(56,189,248,0.18); }
           50% { box-shadow: 0 0 0 5px rgba(56,189,248,0.1); }
+        }
+        @keyframes pendingWaitRingP {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(56,189,248,0.22); }
+          50% { box-shadow: 0 0 0 5px rgba(56,189,248,0.12); }
+        }
+        @keyframes pendingWaitRingB {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(248,113,113,0.22); }
+          50% { box-shadow: 0 0 0 5px rgba(248,113,113,0.12); }
+        }
+        @keyframes pendingWaitRingT {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.22); }
+          50% { box-shadow: 0 0 0 5px rgba(52,211,153,0.12); }
         }
         .bet-start-ring-p {
           animation: betStartRingP 0.8s ease-out forwards;
