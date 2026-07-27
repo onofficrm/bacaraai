@@ -1,6 +1,6 @@
 import { AlertTriangle, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
-import type { AdminAuditRow } from '../api/adminLive';
-import type { TableData } from '../types';
+import type { AdminAuditRow } from '../../api/adminLive';
+import type { TableData } from '../../types';
 
 type Props = {
   table: TableData;
