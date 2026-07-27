@@ -47,7 +47,7 @@ if (!function_exists('bacara_streams_default_config')) {
             /** 시청 세션 유효(초) */
             'viewer_ttl' => 600,
             /** 상태 캐시(초) — 브라우저 반복 probe 대신 서버 캐시 */
-            'status_cache_ttl' => 12,
+            'status_cache_ttl' => 15,
             /** offline 지속 시 알림 (초) */
             'alert_offline_sec' => 90,
             /** 웹훅 URL (Slack/Telegram 등) — 비우면 로그만 */
@@ -446,6 +446,24 @@ if (!function_exists('bacara_streams_cache_dir')) {
 if (!function_exists('bacara_streams_cache_get')) {
     function bacara_streams_cache_get($key, $ttl)
     {
+        $row = bacara_streams_cache_read($key);
+        if ($row === null) {
+            return null;
+        }
+        if ((time() - (int) $row['at']) > (int) $ttl) {
+            return null;
+        }
+        return $row['value'];
+    }
+}
+
+if (!function_exists('bacara_streams_cache_read')) {
+    /**
+     * TTL 무시하고 캐시 원본 읽기 (stale 허용용)
+     * @return array{at:int,value:mixed}|null
+     */
+    function bacara_streams_cache_read($key)
+    {
         $file = bacara_streams_cache_dir() . '/stream_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $key) . '.json';
         if (!is_file($file)) {
             return null;
@@ -458,10 +476,10 @@ if (!function_exists('bacara_streams_cache_get')) {
         if (!is_array($data) || !isset($data['at'], $data['value'])) {
             return null;
         }
-        if ((time() - (int) $data['at']) > (int) $ttl) {
-            return null;
-        }
-        return $data['value'];
+        return array(
+            'at' => (int) $data['at'],
+            'value' => $data['value'],
+        );
     }
 }
 
@@ -469,11 +487,17 @@ if (!function_exists('bacara_streams_cache_set')) {
     function bacara_streams_cache_set($key, $value)
     {
         $file = bacara_streams_cache_dir() . '/stream_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $key) . '.json';
-        @file_put_contents(
-            $file,
+        $tmp = $file . '.' . getmypid() . '.tmp';
+        $ok = @file_put_contents(
+            $tmp,
             json_encode(array('at' => time(), 'value' => $value), JSON_UNESCAPED_UNICODE),
             LOCK_EX
         );
+        if ($ok === false) {
+            @unlink($tmp);
+            return;
+        }
+        @rename($tmp, $file);
     }
 }
 
@@ -635,10 +659,45 @@ if (!function_exists('bacara_streams_status_for')) {
         if ($ttl < 5) {
             $ttl = 5;
         }
+        /** 갱신 중에도 허용하는 stale 최대 수명 */
+        $stale_max = max(45, $ttl * 5);
+
         if (!$force) {
             $hit = bacara_streams_cache_get('status_' . $code, $ttl);
             if (is_array($hit)) {
                 $hit['cached'] = true;
+                $hit['stale'] = false;
+                return $hit;
+            }
+        }
+
+        $lock_path = bacara_streams_cache_dir() . '/stream_status_' . preg_replace('/[^A-Z0-9_-]/', '_', $code) . '.lock';
+        $lock = @fopen($lock_path, 'c+');
+        $have_lock = false;
+        if ($lock) {
+            $have_lock = @flock($lock, LOCK_EX | LOCK_NB);
+            if (!$have_lock) {
+                // 다른 프로세스가 probe 중 → stale 즉시 반환 (썬더링 헐드 방지)
+                $row = bacara_streams_cache_read('status_' . $code);
+                if ($row && is_array($row['value']) && (time() - (int) $row['at']) <= $stale_max) {
+                    $stale = $row['value'];
+                    $stale['cached'] = true;
+                    $stale['stale'] = true;
+                    @fclose($lock);
+                    return $stale;
+                }
+                // stale 없으면 짧게 대기
+                $have_lock = @flock($lock, LOCK_EX);
+            }
+        }
+
+        if ($have_lock && !$force) {
+            $hit = bacara_streams_cache_get('status_' . $code, $ttl);
+            if (is_array($hit)) {
+                $hit['cached'] = true;
+                $hit['stale'] = false;
+                @flock($lock, LOCK_UN);
+                @fclose($lock);
                 return $hit;
             }
         }
@@ -687,7 +746,6 @@ if (!function_exists('bacara_streams_status_for')) {
                     $last_bytes_at = $now;
                 }
             } else {
-                // API 바이트 없으면 정지 판정 보류
                 $stall_since = null;
             }
         } else {
@@ -727,11 +785,113 @@ if (!function_exists('bacara_streams_status_for')) {
             'latency_hls_sec' => isset($cfg['latency_hls_sec']) ? (int) $cfg['latency_hls_sec'] : 5,
             'latency_webrtc_sec' => isset($cfg['latency_webrtc_sec']) ? (int) $cfg['latency_webrtc_sec'] : 1,
             'cached' => false,
+            'stale' => false,
         );
 
         bacara_streams_cache_set('status_' . $code, $status);
         bacara_streams_maybe_alert($status);
+
+        if ($lock && $have_lock) {
+            @flock($lock, LOCK_UN);
+        }
+        if ($lock) {
+            @fclose($lock);
+        }
         return $status;
+    }
+}
+
+if (!function_exists('bacara_streams_status_map')) {
+    /**
+     * 전체 테이블 상태 — 맵 단위 캐시 + 락으로 동시 갱신 1회만 수행
+     *
+     * @return array{statuses:array,generated_at:int,cached:bool,stale:bool}
+     */
+    function bacara_streams_status_map($force = false)
+    {
+        $cfg = bacara_streams_load_config();
+        $ttl = isset($cfg['status_cache_ttl']) ? (int) $cfg['status_cache_ttl'] : 12;
+        if ($ttl < 5) {
+            $ttl = 5;
+        }
+        $stale_max = max(60, $ttl * 6);
+        $cache_key = 'status_map_all';
+
+        if (!$force) {
+            $hit = bacara_streams_cache_get($cache_key, $ttl);
+            if (is_array($hit) && isset($hit['statuses']) && is_array($hit['statuses'])) {
+                return array(
+                    'statuses' => $hit['statuses'],
+                    'generated_at' => isset($hit['generated_at']) ? (int) $hit['generated_at'] : time(),
+                    'cached' => true,
+                    'stale' => false,
+                );
+            }
+        }
+
+        $lock_path = bacara_streams_cache_dir() . '/stream_status_map.lock';
+        $lock = @fopen($lock_path, 'c+');
+        $have_lock = false;
+        if ($lock) {
+            $have_lock = @flock($lock, LOCK_EX | LOCK_NB);
+            if (!$have_lock) {
+                $row = bacara_streams_cache_read($cache_key);
+                if ($row && is_array($row['value']) && isset($row['value']['statuses'])
+                    && (time() - (int) $row['at']) <= $stale_max) {
+                    @fclose($lock);
+                    return array(
+                        'statuses' => $row['value']['statuses'],
+                        'generated_at' => isset($row['value']['generated_at'])
+                            ? (int) $row['value']['generated_at']
+                            : (int) $row['at'],
+                        'cached' => true,
+                        'stale' => true,
+                    );
+                }
+                $have_lock = @flock($lock, LOCK_EX);
+            }
+        }
+
+        if ($have_lock && !$force) {
+            $hit = bacara_streams_cache_get($cache_key, $ttl);
+            if (is_array($hit) && isset($hit['statuses']) && is_array($hit['statuses'])) {
+                if ($lock) {
+                    @flock($lock, LOCK_UN);
+                    @fclose($lock);
+                }
+                return array(
+                    'statuses' => $hit['statuses'],
+                    'generated_at' => isset($hit['generated_at']) ? (int) $hit['generated_at'] : time(),
+                    'cached' => true,
+                    'stale' => false,
+                );
+            }
+        }
+
+        $statuses = array();
+        foreach (bacara_streams_known_codes() as $code) {
+            // 맵 갱신자가 이미 락을 쥐고 있으므로 개별 force 로 최신 probe
+            $statuses[$code] = bacara_streams_status_for($code, true);
+        }
+        $payload = array(
+            'statuses' => $statuses,
+            'generated_at' => time(),
+        );
+        bacara_streams_cache_set($cache_key, $payload);
+
+        if ($lock && $have_lock) {
+            @flock($lock, LOCK_UN);
+        }
+        if ($lock) {
+            @fclose($lock);
+        }
+
+        return array(
+            'statuses' => $statuses,
+            'generated_at' => $payload['generated_at'],
+            'cached' => false,
+            'stale' => false,
+        );
     }
 }
 
@@ -905,9 +1065,12 @@ if (!function_exists('bacara_streams_admin_overview')) {
     function bacara_streams_admin_overview($force = false)
     {
         $cfg = bacara_streams_load_config();
+        $map = bacara_streams_status_map($force);
         $rows = array();
         foreach (bacara_streams_known_codes() as $code) {
-            $st = bacara_streams_status_for($code, $force);
+            $st = isset($map['statuses'][$code]) && is_array($map['statuses'][$code])
+                ? $map['statuses'][$code]
+                : bacara_streams_status_for($code, $force);
             $pub = bacara_streams_publish_key($code);
             $rows[] = array(
                 'table_name' => $code,
@@ -915,11 +1078,11 @@ if (!function_exists('bacara_streams_admin_overview')) {
                 'stalled' => !empty($st['stalled']),
                 'stall_sec' => isset($st['stall_sec']) ? (int) $st['stall_sec'] : 0,
                 'bytes_received' => isset($st['bytes_received']) ? $st['bytes_received'] : null,
-                'checked_at' => $st['checked_at'],
-                'last_online_at' => $st['last_online_at'],
-                'offline_sec' => $st['offline_sec'],
-                'method' => $st['method'],
-                'http_status' => $st['http_status'],
+                'checked_at' => isset($st['checked_at']) ? $st['checked_at'] : time(),
+                'last_online_at' => isset($st['last_online_at']) ? $st['last_online_at'] : null,
+                'offline_sec' => isset($st['offline_sec']) ? $st['offline_sec'] : 0,
+                'method' => isset($st['method']) ? $st['method'] : '',
+                'http_status' => isset($st['http_status']) ? $st['http_status'] : 0,
                 'publish_key_masked' => strlen($pub) <= 4
                     ? str_repeat('*', strlen($pub))
                     : substr($pub, 0, 2) . str_repeat('*', max(0, strlen($pub) - 4)) . substr($pub, -2),
@@ -936,7 +1099,9 @@ if (!function_exists('bacara_streams_admin_overview')) {
             'media_origin' => isset($cfg['media_origin']) ? $cfg['media_origin'] : '',
             'alert_webhook_set' => !empty($cfg['alert_webhook']),
             'tables' => $rows,
-            'generated_at' => time(),
+            'generated_at' => isset($map['generated_at']) ? (int) $map['generated_at'] : time(),
+            'cached' => !empty($map['cached']),
+            'stale' => !empty($map['stale']),
         );
     }
 }

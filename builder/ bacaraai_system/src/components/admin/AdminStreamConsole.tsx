@@ -90,7 +90,7 @@ export default function AdminStreamConsole({ selectedCode, onPreview }: Props) {
 
   useEffect(() => {
     void load(false);
-    const id = window.setInterval(() => void load(false), 20_000);
+    const id = window.setInterval(() => void load(false), 25_000);
     return () => window.clearInterval(id);
   }, [load]);
 

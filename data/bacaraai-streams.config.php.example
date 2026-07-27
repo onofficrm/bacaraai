@@ -25,7 +25,7 @@ return array(
     'viewer_ttl' => 600,
     'use_proxy_player' => true,
 
-    'status_cache_ttl' => 12,
+    'status_cache_ttl' => 15,
     'alert_offline_sec' => 90,
     'stall_sec' => 45,
     'alert_webhook' => '',

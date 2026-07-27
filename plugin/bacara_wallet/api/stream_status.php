@@ -2,7 +2,7 @@
 /**
  * 서버 기반 방송 상태 API (로그인 회원)
  *
- * GET                 → 전체 테이블 상태
+ * GET                 → 전체 테이블 상태 (맵 캐시 + 락)
  * GET table_name=CODE → 단일
  * GET force=1         → 캐시 무시(관리/디버그)
  */
@@ -33,18 +33,21 @@ if ($one !== '') {
         exit;
     }
     $st = bacara_streams_status_for($one, $force);
-    echo json_encode(array('ok' => true, 'status' => $st), JSON_UNESCAPED_UNICODE);
+    echo json_encode(array(
+        'ok' => true,
+        'status' => $st,
+        'cached' => !empty($st['cached']),
+        'stale' => !empty($st['stale']),
+    ), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-$statuses = array();
-foreach (bacara_streams_known_codes() as $code) {
-    $statuses[$code] = bacara_streams_status_for($code, $force);
-}
-
+$map = bacara_streams_status_map($force);
 echo json_encode(array(
     'ok' => true,
-    'statuses' => $statuses,
-    'generated_at' => time(),
+    'statuses' => $map['statuses'],
+    'generated_at' => $map['generated_at'],
+    'cached' => !empty($map['cached']),
+    'stale' => !empty($map['stale']),
 ), JSON_UNESCAPED_UNICODE);
 exit;
