@@ -166,7 +166,7 @@ function ThickChip({
       initial={
         animate
           ? { y: -70, opacity: 0, scale: 0.4, rotate: leanDeg - 25 }
-          : false
+          : { y: 0, opacity: 1, scale: 1, rotate: leanDeg }
       }
       animate={{
         y: 0,
@@ -421,12 +421,17 @@ export default function BetInOverlay({ banners, compact = false }: Props) {
       setAnimate(false);
       return;
     }
+    // Strict Mode double-effect에서도 드롭 연출이 죽지 않도록,
+    // played 표시는 드롭이 끝난 뒤에만 기록한다.
     if (playedRef.current === runKey) {
       setAnimate(false);
       return;
     }
-    playedRef.current = runKey;
     setAnimate(true);
+    const t = window.setTimeout(() => {
+      playedRef.current = runKey;
+    }, 1300);
+    return () => window.clearTimeout(t);
   }, [runKey, reduced]);
 
   if (safeBanners.length === 0) return null;

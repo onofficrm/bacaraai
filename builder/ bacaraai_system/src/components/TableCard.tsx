@@ -92,6 +92,14 @@ export default function TableCard({
   const prevLockRef = useRef(false);
   const seenBetIdsRef = useRef<Set<string>>(new Set());
   const betStartBootRef = useRef(true);
+  const betStartTimerRef = useRef<number | null>(null);
+  const betBannersRef = useRef(betBanners);
+  betBannersRef.current = betBanners;
+  /** pending id 목록 — 배열 참조 변경마다 effect가 돌지 않도록 안정 키 */
+  const betBannerIdsKey = betBanners
+    .filter((b): b is TableBetBanner => Boolean(b && typeof b.id === 'string'))
+    .map((b) => b.id)
+    .join('|');
 
   const isPassive = ['WAIT', 'SKIP', 'PAUSE', 'STOP', 'ERROR', 'DATA_ERROR'].includes(
     table.ai.finalOpinion,
@@ -172,9 +180,10 @@ export default function TableCard({
   }, [autoLockOn, reduced, intensity, betBanners.length, betStartBurst]);
 
   // 베팅 시작(신규 pending) → 핀포인트 소리 + 사이드 링
+  // betBannerIdsKey 로만 감지 — pending 배열 참조가 매 틱 바뀌어도 타이머를 취소하지 않음
+  // (취소되면 betStartBurst 가 고정되어 BetInOverlay 칩 산이 영구 숨겨짐)
   useEffect(() => {
-    // 새로고침 복원 중 구버전/손상 항목이 있어도 카드 전체가 멈추지 않게 정리
-    const safeBanners = betBanners.filter(
+    const safeBanners = betBannersRef.current.filter(
       (b): b is TableBetBanner => Boolean(b && typeof b.id === 'string'),
     );
     const ids = safeBanners.map((b) => b.id);
@@ -186,6 +195,15 @@ export default function TableCard({
     const seen = seenBetIdsRef.current;
     const fresh = safeBanners.filter((b) => !seen.has(b.id));
     seenBetIdsRef.current = new Set(ids);
+
+    if (ids.length === 0) {
+      if (betStartTimerRef.current != null) {
+        window.clearTimeout(betStartTimerRef.current);
+        betStartTimerRef.current = null;
+      }
+      setBetStartBurst(null);
+      return;
+    }
     if (fresh.length === 0) return;
 
     const newest = fresh[fresh.length - 1];
@@ -203,9 +221,26 @@ export default function TableCard({
     setLockBurst(false);
     setBetStartBurst({ key: Date.now(), side });
     if (!reduced) playSfx('betStart');
-    const t = window.setTimeout(() => setBetStartBurst(null), 800);
-    return () => window.clearTimeout(t);
-  }, [betBanners, reduced]);
+    if (betStartTimerRef.current != null) {
+      window.clearTimeout(betStartTimerRef.current);
+    }
+    betStartTimerRef.current = window.setTimeout(() => {
+      betStartTimerRef.current = null;
+      setBetStartBurst(null);
+    }, 800);
+    // betBanners는 betBannerIdsKey 변경 시에만 최신 클로저로 읽힘
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 안정 키로 타이머 유지
+  }, [betBannerIdsKey, reduced]);
+
+  useEffect(
+    () => () => {
+      if (betStartTimerRef.current != null) {
+        window.clearTimeout(betStartTimerRef.current);
+        betStartTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   const lastResult = table.stats.recentResults[table.stats.recentResults.length - 1] ?? null;
   const lastResultLabel =
@@ -806,8 +841,8 @@ export default function TableCard({
 
       <div className="relative z-[2]">
         <Roadmap data={table.roadmap} results={table.stats.recentResults} size="sm" />
-        {/* betStart 연출(0.8s) 동안은 상태 뱃지만 — BetInOverlay 와 중앙 겹침 방지 */}
-        {showBetFx && !showWinFlip && !autoHit && !betStartBurst && betBanners.length > 0 && (
+        {/* 로드맵 위 칩 산 — betStart 링과 동시 표시(링은 카드 전체 z-26, 칩은 로드맵) */}
+        {showBetFx && !showWinFlip && !autoHit && betBanners.length > 0 && (
           <BetInOverlay banners={betBanners} compact={compact} />
         )}
         {showBetFx && !showWinFlip && !autoHit && betBanners.length === 0 && (

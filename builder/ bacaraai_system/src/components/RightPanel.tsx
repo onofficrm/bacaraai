@@ -1202,6 +1202,7 @@ export default function RightPanel({
                 {pendingBets.map((bet) => {
                   const cancelSec = cancelRemainingSecForBet(bet);
                   const canCancel = canCancelPendingBet(bet);
+                  const betTable = tables.find((t) => t.id === bet.tableId) ?? null;
                   return (
                     <li
                       key={bet.id}
@@ -1232,6 +1233,22 @@ export default function RightPanel({
                           </p>
                         )}
                       </div>
+                      {onOpenLive && !canCancel && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            playSfx('ui');
+                            onOpenLive(bet.tableId);
+                          }}
+                          className={`shrink-0 inline-flex items-center gap-0.5 font-bold text-rose-200 border border-rose-400/40 bg-rose-500/15 rounded-md touch-manipulation ${
+                            mobileQuick ? 'min-h-[36px] px-1.5 text-[10px]' : 'min-h-[40px] px-2 text-[11px]'
+                          }`}
+                          title={liveWatchLabelFor(betTable, bet)}
+                        >
+                          <Radio size={12} />
+                          라이브
+                        </button>
+                      )}
                       <button
                         type="button"
                         disabled={cancelling || !canCancel}
@@ -1258,16 +1275,30 @@ export default function RightPanel({
                   ? '접수 완료 · 테이블을 보면서 결과를 기다리세요'
                   : '핸들을 올려 베팅 콘솔을 펼치세요'}
               </p>
-              <button
-                type="button"
-                onClick={() => {
-                  playSfx('ui');
-                  setSheetCollapsed(false);
-                }}
-                className="mt-2 min-h-[40px] px-4 rounded-lg text-xs font-bold bg-sky-600 text-white touch-manipulation"
-              >
-                콘솔 펼치기
-              </button>
+              <div className="mt-2 flex gap-2 justify-center">
+                {onOpenLive && table && (isManualSettling || isAutoSettling) && (
+                  <PendingLiveWatchButton
+                    tableId={table.id}
+                    label={liveWatchLabelFor(table, manualPending || autoPending)}
+                    online={streamOnline}
+                    primary
+                    onOpen={onOpenLive}
+                    className="flex-1 !min-h-[40px] !text-xs"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSfx('ui');
+                    setSheetCollapsed(false);
+                  }}
+                  className={`min-h-[40px] px-4 rounded-lg text-xs font-bold bg-sky-600 text-white touch-manipulation ${
+                    onOpenLive && (isManualSettling || isAutoSettling) ? 'flex-1' : ''
+                  }`}
+                >
+                  콘솔 펼치기
+                </button>
+              </div>
             </div>
           ) : panelMode === 'manual' ? (
             <>
@@ -1459,35 +1490,70 @@ export default function RightPanel({
                       <span className="font-mono">{formatMoney(manualPending.amount)}</span>
                       <span className="text-sky-400 text-[12px] ml-1">접수</span>
                     </p>
-                    <p className="mt-2 text-[11px] text-zinc-500">
-                      {canCancelPendingBet(manualPending)
-                        ? `취소 가능 ${cancelRemainingSecForBet(manualPending)}초 · 왼쪽에서 다른 테이블을 선택해도 됩니다`
-                        : '취소 시간이 끝났습니다 · 다음 결과를 기다립니다'}
-                    </p>
-                    <div className="mt-3 flex gap-2 justify-center">
-                      {canCancelPendingBet(manualPending) && (
-                        <button
-                          type="button"
-                          disabled={cancelling}
-                          onClick={() => void handleCancelBet(manualPending.id)}
-                          className="min-h-[44px] px-4 rounded-lg text-sm font-bold text-rose-300 border border-rose-500/40 touch-manipulation"
-                        >
-                          베팅 취소
-                        </button>
-                      )}
-                      {!isDesktop && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSfx('ui');
-                            setSheetCollapsed(true);
-                          }}
-                          className="min-h-[44px] px-4 rounded-lg text-sm font-bold text-sky-200 border border-sky-500/40 touch-manipulation"
-                        >
-                          테이블 보기
-                        </button>
-                      )}
-                    </div>
+                    {(() => {
+                      const canCancel = canCancelPendingBet(manualPending);
+                      const liveLabel = liveWatchLabelFor(table, manualPending);
+                      return (
+                        <>
+                          <p className="mt-2 text-[11px] text-zinc-500">
+                            {canCancel
+                              ? `취소 가능 ${cancelRemainingSecForBet(manualPending)}초 · 왼쪽에서 다른 테이블을 선택해도 됩니다`
+                              : onOpenLive
+                                ? '취소 마감 · 라이브로 결과를 확인하세요'
+                                : '취소 시간이 끝났습니다 · 다음 결과를 기다립니다'}
+                          </p>
+                          <div className="mt-3 flex flex-col gap-2">
+                            {(canCancel || onOpenLive) && (
+                              <div className="flex gap-2 justify-center">
+                                {canCancel && (
+                                  <button
+                                    type="button"
+                                    disabled={cancelling}
+                                    onClick={() => void handleCancelBet(manualPending.id)}
+                                    className={`min-h-[44px] px-4 rounded-lg text-sm font-bold text-rose-300 border border-rose-500/40 touch-manipulation ${
+                                      onOpenLive ? 'flex-1' : ''
+                                    }`}
+                                  >
+                                    {cancelling ? '취소 중…' : '베팅 취소'}
+                                  </button>
+                                )}
+                                {onOpenLive && canCancel && (
+                                  <PendingLiveWatchButton
+                                    tableId={manualPending.tableId}
+                                    label={liveLabel}
+                                    online={streamOnline}
+                                    onOpen={onOpenLive}
+                                    className="flex-1"
+                                  />
+                                )}
+                                {onOpenLive && !canCancel && (
+                                  <PendingLiveWatchButton
+                                    tableId={manualPending.tableId}
+                                    label={liveLabel}
+                                    online={streamOnline}
+                                    primary
+                                    onOpen={onOpenLive}
+                                    className="w-full flex-1"
+                                  />
+                                )}
+                              </div>
+                            )}
+                            {!isDesktop && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  playSfx('ui');
+                                  setSheetCollapsed(true);
+                                }}
+                                className="min-h-[44px] px-4 rounded-lg text-sm font-bold text-sky-200 border border-sky-500/40 touch-manipulation"
+                              >
+                                테이블 보기
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               ) : (
@@ -2202,18 +2268,50 @@ export default function RightPanel({
                             {formatMoney(manualPending.amount)}
                           </p>
                         )}
-                        <button
-                          type="button"
-                          disabled={cancelling || !canCancelPendingBet(autoPending)}
-                          onClick={() => void handleCancelBet(autoPending.id)}
-                          className="w-full py-2 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-xs font-bold hover:bg-rose-500/25 disabled:opacity-50"
-                        >
-                          {cancelling
-                            ? '취소 중…'
-                            : canCancelPendingBet(autoPending)
-                              ? '오토 베팅 취소 (금액 반환)'
-                              : '취소 불가 (시간 마감)'}
-                        </button>
+                        {(() => {
+                          const canCancel = canCancelPendingBet(autoPending);
+                          const liveLabel = liveWatchLabelFor(table, autoPending);
+                          return (
+                            <div className="flex flex-col gap-2">
+                              {canCancel ? (
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={cancelling}
+                                    onClick={() => void handleCancelBet(autoPending.id)}
+                                    className={`py-2 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 text-xs font-bold hover:bg-rose-500/25 disabled:opacity-50 ${
+                                      onOpenLive ? 'flex-1' : 'w-full'
+                                    }`}
+                                  >
+                                    {cancelling ? '취소 중…' : '오토 베팅 취소 (금액 반환)'}
+                                  </button>
+                                  {onOpenLive && (
+                                    <PendingLiveWatchButton
+                                      tableId={autoPending.tableId}
+                                      label={liveLabel}
+                                      online={streamOnline}
+                                      onOpen={onOpenLive}
+                                      className="flex-1 !min-h-[40px] !text-xs"
+                                    />
+                                  )}
+                                </div>
+                              ) : onOpenLive ? (
+                                <PendingLiveWatchButton
+                                  tableId={autoPending.tableId}
+                                  label={liveLabel}
+                                  online={streamOnline}
+                                  primary
+                                  onOpen={onOpenLive}
+                                  className="w-full"
+                                />
+                              ) : (
+                                <p className="text-[10px] text-zinc-500 text-center">
+                                  취소 마감 · 결과 대기
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
 
@@ -2500,6 +2598,72 @@ export default function RightPanel({
     </>,
     document.body,
   );
+}
+
+/** 접수 완료·결과 대기 시 베팅 테이블 라이브 CTA */
+function PendingLiveWatchButton({
+  tableId,
+  label,
+  online = null,
+  primary = false,
+  onOpen,
+  className = '',
+}: {
+  tableId: string;
+  label: string;
+  online?: boolean | null;
+  primary?: boolean;
+  onOpen: (tableId: string) => void;
+  className?: string;
+}) {
+  const tone =
+    online === true
+      ? primary
+        ? 'bg-rose-600 text-white border-rose-400 shadow-[0_0_18px_rgba(225,29,72,0.35)]'
+        : 'text-rose-100 border-rose-400/55 bg-rose-500/25'
+      : online === false
+        ? primary
+          ? 'bg-zinc-800 text-zinc-300 border-zinc-600'
+          : 'text-zinc-400 border-zinc-600 bg-zinc-800/80'
+        : primary
+          ? 'bg-rose-600/90 text-white border-rose-400/70'
+          : 'text-rose-200 border-rose-400/45 bg-rose-500/20';
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        playSfx('ui');
+        onOpen(tableId);
+      }}
+      className={`inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 rounded-lg text-sm font-bold touch-manipulation border ${tone} ${className}`}
+      title={
+        online === true
+          ? '송출 중 · 라이브 보기'
+          : online === false
+            ? '송출 없음 · 그래도 열기'
+            : '베팅한 테이블 라이브'
+      }
+    >
+      <span
+        className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+          online === true
+            ? 'bg-emerald-400 animate-pulse'
+            : online === false
+              ? 'bg-zinc-500'
+              : 'bg-rose-300'
+        }`}
+      />
+      <Radio size={14} className="shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+function liveWatchLabelFor(table: TableData | null | undefined, bet?: PendingBet | null) {
+  const code = table?.gameCode || bet?.tableName?.match(/\(([^)]+)\)/)?.[1];
+  if (code) return `${code} 라이브`;
+  return '베팅 테이블 라이브';
 }
 
 function BetResultCard({
