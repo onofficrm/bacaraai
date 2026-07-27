@@ -22,9 +22,10 @@ if (empty($is_member) || empty($member['mb_id'])) {
 }
 
 $cfg_file = G5_DATA_PATH . '/bacaraai-streams.config.php';
+/** 운영 중계 기본값 — config 없어도 테이블 코드로 HLS URL 생성 */
 $cfg = array(
-    'enabled' => false,
-    'url_template' => '',
+    'enabled' => true,
+    'url_template' => 'https://media.aitablelive.com/{STREAM_KEY}/index.m3u8',
     'tables' => array(),
 );
 if (is_file($cfg_file)) {
@@ -42,6 +43,9 @@ $known = array(
     'MD2729', 'MD2710', 'MD2711', 'MD2712', 'MD2713', 'MD2714', 'MD2715', 'MD2716',
 );
 
+/**
+ * STREAM_KEY = 테이블 gameCode (OBS RTMP 경로와 동일)
+ */
 function bacara_stream_resolve_url($table, $tables_cfg, $template)
 {
     $table = strtoupper(trim((string) $table));
@@ -50,8 +54,16 @@ function bacara_stream_resolve_url($table, $tables_cfg, $template)
     }
     if ($template !== '') {
         return str_replace(
-            array('{table}', '{TABLE}', '{code}', '{CODE}'),
-            array($table, $table, $table, $table),
+            array(
+                '{STREAM_KEY}', '{stream_key}',
+                '{table}', '{TABLE}',
+                '{code}', '{CODE}',
+            ),
+            array(
+                $table, $table,
+                $table, $table,
+                $table, $table,
+            ),
             $template
         );
     }

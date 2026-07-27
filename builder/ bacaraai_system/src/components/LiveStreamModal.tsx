@@ -97,7 +97,15 @@ export default function LiveStreamModal({ open, tableName, tableCode, onClose }:
           hls.on(Hls.Events.MANIFEST_PARSED, onReady);
           hls.on(Hls.Events.ERROR, (_e, data) => {
             if (!data.fatal || cancelled) return;
-            setError('라이브 재생에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+            const offline =
+              data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
+              data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
+              data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR;
+            setError(
+              offline
+                ? '현재 이 테이블 방송이 송출되지 않습니다. OBS 송출 상태를 확인해 주세요.'
+                : '라이브 재생에 실패했습니다. 잠시 후 다시 시도해 주세요.',
+            );
             setLoading(false);
           });
         } else if (canNativeHls(el)) {
@@ -107,7 +115,7 @@ export default function LiveStreamModal({ open, tableName, tableCode, onClose }:
             'error',
             () => {
               if (cancelled) return;
-              setError('라이브 재생에 실패했습니다.');
+              setError('현재 이 테이블 방송이 송출되지 않거나 재생할 수 없습니다.');
               setLoading(false);
             },
             { once: true },
