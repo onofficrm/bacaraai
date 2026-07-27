@@ -9,10 +9,12 @@ import {
   martinRequiredCapital,
   nextBetAmount,
   parseMoneyInput,
+  sessionCutsReadyForAmount,
   strategyLabel,
   type SessionMode,
 } from '../hooks/useSession';
 import PatternCasesEditor from './PatternCasesEditor';
+import AiSuggestScopePicker from './AiSuggestScopePicker';
 import {
   formatAllPatternCases,
   normalizePatternCases,
@@ -91,13 +93,26 @@ export default function SessionModal({
       config.strategy !== 'pattern' ||
       config.patternTableScope !== 'selected' ||
       (config.patternTableIds && config.patternTableIds.length > 0);
-    return { targetSeed, stopSeed, martinNeed, needCapital, canDefend, patternOk, tableOk };
+    const scope = config.aiSuggestScope || 'side';
+    const amountScopeNeedsCuts = scope === 'amount' || scope === 'both';
+    const aiSuggestOk = !amountScopeNeedsCuts || sessionCutsReadyForAmount(config);
+    return {
+      targetSeed,
+      stopSeed,
+      martinNeed,
+      needCapital,
+      canDefend,
+      patternOk,
+      tableOk,
+      aiSuggestOk,
+      amountScopeNeedsCuts,
+    };
   }, [config]);
 
   if (!isOpen) return null;
 
   const start = (mode: SessionMode) => {
-    if (mode === 'live' && (!summary.patternOk || !summary.tableOk)) return;
+    if (mode === 'live' && (!summary.patternOk || !summary.tableOk || !summary.aiSuggestOk)) return;
     playSfx('sessionStart');
     if (mode === 'shadow') window.setTimeout(() => playSfx('shuffle'), 280);
     onStart(mode, config);
@@ -258,10 +273,19 @@ export default function SessionModal({
             )}
 
             {config.strategy === 'ai' && (
-              <p className="text-[11px] text-zinc-500 leading-relaxed rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
-                8개 테이블을 감시하다가, AI가 Player/Banker를 추천한 테이블에 자동 베팅합니다.
+              <p className="text-[11px] text-zinc-500 leading-relaxed rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 mb-3">
+                8개 테이블을 감시하다가, AI가 추천한 테이블에 자동 베팅합니다.
               </p>
             )}
+
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-3">
+              <AiSuggestScopePicker
+                config={config}
+                onChange={(aiSuggestScope) =>
+                  setConfig((prev) => ({ ...prev, aiSuggestScope }))
+                }
+              />
+            </div>
           </div>
 
           {/* Amount progress */}
@@ -586,6 +610,17 @@ export default function SessionModal({
 
           <div className="flex flex-col gap-4 text-sm flex-1">
             <SummaryRow label="전략" value={strategyLabel(config.strategy)} valueColor="text-amber-300" />
+            <SummaryRow
+              label="AI 추천"
+              value={
+                (config.aiSuggestScope || 'side') === 'amount'
+                  ? '금액만'
+                  : (config.aiSuggestScope || 'side') === 'both'
+                    ? '방향+금액'
+                    : '방향만'
+              }
+              valueColor="text-indigo-300"
+            />
             {config.strategy === 'pattern' && (
               <>
                 <SummaryRow
@@ -665,6 +700,11 @@ export default function SessionModal({
               {!summary.tableOk && config.strategy === 'pattern' && (
                 <p className="text-xs mt-2 text-rose-300">특정 테이블을 1개 이상 선택해 주세요.</p>
               )}
+              {!summary.aiSuggestOk && (
+                <p className="text-xs mt-2 text-rose-300">
+                  금액 AI 분석을 쓰려면 윈컷(양수)·로스컷(음수)을 설정하세요.
+                </p>
+              )}
             </div>
           </div>
 
@@ -686,7 +726,12 @@ export default function SessionModal({
             <button
               type="button"
               onClick={() => start('live')}
-              disabled={!summary.canDefend || !summary.patternOk || !summary.tableOk}
+              disabled={
+                !summary.canDefend ||
+                !summary.patternOk ||
+                !summary.tableOk ||
+                !summary.aiSuggestOk
+              }
               className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-zinc-950 rounded-lg font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
             >
               {liveLabel}

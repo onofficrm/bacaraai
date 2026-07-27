@@ -16,6 +16,8 @@ import {
   modeLabel,
   resolveBetAmount,
   strategyLabel,
+  aiAmountSuggestEnabled,
+  aiSideSuggestEnabled,
   type BetSide,
   type LastBetResult,
   type PendingBet,
@@ -24,6 +26,7 @@ import {
   type SessionStatus,
 } from '../hooks/useSession';
 import PatternCasesEditor from './PatternCasesEditor';
+import AiSuggestScopePicker from './AiSuggestScopePicker';
 import { formatAllPatternCases } from '../utils/patternMatch';
 import ChipBetStage, {
   amountToStack,
@@ -267,16 +270,23 @@ export default function RightPanel({
     [isDesktop, panelMode, table, bettingWindow.canPlaceBet, scrollPanelTo],
   );
 
+  const sideSuggestOn = sessionConfig
+    ? aiSideSuggestEnabled(sessionConfig)
+    : true;
+  const amountSuggestOn = sessionConfig
+    ? aiAmountSuggestEnabled(sessionConfig)
+    : false;
+
   const recommendedSide: BetSide | null =
-    table?.ai.finalOpinion === 'PLAYER'
+    sideSuggestOn && table?.ai.finalOpinion === 'PLAYER'
       ? 'PLAYER'
-      : table?.ai.finalOpinion === 'BANKER'
+      : sideSuggestOn && table?.ai.finalOpinion === 'BANKER'
         ? 'BANKER'
         : null;
 
   React.useEffect(() => {
     const preferred =
-      (table?.ai?.recommendedAmount ?? 0) > 0
+      amountSuggestOn && (table?.ai?.recommendedAmount ?? 0) > 0
         ? table!.ai.recommendedAmount
         : suggestedBet > 0
           ? suggestedBet
@@ -286,9 +296,9 @@ export default function RightPanel({
     setFlyers([]);
     setChipCelebrating(false);
     setSelectedSide(
-      table?.ai.finalOpinion === 'BANKER'
+      sideSuggestOn && table?.ai.finalOpinion === 'BANKER'
         ? 'BANKER'
-        : table?.ai.finalOpinion === 'PLAYER'
+        : sideSuggestOn && table?.ai.finalOpinion === 'PLAYER'
           ? 'PLAYER'
           : 'PLAYER',
     );
@@ -313,7 +323,7 @@ export default function RightPanel({
       ? `${table.id}:${table.live?.latestId ?? table.stats.recentResults.length}`
       : null;
     settledResultIdRef.current = null;
-  }, [table?.id, isDesktop]);
+  }, [table?.id, isDesktop, amountSuggestOn, sideSuggestOn]);
 
   React.useEffect(() => {
     return () => {
@@ -329,14 +339,19 @@ export default function RightPanel({
       setChipCelebrating(false);
       setBetError(null);
       setBurstKey((k) => k + 1);
-      if (t.ai.finalOpinion === 'BANKER' || t.ai.finalOpinion === 'PLAYER') {
+      if (
+        sideSuggestOn &&
+        (t.ai.finalOpinion === 'BANKER' || t.ai.finalOpinion === 'PLAYER')
+      ) {
         setSelectedSide(t.ai.finalOpinion === 'BANKER' ? 'BANKER' : 'PLAYER');
       }
       setSidePicked(false);
-      const rec = t.ai.recommendedAmount ?? 0;
+      const rec = amountSuggestOn ? t.ai.recommendedAmount ?? 0 : 0;
       const actionable =
         rec > 0 &&
-        (t.ai.finalOpinion === 'PLAYER' || t.ai.finalOpinion === 'BANKER');
+        (!sideSuggestOn ||
+          t.ai.finalOpinion === 'PLAYER' ||
+          t.ai.finalOpinion === 'BANKER');
       if (actionable) {
         const next = Math.max(0, Math.min(rec, maxBet, availableBankroll || rec));
         setBetAmount(next);
@@ -345,13 +360,17 @@ export default function RightPanel({
         // 칩 0원이면 확정 불가 → 기본 금액으로 복구
         const fallback = Math.max(
           1000,
-          Math.min(t.ai.recommendedAmount || 10000, maxBet, availableBankroll || 10000),
+          Math.min(
+            (amountSuggestOn ? t.ai.recommendedAmount : 0) || 10000,
+            maxBet,
+            availableBankroll || 10000,
+          ),
         );
         setBetAmount(fallback);
         setChipStack(amountToStack(fallback));
       }
     },
-    [maxBet, availableBankroll],
+    [maxBet, availableBankroll, sideSuggestOn, amountSuggestOn],
   );
 
   // 새 게임 결과 → 칩/금액 자동 초기화 (다음 회차 AI 추천이 있으면 그 금액만 채움)
@@ -587,7 +606,7 @@ export default function RightPanel({
       setSidePicked(true);
     }
     const amount =
-      table.ai.recommendedAmount > 0
+      amountSuggestOn && table.ai.recommendedAmount > 0
         ? table.ai.recommendedAmount
         : suggestedBet > 0
           ? suggestedBet
@@ -596,12 +615,14 @@ export default function RightPanel({
     setBetAmount(next);
     setChipStack(amountToStack(next));
     setBurstKey((k) => k + 1);
-    setManualStep(recommendedSide ? 3 : 1);
-    setBetError(
-      recommendedSide
-        ? null
-        : '지금은 AI 관망입니다. 베팅할 곳을 직접 선택해 주세요.',
-    );
+    setManualStep(recommendedSide ? 3 : 2);
+    if (recommendedSide) {
+      setBetError(null);
+    } else if (amountSuggestOn && table.ai.recommendedAmount > 0) {
+      setBetError('금액만 AI 추천입니다. 베팅할 곳을 선택해 주세요.');
+    } else {
+      setBetError('지금은 AI 관망입니다. 베팅할 곳을 직접 선택해 주세요.');
+    }
   };
 
   const afterBetBalance = Math.max(0, availableBankroll - betAmount);
@@ -1228,12 +1249,16 @@ export default function RightPanel({
                       <p className="text-[11px] text-zinc-500 mt-0.5">
                         {isPassive
                           ? '지금은 관망 추천입니다'
-                          : table.ai.recommendedAmount > 0
-                            ? `추천 금액 ${table.ai.recommendedAmount.toLocaleString()}원`
-                            : '참고용 추천입니다'}
+                          : amountSuggestOn && table.ai.recommendedAmount > 0
+                            ? `AI 금액 ${table.ai.recommendedAmount.toLocaleString()}원`
+                            : recommendedSide
+                              ? '방향 추천 · 금액은 설정 따름'
+                              : '참고용 추천입니다'}
                       </p>
                     </div>
-                    {recommendedSide && !isRisk && (
+                    {(recommendedSide ||
+                      (amountSuggestOn && table.ai.recommendedAmount > 0)) &&
+                      !isRisk && (
                       <button
                         type="button"
                         onClick={applyRecommendedBet}
@@ -1891,10 +1916,16 @@ export default function RightPanel({
 
                           {draft.strategy === 'ai' && (
                             <p className="text-[11px] text-zinc-500 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
-                              AI가 Player/Banker를 추천한 테이블에 자동 베팅합니다.
+                              AI가 추천한 테이블에 자동 베팅합니다.
                               패턴으로 바꾸려면 위 <strong className="text-zinc-300">내가 만든 패턴</strong>을 누르세요.
                             </p>
                           )}
+
+                          <AiSuggestScopePicker
+                            compact
+                            config={draft}
+                            onChange={(aiSuggestScope) => patch({ aiSuggestScope })}
+                          />
                         </div>
                       );
                     })()}

@@ -504,28 +504,74 @@ if (!function_exists('bacara_ai_parse_model_json')) {
                 }
             }
         }
+        $amount = 0;
+        if (isset($data['amount'])) {
+            $amount = (int) $data['amount'];
+        } elseif (isset($data['bet_amount'])) {
+            $amount = (int) $data['bet_amount'];
+        }
+        if ($amount > 0) {
+            // 1천 단위 반올림
+            $amount = (int) (max(1000, floor($amount / 1000) * 1000));
+        } else {
+            $amount = 0;
+        }
         return array(
             'opinion' => bacara_ai_normalize_opinion(isset($data['side']) ? $data['side'] : (isset($data['opinion']) ? $data['opinion'] : 'WAIT')),
             'confidence' => $confidence,
             'reasons' => array_slice($reasons, 0, 4),
             'risks' => array_slice($risk, 0, 3),
             'abstain' => !empty($data['abstain']),
+            'amount' => $amount,
         );
+    }
+}
+
+if (!function_exists('bacara_ai_normalize_suggest_scope')) {
+    function bacara_ai_normalize_suggest_scope($scope)
+    {
+        $s = strtolower(trim((string) $scope));
+        if ($s === 'amount' || $s === 'both' || $s === 'side') {
+            return $s;
+        }
+        return 'side';
     }
 }
 
 if (!function_exists('bacara_ai_prompt_messages')) {
     function bacara_ai_prompt_messages(array $stats)
     {
+        $scope = bacara_ai_normalize_suggest_scope(isset($stats['suggest_scope']) ? $stats['suggest_scope'] : 'side');
+        $need_amount = ($scope === 'amount' || $scope === 'both');
+        $need_side = ($scope === 'side' || $scope === 'both');
+
+        $json_shape = '{"side":"PLAYER|BANKER|WAIT","confidence":0-100,"abstain":true|false,"reasons":["..."],"risks":["..."]';
+        if ($need_amount) {
+            $json_shape = '{"side":"PLAYER|BANKER|WAIT","confidence":0-100,"abstain":true|false,"amount":0,"reasons":["..."],"risks":["..."]';
+        }
+
         $system = 'You are a baccarat decision assistant for a Korean user-facing monitor. '
             . 'Hands are nearly independent; do not claim guaranteed prediction. '
-            . 'Use ONLY the provided statistics. Prefer WAIT when sample is thin, rates are close, or risks are high. '
-            . 'Return ONLY compact JSON: {"side":"PLAYER|BANKER|WAIT","confidence":0-100,"abstain":true|false,"reasons":["..."],"risks":["..."]}. '
+            . 'Use ONLY the provided statistics and risk context. Prefer WAIT when sample is thin, rates are close, or risks are high. '
+            . 'Return ONLY compact JSON: ' . $json_shape . '. '
             . 'Never bet on TIE. side=WAIT when abstain=true. '
             . 'IMPORTANT: Write every string in reasons and risks in natural Korean (한국어). Do not use English in reasons/risks. '
             . 'Keep each reason under 40 Korean characters when possible.';
 
-        $user = "다음 판을 분석하세요 (타이 제외).\nSTATS_JSON:\n" . json_encode($stats, JSON_UNESCAPED_UNICODE);
+        if ($need_amount) {
+            $system .= ' amount must be an integer chip stake in KRW (multiples of 1000). '
+                . 'Respect RISK_CONTEXT limits: stay within bankroll, max_bet, and leave buffer for loss_cut; '
+                . 'do not size a stake that would overshoot win_cut in one win. '
+                . 'If abstain/WAIT, set amount=0. If RISK_CONTEXT is missing or invalid, set amount=0.';
+        }
+        if ($scope === 'amount') {
+            $system .= ' Primary task is stake sizing; still provide best-effort side, but amount is mandatory when not abstaining.';
+        } elseif ($scope === 'side') {
+            $system .= ' Do not invent stake sizes; omit amount or set amount=0.';
+        }
+
+        $user = "다음 판을 분석하세요 (타이 제외).\nSUGGEST_SCOPE: {$scope}\nSTATS_JSON:\n"
+            . json_encode($stats, JSON_UNESCAPED_UNICODE);
         return array($system, $user);
     }
 }
@@ -606,6 +652,7 @@ if (!function_exists('bacara_ai_call_openai')) {
             'reasons' => $parsed['reasons'],
             'ms' => $ms,
             'error' => '',
+            'amount' => isset($parsed['amount']) ? (int) $parsed['amount'] : 0,
         );
     }
 }
@@ -665,6 +712,7 @@ if (!function_exists('bacara_ai_call_anthropic')) {
             'reasons' => $parsed['reasons'],
             'ms' => $ms,
             'error' => '',
+            'amount' => isset($parsed['amount']) ? (int) $parsed['amount'] : 0,
         );
     }
 }
@@ -722,6 +770,7 @@ if (!function_exists('bacara_ai_call_gemini')) {
             'reasons' => $parsed['reasons'],
             'ms' => $ms,
             'error' => '',
+            'amount' => isset($parsed['amount']) ? (int) $parsed['amount'] : 0,
         );
     }
 }
@@ -790,37 +839,122 @@ if (!function_exists('bacara_ai_decide_final')) {
             $edge = abs((float) $best_pattern['p_rate'] - (float) $best_pattern['b_rate']);
         }
 
+        $scope = bacara_ai_normalize_suggest_scope(
+            isset($stats['suggest_scope']) ? $stats['suggest_scope'] : 'side'
+        );
+
         $display = array(
             'final_opinion' => 'WAIT',
             'final_confidence' => max($avg_conf, 40),
             'consensus' => $consensus,
             'decision_reason' => '관망',
             'auto_bet_ok' => false,
+            'recommended_amount' => 0,
         );
+
+        // 금액: 동의 사이드(또는 amount 스코프) 모델들의 중앙값
+        $amount_votes = array();
+        foreach (array('gpt', 'claude', 'gemini') as $name) {
+            if (empty($models[$name]) || !empty($models[$name]['error'])) {
+                continue;
+            }
+            $op = bacara_ai_normalize_opinion($models[$name]['opinion']);
+            $amt = isset($models[$name]['amount']) ? (int) $models[$name]['amount'] : 0;
+            if ($amt <= 0) {
+                continue;
+            }
+            if ($scope === 'amount' || $op === 'PLAYER' || $op === 'BANKER') {
+                $amount_votes[] = $amt;
+            }
+        }
+        if ($amount_votes) {
+            sort($amount_votes);
+            $mid = (int) floor((count($amount_votes) - 1) / 2);
+            $display['recommended_amount'] = $amount_votes[$mid];
+        }
+
+        $clamp_amount = function ($amount) use ($stats) {
+            $amount = (int) $amount;
+            if ($amount <= 0 || empty($stats['risk_context']) || !is_array($stats['risk_context'])) {
+                return $amount > 0 ? $amount : 0;
+            }
+            $rc = $stats['risk_context'];
+            $max_bet = isset($rc['max_bet']) ? max(1000, (int) $rc['max_bet']) : 0;
+            $bankroll = isset($rc['bankroll']) ? max(0, (int) $rc['bankroll']) : 0;
+            $win_cut = isset($rc['win_cut']) ? (int) $rc['win_cut'] : 0;
+            $loss_cut = isset($rc['loss_cut']) ? (int) $rc['loss_cut'] : 0;
+            $pnl = isset($rc['pnl']) ? (int) $rc['pnl'] : 0;
+            $cap = $amount;
+            if ($max_bet > 0) {
+                $cap = min($cap, $max_bet);
+            }
+            if ($bankroll > 0) {
+                $cap = min($cap, $bankroll);
+            }
+            if ($win_cut > 0) {
+                $room = max(0, $win_cut - $pnl);
+                if ($room > 0) {
+                    $cap = min($cap, $room);
+                }
+            }
+            if ($loss_cut < 0) {
+                $buf = (int) floor(abs($loss_cut) * 0.05);
+                if ($buf >= 1000) {
+                    $cap = min($cap, $buf);
+                }
+            }
+            return $cap >= 1000 ? (int) (floor($cap / 1000) * 1000) : 0;
+        };
 
         if ($agree < 2) {
             $display['decision_reason'] = '모델 의견 불일치 → 관망';
+            if ($scope === 'side') {
+                $display['recommended_amount'] = 0;
+            } else {
+                $display['recommended_amount'] = $clamp_amount($display['recommended_amount']);
+            }
             return $display;
         }
         if ($avg_conf < 55) {
             $display['final_confidence'] = $avg_conf;
             $display['decision_reason'] = '신뢰도 부족(' . $avg_conf . '%) → 관망';
+            if ($scope === 'side') {
+                $display['recommended_amount'] = 0;
+            } else {
+                $display['recommended_amount'] = $clamp_amount($display['recommended_amount']);
+            }
             return $display;
         }
         if ($sample < 20) {
             $display['final_confidence'] = $avg_conf;
             $display['decision_reason'] = '패턴 표본 부족(n=' . $sample . ') → 관망';
+            if ($scope === 'side') {
+                $display['recommended_amount'] = 0;
+            } else {
+                $display['recommended_amount'] = $clamp_amount($display['recommended_amount']);
+            }
             return $display;
         }
         if ($edge < 0.08) {
             $display['final_confidence'] = $avg_conf;
             $display['decision_reason'] = '통계 우위 미미 → 관망';
+            if ($scope === 'side') {
+                $display['recommended_amount'] = 0;
+            } else {
+                $display['recommended_amount'] = $clamp_amount($display['recommended_amount']);
+            }
             return $display;
         }
 
         $display['final_opinion'] = $best;
         $display['final_confidence'] = min(90, $avg_conf);
         $display['decision_reason'] = '다수결 ' . $consensus . ' · 표본 ' . $sample;
+        // side 전용은 금액 숨김; amount/both 는 WAIT 가 아니면 클램프
+        if ($scope === 'side') {
+            $display['recommended_amount'] = 0;
+        } else {
+            $display['recommended_amount'] = $clamp_amount($display['recommended_amount']);
+        }
 
         // 자동 베팅: ChatGPT+Gemini 필수, 등록된 모델은 전부 정상 + 엄격 기준
         $auto_ok = true;
@@ -926,6 +1060,7 @@ if (!function_exists('bacara_ai_parse_provider_response')) {
             'reasons' => $parsed['reasons'],
             'ms' => $ms,
             'error' => '',
+            'amount' => isset($parsed['amount']) ? (int) $parsed['amount'] : 0,
             'tokens' => $tokens,
             'raw_json' => $json,
         );
@@ -1355,6 +1490,21 @@ if (!function_exists('bacara_ai_row_to_public')) {
             && ($final === 'PLAYER' || $final === 'BANKER');
 
         $mode = $auto_bet ? 'live' : (isset($row['mode']) ? $row['mode'] : 'shadow');
+        $scope = bacara_ai_normalize_suggest_scope(
+            isset($stats_decoded['suggest_scope']) ? $stats_decoded['suggest_scope'] : 'side'
+        );
+        $recommended_amount = isset($reeval['recommended_amount']) ? (int) $reeval['recommended_amount'] : 0;
+        if (isset($row['_recommended_amount'])) {
+            $recommended_amount = (int) $row['_recommended_amount'];
+        }
+        // scope 가 side 만이면 금액 숨김
+        if ($scope === 'side') {
+            $recommended_amount = 0;
+        }
+        // scope 가 amount 만이면 화면 방향은 참고용으로 유지하되 auto 는 끔
+        if ($scope === 'amount') {
+            $auto_bet = false;
+        }
 
         return array(
             'ok' => true,
@@ -1362,6 +1512,7 @@ if (!function_exists('bacara_ai_row_to_public')) {
             'mode' => $mode,
             'auto_bet_allowed' => $auto_bet,
             'auto_bet_enabled' => bacara_ai_config_is_auto_bet_enabled(),
+            'suggest_scope' => $scope,
             'table_name' => $row['table_name'],
             'source_result_id' => (int) $row['source_result_id'],
             'game_no' => isset($row['game_no']) ? (int) $row['game_no'] : null,
@@ -1374,6 +1525,7 @@ if (!function_exists('bacara_ai_row_to_public')) {
             'consensus' => $row['consensus'],
             'decisionReason' => $row['decision_reason'],
             'appliedRule' => $row['decision_reason'],
+            'recommendedAmount' => $recommended_amount,
             'accuracy' => bacara_ai_accuracy_summary($row['table_name']),
             'created_at' => isset($row['created_at']) ? $row['created_at'] : null,
         );
@@ -1383,11 +1535,27 @@ if (!function_exists('bacara_ai_row_to_public')) {
 if (!function_exists('bacara_ai_analyze_table')) {
     /**
      * 테이블 분석 (캐시 우선). 조건 충족 시 auto_bet_allowed=true.
+     *
+     * @param array $ctx {
+     *   suggest_scope?: side|amount|both,
+     *   win_cut?: int, loss_cut?: int, bankroll?: int,
+     *   initial_bet?: int, max_bet?: int, pnl?: int, martin_stage?: int
+     * }
      */
-    function bacara_ai_analyze_table($table_name, $force = false)
+    function bacara_ai_analyze_table($table_name, $force = false, array $ctx = array())
     {
         bacara_ai_install_tables();
         $table_name = strtoupper(trim($table_name));
+        $scope = bacara_ai_normalize_suggest_scope(isset($ctx['suggest_scope']) ? $ctx['suggest_scope'] : 'side');
+        $need_amount = ($scope === 'amount' || $scope === 'both');
+        $win_cut = isset($ctx['win_cut']) ? (int) $ctx['win_cut'] : 0;
+        $loss_cut = isset($ctx['loss_cut']) ? (int) $ctx['loss_cut'] : 0;
+        $cuts_ok = ($win_cut > 0 && $loss_cut < 0);
+        if ($need_amount && !$cuts_ok) {
+            // 금액 요청인데 한도 없음 → 방향만으로 강등
+            $scope = 'side';
+            $need_amount = false;
+        }
 
         if (!bacara_ai_config_is_enabled()) {
             return array(
@@ -1427,16 +1595,36 @@ if (!function_exists('bacara_ai_analyze_table')) {
             bacara_ai_settle_open_predictions($table_name, $fetched['history']);
 
             $stats = bacara_ai_build_stats($fetched['shoe'], $fetched['history']);
+            $stats['suggest_scope'] = $scope;
+            if ($need_amount) {
+                $stats['risk_context'] = array(
+                    'win_cut' => $win_cut,
+                    'loss_cut' => $loss_cut,
+                    'bankroll' => isset($ctx['bankroll']) ? (int) $ctx['bankroll'] : 0,
+                    'initial_bet' => isset($ctx['initial_bet']) ? (int) $ctx['initial_bet'] : 10000,
+                    'max_bet' => isset($ctx['max_bet']) ? (int) $ctx['max_bet'] : 0,
+                    'pnl' => isset($ctx['pnl']) ? (int) $ctx['pnl'] : 0,
+                    'martin_stage' => isset($ctx['martin_stage']) ? (int) $ctx['martin_stage'] : 1,
+                );
+            }
+
             $latest = $stats['latest'];
             if (!$latest) {
                 return array('ok' => false, 'message' => '최신 결과가 없습니다.');
             }
 
             $source_id = (int) $latest['id'];
+            $amount_cache_file = '';
+            if ($need_amount) {
+                $hash = substr(md5(json_encode($stats['risk_context']) . '|' . $scope), 0, 12);
+                $amount_cache_file = G5_DATA_PATH . '/cache/bacara-ai-amt-'
+                    . preg_replace('/[^A-Z0-9_-]/', '', $table_name)
+                    . '-' . $source_id . '-' . $hash . '.json';
+            }
+
             if (!$force) {
                 $cached = bacara_ai_get_cached_prediction($table_name, $source_id);
                 if ($cached) {
-                    // 이전 영문 근거 캐시는 버리고 한국어로 재분석
                     $reason_blob = (isset($cached['gpt_reasons']) ? $cached['gpt_reasons'] : '')
                         . ' ' . (isset($cached['claude_reasons']) ? $cached['claude_reasons'] : '')
                         . ' ' . (isset($cached['gemini_reasons']) ? $cached['gemini_reasons'] : '');
@@ -1445,7 +1633,21 @@ if (!function_exists('bacara_ai_analyze_table')) {
                         $reason_blob
                     );
                     if (!$needs_ko) {
-                        return bacara_ai_row_to_public($cached, $stats, true);
+                        // 금액이 필요하면 금액 캐시 또는 재분석
+                        if ($need_amount && $amount_cache_file && is_file($amount_cache_file)) {
+                            $amt_raw = @file_get_contents($amount_cache_file);
+                            $amt_data = $amt_raw ? json_decode($amt_raw, true) : null;
+                            if (is_array($amt_data) && isset($amt_data['recommendedAmount'])) {
+                                $cached['_recommended_amount'] = (int) $amt_data['recommendedAmount'];
+                                $stats['suggest_scope'] = $scope;
+                                return bacara_ai_row_to_public($cached, $stats, true);
+                            }
+                        }
+                        if (!$need_amount) {
+                            $stats['suggest_scope'] = $scope;
+                            return bacara_ai_row_to_public($cached, $stats, true);
+                        }
+                        // need_amount + 캐시 없음 → 아래서 재호출
                     }
                 }
             }
@@ -1490,6 +1692,24 @@ if (!function_exists('bacara_ai_analyze_table')) {
             if (!$row) {
                 $row = $save;
                 $row['created_at'] = G5_TIME_YMDHIS;
+            }
+
+            $recommended = isset($decision['recommended_amount']) ? (int) $decision['recommended_amount'] : 0;
+            $row['_recommended_amount'] = $recommended;
+            if ($need_amount && $amount_cache_file) {
+                $dir = dirname($amount_cache_file);
+                if (!is_dir($dir)) {
+                    @mkdir($dir, 0755, true);
+                }
+                @file_put_contents(
+                    $amount_cache_file,
+                    json_encode(array(
+                        'recommendedAmount' => $recommended,
+                        'scope' => $scope,
+                        'at' => G5_TIME_YMDHIS,
+                    ), JSON_UNESCAPED_UNICODE),
+                    LOCK_EX
+                );
             }
 
             return bacara_ai_row_to_public($row, $stats, false);

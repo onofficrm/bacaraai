@@ -136,6 +136,7 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
   maxTables: 8,
   maxTime: 90,
   strategy: 'pattern',
+  aiSuggestScope: 'side',
   patternSegments: [
     { side: 'B', count: 2, atLeast: false },
   ],
@@ -191,6 +192,12 @@ function normalizeConfig(partial?: Partial<SessionConfig>): SessionConfig {
       ? 'per_case'
       : 'shared';
 
+  const rawSuggest = partial?.aiSuggestScope ?? merged.aiSuggestScope;
+  const aiSuggestScope: SessionConfig['aiSuggestScope'] =
+    rawSuggest === 'amount' || rawSuggest === 'both' || rawSuggest === 'side'
+      ? rawSuggest
+      : 'side';
+
   const maxConsecutiveAutoLosses = Math.max(
     0,
     Math.min(
@@ -213,8 +220,27 @@ function normalizeConfig(partial?: Partial<SessionConfig>): SessionConfig {
     patternTableScope: scope,
     patternTableIds: scope === 'selected' ? ids : [],
     patternAmountScope: amountScope,
+    aiSuggestScope,
     maxConsecutiveAutoLosses,
   };
+}
+
+/** 금액 제안용 윈컷·로스컷이 유효한지 */
+export function sessionCutsReadyForAmount(config: Pick<SessionConfig, 'winCut' | 'lossCut'>): boolean {
+  return Number(config.winCut) > 0 && Number(config.lossCut) < 0;
+}
+
+/** AI 금액 제안을 실제로 쓸 수 있는지 */
+export function aiAmountSuggestEnabled(config: SessionConfig): boolean {
+  const scope = config.aiSuggestScope || 'side';
+  if (scope !== 'amount' && scope !== 'both') return false;
+  return sessionCutsReadyForAmount(config);
+}
+
+/** AI 방향 제안을 표시할지 */
+export function aiSideSuggestEnabled(config: SessionConfig): boolean {
+  const scope = config.aiSuggestScope || 'side';
+  return scope === 'side' || scope === 'both';
 }
 
 function freshWinCelebration(_parsed: Partial<SessionState>): LastBetResult | null {

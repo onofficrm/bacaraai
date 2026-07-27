@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { PLATFORM_LINKS } from '../constants';
 import type { AiModelAnalysis, AiOpinion, GameResult, TableData } from '../types';
 import {
+  aiAmountSuggestEnabled,
+  aiSideSuggestEnabled,
+  sessionCutsReadyForAmount,
+} from './useSession';
+import {
   recommendBetAmount,
   type RecommendBetContext,
 } from '../utils/recommendBetAmount';
@@ -32,6 +37,7 @@ type AiAnalyzeResponse = {
   cached?: boolean;
   mode?: string;
   auto_bet_allowed?: boolean;
+  suggest_scope?: 'side' | 'amount' | 'both';
   source_result_id?: number;
   game_no?: number | null;
   gpt?: AiModelAnalysis & { error?: string };
@@ -42,6 +48,7 @@ type AiAnalyzeResponse = {
   consensus?: string;
   decisionReason?: string;
   appliedRule?: string;
+  recommendedAmount?: number;
   accuracy?: { settled: number; hits: number; rate: number | null };
 };
 
@@ -193,8 +200,30 @@ export default function useLiveTable(
   });
   const requestActive = useRef(false);
   const analyzeActive = useRef(false);
-  const analyzedIdRef = useRef<number | null>(null);
+  const analyzedIdRef = useRef<string | null>(null);
   const lastSyncSigRef = useRef<string | null>(null);
+
+  const suggestScope = recommendCtx?.config.aiSuggestScope || 'side';
+  const amountEnabled = recommendCtx
+    ? aiAmountSuggestEnabled(recommendCtx.config)
+    : false;
+  const sideEnabled = recommendCtx
+    ? aiSideSuggestEnabled(recommendCtx.config)
+    : true;
+  const analyzeKey = useMemo(() => {
+    if (!recommendCtx) return `side|0|0`;
+    const c = recommendCtx.config;
+    return [
+      c.aiSuggestScope || 'side',
+      c.winCut || 0,
+      c.lossCut || 0,
+      c.initialBet || 0,
+      c.maxBet || 0,
+      recommendCtx.availableBankroll || 0,
+      recommendCtx.pnl || 0,
+      recommendCtx.martinStage || 1,
+    ].join('|');
+  }, [recommendCtx]);
 
   useEffect(() => {
     let cancelled = false;
@@ -279,11 +308,12 @@ export default function useLiveTable(
     };
   }, [tableName]);
 
-  // 새 결과가 들어왔을 때만 AI 분석 (결과 ID당 1회, 서버 캐시)
+  // 새 결과가 들어왔을 때만 AI 분석 (결과 ID + 제안 범위/한도 키)
   useEffect(() => {
     const latestId = state.latestId;
     if (!latestId || !state.connected) return;
-    if (analyzedIdRef.current === latestId) return;
+    const runKey = `${latestId}:${analyzeKey}`;
+    if (analyzedIdRef.current === runKey) return;
     if (analyzeActive.current) return;
 
     let cancelled = false;
@@ -298,6 +328,19 @@ export default function useLiveTable(
     const run = async () => {
       try {
         const query = new URLSearchParams({ table_name: tableName });
+        const scope = suggestScope;
+        query.set('suggest_scope', scope);
+        if (recommendCtx && (scope === 'amount' || scope === 'both')) {
+          if (sessionCutsReadyForAmount(recommendCtx.config)) {
+            query.set('win_cut', String(recommendCtx.config.winCut));
+            query.set('loss_cut', String(recommendCtx.config.lossCut));
+            query.set('bankroll', String(Math.floor(recommendCtx.availableBankroll || 0)));
+            query.set('initial_bet', String(recommendCtx.config.initialBet || 10000));
+            query.set('max_bet', String(recommendCtx.config.maxBet || 0));
+            query.set('pnl', String(Math.floor(recommendCtx.pnl || 0)));
+            query.set('martin_stage', String(recommendCtx.martinStage || 1));
+          }
+        }
         const response = await fetch(`${PLATFORM_LINKS.aiAnalyze}?${query.toString()}`, {
           credentials: 'same-origin',
           headers: { Accept: 'application/json' },
@@ -308,7 +351,7 @@ export default function useLiveTable(
         if (!response.ok || !data.ok) {
           throw new Error(data.message || 'AI 분석에 실패했습니다.');
         }
-        analyzedIdRef.current = latestId;
+        analyzedIdRef.current = runKey;
         setAiState({
           loading: false,
           error: null,
@@ -317,8 +360,7 @@ export default function useLiveTable(
         });
       } catch (error) {
         if (cancelled) return;
-        // 실패해도 같은 ID 재호출 폭주 방지 (다음 새 결과에서 재시도)
-        analyzedIdRef.current = latestId;
+        analyzedIdRef.current = runKey;
         setAiState((prev) => ({
           ...prev,
           loading: false,
@@ -333,7 +375,7 @@ export default function useLiveTable(
     return () => {
       cancelled = true;
     };
-  }, [state.latestId, state.connected, tableName]);
+  }, [state.latestId, state.connected, tableName, analyzeKey, suggestScope, recommendCtx]);
 
   return useMemo(() => {
     const results = state.rows.map((row) => row.result);
@@ -350,8 +392,10 @@ export default function useLiveTable(
     const claude = analysisReady && analysis.claude ? analysis.claude : fallbackModel('WAIT');
     const gemini = analysisReady && analysis.gemini ? analysis.gemini : fallbackModel('WAIT');
 
-    const finalOpinion: AiOpinion =
+    const rawOpinion: AiOpinion =
       analysisReady && analysis.finalOpinion ? analysis.finalOpinion : 'WAIT';
+    // 금액만 모드: 방향은 WAIT 로 표시 (사용자가 직접 선택)
+    const finalOpinion: AiOpinion = sideEnabled ? rawOpinion : 'WAIT';
     const finalConfidence =
       analysisReady && typeof analysis.finalConfidence === 'number'
         ? analysis.finalConfidence
@@ -371,7 +415,9 @@ export default function useLiveTable(
           : 'AI 분석 대기';
 
     const isActionable = finalOpinion === 'PLAYER' || finalOpinion === 'BANKER';
-    const autoBetAllowed = Boolean(analysisReady && analysis.auto_bet_allowed);
+    // 오토는 방향 제안이 켜져 있을 때만
+    const autoBetAllowed =
+      sideEnabled && Boolean(analysisReady && analysis.auto_bet_allowed);
     const shadowMode = !autoBetAllowed;
 
     if (!results.length) {
@@ -441,15 +487,30 @@ export default function useLiveTable(
         ? '참고 추천(자동베팅 조건 미충족)'
         : '관망';
 
-    const betRec =
-      isActionable && recommendCtx
-        ? recommendBetAmount({
-            ...recommendCtx,
-            opinion: finalOpinion,
-            confidence: finalConfidence,
-            consensus,
-          })
-        : { amount: 0, reason: '관망 — 금액 추천 없음' };
+    // 금액: 서버 AI 우선, 없으면(레거시) 클라이언트 보조 — 단 금액 스코프+한도 OK 일 때만
+    let recommendedAmount = 0;
+    let amountReason = '';
+    if (amountEnabled) {
+      const serverAmt =
+        analysisReady && typeof analysis.recommendedAmount === 'number'
+          ? analysis.recommendedAmount
+          : 0;
+      if (serverAmt > 0) {
+        recommendedAmount = serverAmt;
+        amountReason = 'AI 금액 분석';
+      } else if (recommendCtx && (rawOpinion === 'PLAYER' || rawOpinion === 'BANKER')) {
+        const betRec = recommendBetAmount({
+          ...recommendCtx,
+          opinion: rawOpinion,
+          confidence: finalConfidence,
+          consensus,
+        });
+        recommendedAmount = betRec.amount;
+        amountReason = betRec.reason;
+      }
+    } else if (!sideEnabled) {
+      amountReason = '금액 제안: 윈컷·로스컷 필요';
+    }
 
     return {
       ...base,
@@ -506,14 +567,23 @@ export default function useLiveTable(
         finalConfidence,
         consensus,
         appliedRule,
-        recommendedAmount: betRec.amount,
+        recommendedAmount,
         skipReasons: isActionable ? undefined : [appliedRule, accuracyText],
         discussionSummary: isActionable
-          ? `${modeLabel} · ${betRec.reason} · ${accuracyText}`
-          : `${modeLabel} · ${accuracyText}`,
+          ? `${modeLabel} · ${amountReason || '참고'} · ${accuracyText}`
+          : `${modeLabel} · ${amountReason ? `${amountReason} · ` : ''}${accuracyText}`,
         autoBetAllowed,
         shadowMode,
       },
     };
-  }, [base, state, aiState, tableName, displayName, recommendCtx]);
+  }, [
+    base,
+    state,
+    aiState,
+    tableName,
+    displayName,
+    recommendCtx,
+    amountEnabled,
+    sideEnabled,
+  ]);
 }

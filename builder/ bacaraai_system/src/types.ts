@@ -126,6 +126,8 @@ export interface Notification {
 
 /** 오토베팅 진입 방식 */
 export type AutoBetStrategy = 'ai' | 'pattern';
+/** AI 제안 범위: 방향만 / 금액만 / 방향+금액 */
+export type AiSuggestScope = 'side' | 'amount' | 'both';
 /** 금액 진행 방식 */
 export type AmountProgressMode = 'martin' | 'custom';
 /** 패턴 적용 테이블 범위 */
@@ -169,6 +171,11 @@ export interface SessionConfig {
   maxTime: number; // in minutes
   /** AI 추천 vs 사용자 패턴 */
   strategy: AutoBetStrategy;
+  /**
+   * AI가 제안하는 범위.
+   * amount|both 는 winCut>0 이고 lossCut<0 일 때만 금액 제안.
+   */
+  aiSuggestScope: AiSuggestScope;
   /**
    * @deprecated 구버전 호환용. 새 코드는 patternSegments 사용
    */
