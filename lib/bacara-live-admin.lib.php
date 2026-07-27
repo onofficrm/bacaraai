@@ -468,6 +468,167 @@ if (!function_exists('bacara_live_admin_new_game')) {
     }
 }
 
+if (!function_exists('bacara_live_admin_disable_manual')) {
+    function bacara_live_admin_disable_manual($table_name, $admin_id)
+    {
+        $table_name = bacara_live_admin_normalize_table($table_name);
+        if ($table_name === '') {
+            return array('ok' => false, 'message' => '테이블 코드가 올바르지 않습니다.');
+        }
+        $ctrl = bacara_live_admin_table_ctrl();
+        $safe = sql_real_escape_string($table_name);
+        $now = G5_TIME_YMDHIS;
+        $admin = sql_real_escape_string(substr((string) $admin_id, 0, 20));
+        bacara_live_admin_get_ctrl($table_name, true);
+        sql_query(
+            " UPDATE `{$ctrl}`
+                 SET manual_mode = 0,
+                     shuffle_active = 0,
+                     updated_at = '{$now}',
+                     updated_by = '{$admin}'
+               WHERE table_name = '{$safe}' ",
+            false
+        );
+        bacara_live_admin_audit($table_name, 'resume_auto', 'manual_mode=0', $admin_id);
+        bacara_live_admin_invalidate_cache($table_name);
+
+        return array(
+            'ok' => true,
+            'message' => '자동 감지 결과를 다시 사용합니다.',
+            'manual_mode' => false,
+            'payload' => bacara_live_admin_view_payload($table_name, 800),
+        );
+    }
+}
+
+if (!function_exists('bacara_live_admin_detector_payload')) {
+    /**
+     * 감지(라이브) DB 현재 슈를 관리자 화면용 payload 로 변환
+     */
+    function bacara_live_admin_detector_payload($table_name, $limit = 800)
+    {
+        $table_name = bacara_live_admin_normalize_table($table_name);
+        if ($table_name === '') {
+            return null;
+        }
+
+        if (!function_exists('bacara_ai_fetch_table_history')) {
+            $ai_lib = G5_LIB_PATH . '/bacara-ai-analyze.lib.php';
+            if (!is_file($ai_lib)) {
+                return null;
+            }
+            include_once $ai_lib;
+        }
+        if (!function_exists('bacara_ai_fetch_table_history')) {
+            return null;
+        }
+
+        $cache_file = '';
+        if (defined('G5_DATA_PATH')) {
+            $cache_dir = G5_DATA_PATH . '/cache';
+            if (!is_dir($cache_dir)) {
+                @mkdir($cache_dir, 0755, true);
+            }
+            $cache_file = $cache_dir . '/bacara-admin-det-'
+                . preg_replace('/[^A-Z0-9_-]/', '', $table_name) . '.json';
+            if (is_file($cache_file) && (time() - (int) @filemtime($cache_file)) <= 1) {
+                $raw = @file_get_contents($cache_file);
+                $cached = $raw ? json_decode($raw, true) : null;
+                if (is_array($cached) && !empty($cached['ok'])) {
+                    return $cached;
+                }
+            }
+        }
+
+        $fetched = bacara_ai_fetch_table_history($table_name, max(200, (int) $limit));
+        if (empty($fetched['ok'])) {
+            return array(
+                'ok' => true,
+                'account' => '',
+                'table_name' => $table_name,
+                'game_no' => null,
+                'source' => 'detector',
+                'count' => 0,
+                'shoe_count' => 0,
+                'truncated' => false,
+                'latest_id' => null,
+                'latest_detected_at' => null,
+                'manual_mode' => false,
+                'shuffle_active' => false,
+                'results' => array(),
+                'detector_error' => isset($fetched['error']) ? $fetched['error'] : '감지 데이터 없음',
+            );
+        }
+
+        $shoe = isset($fetched['shoe']) && is_array($fetched['shoe']) ? $fetched['shoe'] : array();
+        if (count($shoe) > $limit) {
+            $shoe = array_slice($shoe, -$limit);
+        }
+        $rows = array();
+        foreach ($shoe as $row) {
+            $r = isset($row['result']) ? strtoupper(trim((string) $row['result'])) : '';
+            if (!in_array($r, array('P', 'B', 'T'), true)) {
+                continue;
+            }
+            $rows[] = array(
+                'id' => isset($row['id']) ? (int) $row['id'] : 0,
+                'account' => isset($fetched['account']) ? (string) $fetched['account'] : 'detector',
+                'table_name' => $table_name,
+                'game_no' => isset($row['game_no']) ? (int) $row['game_no'] : null,
+                'result' => $r,
+                'detected_at' => isset($row['detected_at']) ? $row['detected_at'] : '',
+            );
+        }
+        $latest = count($rows) ? $rows[count($rows) - 1] : null;
+        $payload = array(
+            'ok' => true,
+            'account' => isset($fetched['account']) ? (string) $fetched['account'] : 'detector',
+            'table_name' => $table_name,
+            'game_no' => $latest && isset($latest['game_no']) ? $latest['game_no'] : null,
+            'source' => 'detector',
+            'count' => count($rows),
+            'shoe_count' => count($rows),
+            'truncated' => false,
+            'latest_id' => $latest ? (int) $latest['id'] : null,
+            'table_max_id' => $latest ? (int) $latest['id'] : null,
+            'latest_detected_at' => $latest ? $latest['detected_at'] : null,
+            'manual_mode' => false,
+            'shuffle_active' => false,
+            'results' => $rows,
+        );
+
+        if ($cache_file !== '') {
+            @file_put_contents($cache_file, json_encode($payload, JSON_UNESCAPED_UNICODE), LOCK_EX);
+        }
+        return $payload;
+    }
+}
+
+if (!function_exists('bacara_live_admin_view_payload')) {
+    /**
+     * 관리자 화면용: 수동 모드면 수동 결과, 아니면 감지 결과
+     */
+    function bacara_live_admin_view_payload($table_name, $limit = 800)
+    {
+        if (bacara_live_admin_is_manual($table_name)) {
+            $payload = bacara_live_admin_build_payload($table_name, $limit);
+            if (is_array($payload)) {
+                return $payload;
+            }
+        }
+        $det = bacara_live_admin_detector_payload($table_name, $limit);
+        return is_array($det) ? $det : array(
+            'ok' => true,
+            'table_name' => bacara_live_admin_normalize_table($table_name),
+            'source' => 'detector',
+            'count' => 0,
+            'results' => array(),
+            'manual_mode' => false,
+            'shuffle_active' => false,
+        );
+    }
+}
+
 if (!function_exists('bacara_live_admin_set_shuffle')) {
     function bacara_live_admin_set_shuffle($table_name, $active, $admin_id)
     {
@@ -518,15 +679,48 @@ if (!function_exists('bacara_live_admin_overview')) {
                 continue;
             }
             $ctrl = bacara_live_admin_get_ctrl($code, false);
-            $rows = bacara_live_admin_fetch_results($code, 800);
+            $manual = $ctrl ? (int) $ctrl['manual_mode'] === 1 : false;
+            $shuffle = $ctrl ? (int) $ctrl['shuffle_active'] === 1 : false;
+
+            if ($manual) {
+                $rows = bacara_live_admin_fetch_results($code, 800);
+                $source = 'admin';
+            } else {
+                $det = bacara_live_admin_detector_payload($code, 800);
+                $rows = (is_array($det) && !empty($det['results']) && is_array($det['results']))
+                    ? $det['results']
+                    : array();
+                $source = 'detector';
+            }
+
             $latest = count($rows) ? $rows[count($rows) - 1] : null;
+            $player = 0;
+            $banker = 0;
+            $tie = 0;
+            foreach ($rows as $r) {
+                if ($r['result'] === 'P') {
+                    $player++;
+                } elseif ($r['result'] === 'B') {
+                    $banker++;
+                } elseif ($r['result'] === 'T') {
+                    $tie++;
+                }
+            }
+
             $out[] = array(
                 'table_name' => $code,
-                'manual_mode' => $ctrl ? (int) $ctrl['manual_mode'] === 1 : false,
-                'shuffle_active' => $ctrl ? (int) $ctrl['shuffle_active'] === 1 : false,
-                'game_no' => $latest ? (int) $latest['game_no'] : 0,
+                'manual_mode' => $manual,
+                'shuffle_active' => $shuffle,
+                'source' => $source,
+                'game_no' => $latest && isset($latest['game_no']) ? (int) $latest['game_no'] : 0,
                 'latest_result' => $latest ? $latest['result'] : null,
+                'latest_id' => $latest && isset($latest['id']) ? (int) $latest['id'] : null,
+                'latest_detected_at' => $latest && isset($latest['detected_at']) ? $latest['detected_at'] : null,
                 'count' => count($rows),
+                'player' => $player,
+                'banker' => $banker,
+                'tie' => $tie,
+                'results' => $rows,
                 'updated_at' => $ctrl ? $ctrl['updated_at'] : null,
                 'updated_by' => $ctrl ? $ctrl['updated_by'] : '',
             );

@@ -7,6 +7,7 @@ import {
   postAdminAction,
   type AdminAuditRow,
   type AdminLivePayload,
+  type AdminLiveRow,
   type AdminTableOverview,
 } from '../api/adminLive';
 
@@ -38,15 +39,29 @@ function currentStreak(results: GameResult[]): string {
   return `${decisive === 'P' ? 'Player' : 'Banker'} ${count}연속`;
 }
 
+function normalizeRows(rows: AdminLiveRow[] | undefined): AdminLiveRow[] {
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((r) => r && ['P', 'B', 'T'].includes(String(r.result || '').toUpperCase()));
+}
+
 function tableFromPayload(
   base: TableData,
   payload: AdminLivePayload | null,
   shuffleActive: boolean,
+  sourceLabel: string,
 ): TableData {
-  const rows = payload?.results || [];
-  const results = rows.map((r) => r.result);
-  const gameNo = payload?.game_no ?? results.length;
+  const rows = normalizeRows(payload?.results);
+  const results = rows.map((r) => String(r.result).toUpperCase() as GameResult);
+  const gameNo = payload?.game_no ?? (results.length ? results.length : null);
   const latestId = payload?.latest_id ?? (rows.length ? rows[rows.length - 1].id : null);
+  const manualMode = Boolean(payload?.manual_mode);
+  const appliedRule = shuffleActive
+    ? '셔플 중'
+    : manualMode
+      ? '관리자 수동 입력'
+      : sourceLabel === 'detector'
+        ? '자동 감지'
+        : '실시간';
 
   if (!results.length) {
     return {
@@ -57,10 +72,10 @@ function tableFromPayload(
         loading: false,
         latestId,
         latestDetectedAt: payload?.latest_detected_at ?? null,
-        error: null,
+        error: payload?.detector_error || null,
         gameNo: gameNo || null,
         shuffleActive,
-        manualMode: Boolean(payload?.manual_mode),
+        manualMode,
       },
       roadmap: [],
       stats: {
@@ -77,8 +92,8 @@ function tableFromPayload(
       ai: {
         ...base.ai,
         finalOpinion: 'WAIT',
-        consensus: '관리자',
-        appliedRule: shuffleActive ? '셔플 중' : '관리자 수동 입력',
+        consensus: manualMode ? '수동' : '감지',
+        appliedRule,
         recommendedAmount: 0,
         autoBetAllowed: false,
         shadowMode: true,
@@ -101,7 +116,7 @@ function tableFromPayload(
       error: null,
       gameNo: gameNo || null,
       shuffleActive,
-      manualMode: Boolean(payload?.manual_mode),
+      manualMode,
     },
     roadmap: buildRoadmap(results),
     stats: {
@@ -111,15 +126,15 @@ function tableFromPayload(
       tie,
       currentStreak: shuffleActive ? '셔플 중' : currentStreak(results),
       shoeNumber: gameNo ? `G${gameNo}` : base.stats.shoeNumber,
-      currentRound: gameNo || results.length,
+      currentRound: typeof gameNo === 'number' ? gameNo : results.length,
       recentResults: results,
       shoeProgress: Math.min(100, Math.round((results.length / 80) * 100)),
     },
     ai: {
       ...base.ai,
       finalOpinion: 'WAIT',
-      consensus: '관리자',
-      appliedRule: shuffleActive ? '셔플 중' : '관리자 수동 입력',
+      consensus: manualMode ? '수동' : '감지',
+      appliedRule,
       recommendedAmount: 0,
       autoBetAllowed: false,
       shadowMode: true,
@@ -127,9 +142,25 @@ function tableFromPayload(
   };
 }
 
+function overviewToPayload(ov: AdminTableOverview): AdminLivePayload {
+  return {
+    ok: true,
+    table_name: ov.table_name,
+    game_no: ov.game_no || null,
+    latest_id: ov.latest_id ?? null,
+    latest_detected_at: ov.latest_detected_at ?? null,
+    count: ov.count,
+    source: ov.source || (ov.manual_mode ? 'admin' : 'detector'),
+    manual_mode: ov.manual_mode,
+    shuffle_active: ov.shuffle_active,
+    results: normalizeRows(ov.results),
+  };
+}
+
 export function useAdminLiveControl(selectedTableId: string | null) {
   const [overview, setOverview] = useState<AdminTableOverview[]>([]);
   const [payload, setPayload] = useState<AdminLivePayload | null>(null);
+  const [manualMode, setManualMode] = useState(false);
   const [shuffleActive, setShuffleActive] = useState(false);
   const [audit, setAudit] = useState<AdminAuditRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -151,6 +182,7 @@ export function useAdminLiveControl(selectedTableId: string | null) {
       ]);
       setOverview(ov);
       setPayload(st.payload);
+      setManualMode(st.manual_mode);
       setShuffleActive(st.shuffle_active);
       setAudit(st.audit);
       setError(null);
@@ -172,25 +204,18 @@ export function useAdminLiveControl(selectedTableId: string | null) {
     return MOCK_TABLES.map((base) => {
       const ov = ovMap.get(base.gameCode);
       const isSelected = base.id === (selectedTableId || MOCK_TABLES[0].id);
-      const livePayload =
-        isSelected && payload
-          ? payload
-          : ov
-            ? ({
-                ok: true,
-                table_name: base.gameCode,
-                game_no: ov.game_no,
-                count: ov.count,
-                manual_mode: ov.manual_mode,
-                shuffle_active: ov.shuffle_active,
-                results: [],
-              } as AdminLivePayload)
-            : null;
-      return tableFromPayload(
-        base,
-        livePayload,
-        Boolean(ov?.shuffle_active && isSelected ? shuffleActive : ov?.shuffle_active),
-      );
+      const source = ov?.source || (ov?.manual_mode ? 'admin' : 'detector');
+      let livePayload: AdminLivePayload | null = null;
+      let shuffle = Boolean(ov?.shuffle_active);
+
+      if (isSelected && payload) {
+        livePayload = payload;
+        shuffle = shuffleActive;
+      } else if (ov) {
+        livePayload = overviewToPayload(ov);
+      }
+
+      return tableFromPayload(base, livePayload, shuffle, source);
     });
   }, [overview, payload, shuffleActive, selectedTableId]);
 
@@ -201,7 +226,7 @@ export function useAdminLiveControl(selectedTableId: string | null) {
 
   const runAction = useCallback(
     async (
-      action: 'add_result' | 'undo_last' | 'new_game' | 'set_shuffle',
+      action: 'add_result' | 'undo_last' | 'new_game' | 'set_shuffle' | 'resume_auto',
       extra: Record<string, string> = {},
     ) => {
       setBusy(true);
@@ -239,11 +264,13 @@ export function useAdminLiveControl(selectedTableId: string | null) {
     busy,
     toast,
     error,
+    manualMode,
     shuffleActive,
     refresh,
     addResult: (result: 'P' | 'B' | 'T') => runAction('add_result', { result }),
     undoLast: () => runAction('undo_last'),
     newGame: () => runAction('new_game'),
     setShuffle: (active: boolean) => runAction('set_shuffle', { active: active ? '1' : '0' }),
+    resumeAuto: () => runAction('resume_auto'),
   };
 }

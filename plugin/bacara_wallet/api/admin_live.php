@@ -3,7 +3,7 @@
  * 관리자 라이브 테이블 제어 API (최고관리자 전용)
  *
  * GET  action=overview|state
- * POST action=add_result|undo_last|new_game|set_shuffle
+ * POST action=add_result|undo_last|new_game|set_shuffle|resume_auto
  */
 if (!defined('G5_IS_ADMIN')) {
     define('G5_IS_ADMIN', true);
@@ -41,8 +41,13 @@ $method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper($_SERVER['REQUEST_METHO
 $action = isset($_REQUEST['action']) ? trim((string) $_REQUEST['action']) : 'overview';
 
 if ($method === 'POST') {
+    // check_admin_token() 은 실패 시 alert HTML 로 끊기므로 JSON API 용으로 직접 검증
     $token = isset($_POST['token']) ? trim((string) $_POST['token']) : '';
-    if ($token === '' || !function_exists('check_admin_token') || !check_admin_token()) {
+    $session_token = function_exists('get_session') ? (string) get_session('ss_admin_token') : '';
+    if (function_exists('set_session')) {
+        set_session('ss_admin_token', '');
+    }
+    if ($token === '' || $session_token === '' || !hash_equals($session_token, $token)) {
         http_response_code(403);
         echo json_encode(array(
             'ok' => false,
@@ -70,22 +75,15 @@ switch ($action) {
             echo json_encode(array('ok' => false, 'message' => 'table_name 필요'), JSON_UNESCAPED_UNICODE);
             break;
         }
-        $payload = bacara_live_admin_build_payload($table_name, 800);
         $ctrl = bacara_live_admin_get_ctrl($table_name, true);
+        $manual = (int) $ctrl['manual_mode'] === 1;
+        $payload = bacara_live_admin_view_payload($table_name, 800);
         echo json_encode(array(
             'ok' => true,
             'table_name' => $table_name,
-            'manual_mode' => $payload ? true : ((int) $ctrl['manual_mode'] === 1),
+            'manual_mode' => $manual,
             'shuffle_active' => (int) $ctrl['shuffle_active'] === 1,
-            'payload' => $payload ?: array(
-                'ok' => true,
-                'table_name' => $table_name,
-                'source' => 'admin_manual',
-                'count' => 0,
-                'results' => array(),
-                'manual_mode' => (int) $ctrl['manual_mode'] === 1,
-                'shuffle_active' => (int) $ctrl['shuffle_active'] === 1,
-            ),
+            'payload' => $payload,
             'audit' => bacara_live_admin_recent_audit($table_name, 8),
         ), JSON_UNESCAPED_UNICODE);
         break;
@@ -109,6 +107,11 @@ switch ($action) {
     case 'set_shuffle':
         $active = isset($_POST['active']) && ((string) $_POST['active'] === '1' || $_POST['active'] === true);
         $out = bacara_live_admin_set_shuffle($table_name, $active, $admin_id);
+        echo json_encode($out, JSON_UNESCAPED_UNICODE);
+        break;
+
+    case 'resume_auto':
+        $out = bacara_live_admin_disable_manual($table_name, $admin_id);
         echo json_encode($out, JSON_UNESCAPED_UNICODE);
         break;
 

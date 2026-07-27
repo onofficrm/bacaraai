@@ -697,16 +697,30 @@ export default function TableCard({
           </div>
         </div>
 
-        <TableAiSlot
-          opinion={table.ai.finalOpinion}
-          consensus={table.ai.consensus}
-          amountText={amountText}
-          modeLabel={aiModeLabel}
-          beginnerMode={beginnerMode}
-          analyzing={analyzing}
-        />
+        {!adminMode ? (
+          <TableAiSlot
+            opinion={table.ai.finalOpinion}
+            consensus={table.ai.consensus}
+            amountText={amountText}
+            modeLabel={aiModeLabel}
+            beginnerMode={beginnerMode}
+            analyzing={analyzing}
+          />
+        ) : (
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-2.5 py-1.5 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-zinc-400">
+              {table.live?.manualMode ? '수동 입력' : '자동 감지'}
+            </span>
+            <span className="text-[11px] font-mono text-zinc-300">
+              {table.stats.recentResults.length
+                ? `${table.stats.recentResults.length}게임`
+                : '결과 대기'}
+            </span>
+          </div>
+        )}
 
-        {!compact &&
+        {!adminMode &&
+          !compact &&
           (table.ai.appliedRule || (!beginnerMode && table.ai.finalConfidence > 0)) && (
           <p className="text-[10px] text-zinc-500 px-0.5 leading-snug truncate -mt-0.5">
             {table.ai.appliedRule
@@ -715,7 +729,7 @@ export default function TableCard({
           </p>
         )}
 
-        {!beginnerMode && !compact && (
+        {!adminMode && !beginnerMode && !compact && (
           <div className="hidden sm:flex justify-between items-center text-[10px] -mt-0.5">
             <div className="flex gap-1.5">
               <AiBadge model="GPT" opinion={table.ai.gpt.opinion} />

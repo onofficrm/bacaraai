@@ -6,12 +6,14 @@ type Props = {
   table: TableData;
   tableCode: string;
   shuffleActive: boolean;
+  manualMode: boolean;
   busy: boolean;
   audit: AdminAuditRow[];
   onAdd: (result: 'P' | 'B' | 'T') => void;
   onUndo: () => void;
   onNewGame: () => void;
   onToggleShuffle: (active: boolean) => void;
+  onResumeAuto: () => void;
 };
 
 const BTNS: { id: 'P' | 'B' | 'T'; label: string; sub: string; cls: string }[] = [
@@ -27,6 +29,7 @@ function actionLabel(action: string): string {
     new_game: '새 게임',
     shuffle_on: '셔플 ON',
     shuffle_off: '셔플 OFF',
+    resume_auto: '감지 복귀',
   };
   return map[action] || action;
 }
@@ -35,23 +38,36 @@ export default function AdminControlPanel({
   table,
   tableCode,
   shuffleActive,
+  manualMode,
   busy,
   audit,
   onAdd,
   onUndo,
   onNewGame,
   onToggleShuffle,
+  onResumeAuto,
 }: Props) {
   const round = table.stats.currentRound;
   const nextRound = round + 1;
+  const last = table.stats.recentResults[table.stats.recentResults.length - 1] || null;
 
   const confirmNewGame = () => {
     if (
       window.confirm(
-        `${tableCode} 테이블의 현재 슈 기록을 모두 지우고 새 게임을 시작할까요?\n\n게임 화면에도 즉시 반영됩니다.`,
+        `${tableCode} 테이블의 현재 슈 기록을 모두 지우고 새 게임을 시작할까요?\n\n수동 모드로 전환되며 게임 화면에도 즉시 반영됩니다.`,
       )
     ) {
       onNewGame();
+    }
+  };
+
+  const confirmResume = () => {
+    if (
+      window.confirm(
+        `${tableCode} 를 자동 감지 결과로 되돌릴까요?\n\n이후 게임 화면은 감지 프로그램 DB를 다시 사용합니다.`,
+      )
+    ) {
+      onResumeAuto();
     }
   };
 
@@ -67,21 +83,41 @@ export default function AdminControlPanel({
           <span className="px-2 py-1 rounded-md bg-zinc-800 text-zinc-300">
             {round > 0 ? `${round}회차` : '기록 없음'}
           </span>
+          {last ? (
+            <span
+              className={`px-2 py-1 rounded-md border font-bold ${
+                last === 'P'
+                  ? 'bg-blue-500/15 text-blue-200 border-blue-400/40'
+                  : last === 'B'
+                    ? 'bg-red-500/15 text-red-200 border-red-400/40'
+                    : 'bg-emerald-500/15 text-emerald-200 border-emerald-400/40'
+              }`}
+            >
+              최근 {last}
+            </span>
+          ) : null}
+          {manualMode ? (
+            <span className="px-2 py-1 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/25">
+              수동 모드
+            </span>
+          ) : (
+            <span className="px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/25">
+              자동 감지
+            </span>
+          )}
           {shuffleActive ? (
             <span className="px-2 py-1 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30">
               셔플 중
             </span>
           ) : (
-            <span className="px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/25">
-              진행 중
-            </span>
+            <span className="px-2 py-1 rounded-md bg-zinc-800 text-zinc-400">진행 중</span>
           )}
-          {table.live?.manualMode ? (
-            <span className="px-2 py-1 rounded-md bg-sky-500/10 text-sky-300 border border-sky-500/25">
-              수동 모드
-            </span>
-          ) : null}
         </div>
+        <p className="mt-2 text-[11px] text-zinc-500 leading-relaxed">
+          {manualMode
+            ? 'P/B/T 입력이 게임 화면에 그대로 표시됩니다.'
+            : '감지 프로그램 결과를 표시 중입니다. P/B/T를 누르면 수동 모드로 전환됩니다.'}
+        </p>
       </div>
 
       {shuffleActive ? (
@@ -117,7 +153,7 @@ export default function AdminControlPanel({
       <div className="grid grid-cols-2 gap-2 shrink-0">
         <button
           type="button"
-          disabled={busy || round <= 0}
+          disabled={busy || !manualMode || round <= 0}
           onClick={onUndo}
           className="flex items-center justify-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 py-3 text-sm font-bold text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
         >
@@ -148,6 +184,17 @@ export default function AdminControlPanel({
         <Sparkles size={16} />
         {shuffleActive ? '셔플 해제' : '셔플 중 표시'}
       </button>
+
+      {manualMode ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={confirmResume}
+          className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 py-3 text-sm font-bold text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-40"
+        >
+          자동 감지 복귀
+        </button>
+      ) : null}
 
       <div className="flex-1 min-h-0 rounded-xl border border-zinc-800 bg-zinc-950/40 overflow-hidden flex flex-col">
         <div className="px-3 py-2 border-b border-zinc-800 text-[11px] font-bold text-zinc-500 uppercase tracking-wider">

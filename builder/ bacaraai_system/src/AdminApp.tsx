@@ -87,12 +87,14 @@ export default function AdminApp() {
             table={ctrl.selectedTable}
             tableCode={ctrl.selectedCode}
             shuffleActive={ctrl.shuffleActive}
+            manualMode={ctrl.manualMode}
             busy={ctrl.busy}
             audit={ctrl.audit}
             onAdd={ctrl.addResult}
             onUndo={ctrl.undoLast}
             onNewGame={ctrl.newGame}
             onToggleShuffle={ctrl.setShuffle}
+            onResumeAuto={ctrl.resumeAuto}
           />
         </aside>
       </div>
