@@ -1134,6 +1134,7 @@ export default function App() {
         open={Boolean(liveStreamTable)}
         tableName={liveStreamTable?.name || ''}
         tableCode={liveStreamTable?.gameCode || ''}
+        table={liveStreamTable}
         latestResultLabel={
           liveStreamTable
             ? `#${liveStreamTable.stats.currentRound || '-'} ${

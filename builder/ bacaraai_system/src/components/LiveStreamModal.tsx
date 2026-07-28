@@ -9,14 +9,19 @@ import {
   AlertTriangle,
   Loader2,
   Info,
+  Timer,
 } from 'lucide-react';
 import { playSfx } from '../audio/sfxEngine';
 import { fetchStreamViewerSession } from '../api/streamViewer';
+import { getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
+import type { TableData } from '../types';
 
 type Props = {
   open: boolean;
   tableName: string;
   tableCode: string;
+  /** 베팅 창 타이머용 — 있으면 베팅 시작/남은 시간 표시 */
+  table?: TableData | null;
   /** 결과 동기화 표시용 (선택) */
   latestResultLabel?: string;
   onClose: () => void;
@@ -30,6 +35,7 @@ export default function LiveStreamModal({
   open,
   tableName,
   tableCode,
+  table = null,
   latestResultLabel,
   onClose,
 }: Props) {
@@ -45,6 +51,10 @@ export default function LiveStreamModal({
   const [syncNote, setSyncNote] = useState('');
   const [expiresAt, setExpiresAt] = useState(0);
   const [isFs, setIsFs] = useState(false);
+  const [betSec, setBetSec] = useState(0);
+  const [windowOpenBurst, setWindowOpenBurst] = useState(false);
+  const prevBetSecRef = useRef<number | null>(null);
+  const windowOpenTimerRef = useRef<number | null>(null);
 
   const reloadSession = useCallback(async () => {
     if (!tableCode) return;
@@ -106,7 +116,6 @@ export default function LiveStreamModal({
     return () => document.removeEventListener('fullscreenchange', onFs);
   }, []);
 
-  // 토큰 만료 임박 시 조용히 재발급 (재생 중 끊김 방지)
   useEffect(() => {
     if (!open || !expiresAt) return;
     const ms = Math.max(5_000, expiresAt * 1000 - Date.now() - 60_000);
@@ -115,6 +124,44 @@ export default function LiveStreamModal({
     }, ms);
     return () => window.clearTimeout(id);
   }, [open, expiresAt, reloadSession]);
+
+  useEffect(() => {
+    if (!open || !table) {
+      setBetSec(0);
+      prevBetSecRef.current = null;
+      return;
+    }
+    const tick = () => setBetSec(getBettingRemainingSecForTable(table));
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [open, table]);
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = prevBetSecRef.current;
+    prevBetSecRef.current = betSec;
+    if (prev == null) return;
+    if (!(prev <= 0 && betSec > 0)) return;
+    if (windowOpenTimerRef.current != null) {
+      window.clearTimeout(windowOpenTimerRef.current);
+    }
+    setWindowOpenBurst(true);
+    windowOpenTimerRef.current = window.setTimeout(() => {
+      windowOpenTimerRef.current = null;
+      setWindowOpenBurst(false);
+    }, 1200);
+  }, [open, betSec]);
+
+  useEffect(
+    () => () => {
+      if (windowOpenTimerRef.current != null) {
+        window.clearTimeout(windowOpenTimerRef.current);
+        windowOpenTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   const toggleFs = async () => {
     playSfx('ui');
@@ -133,6 +180,26 @@ export default function LiveStreamModal({
 
   if (!open) return null;
 
+  const betBadge = windowOpenBurst
+    ? {
+        label: '베팅 시작',
+        className: 'text-sky-100 border-sky-400/60 bg-sky-500/30 animate-pulse',
+      }
+    : betSec > 0
+      ? betSec <= 5
+        ? {
+            label: `마감 ${betSec}초`,
+            className: 'text-rose-100 border-rose-400/60 bg-rose-500/30 animate-pulse',
+          }
+        : {
+            label: `가능 ${betSec}초`,
+            className: 'text-amber-100 border-amber-400/50 bg-amber-500/25',
+          }
+      : {
+          label: '베팅 마감',
+          className: 'text-zinc-400 border-zinc-600 bg-zinc-800/80',
+        };
+
   return createPortal(
     <div
       className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/75 p-0 sm:p-6"
@@ -148,12 +215,20 @@ export default function LiveStreamModal({
       >
         <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-800">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-rose-400/90 flex items-center gap-1.5">
+            <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-rose-400/90 flex items-center gap-1.5 flex-wrap">
               <Radio size={12} className={online && !stalled ? 'animate-pulse' : ''} />
               {online === false ? 'OFFLINE' : stalled ? 'STALL' : 'LIVE'}
               <span className="ml-1 font-medium normal-case tracking-normal text-zinc-500">
                 · 약 {latencySec}초 지연
               </span>
+              {table ? (
+                <span
+                  className={`inline-flex items-center gap-1 ml-1 px-2 py-0.5 rounded-md border text-[11px] font-black normal-case tracking-tight tabular-nums ${betBadge.className}`}
+                >
+                  <Timer size={11} />
+                  {betBadge.label}
+                </span>
+              ) : null}
             </p>
             <h2 className="text-sm sm:text-base font-bold text-white truncate">
               {tableName}
@@ -231,19 +306,53 @@ export default function LiveStreamModal({
             </div>
           ) : null}
 
+          {table && !error ? (
+            <div className="pointer-events-none absolute top-2 right-2 z-[5]">
+              <div
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-black tabular-nums shadow-lg backdrop-blur-sm ${betBadge.className}`}
+              >
+                <Timer size={13} />
+                {betBadge.label}
+                {betSec > 0 ? (
+                  <span className="font-mono font-bold opacity-90">/ 30</span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           {stalled && online !== false && !error ? (
-            <div className="absolute top-2 left-2 right-2 sm:right-auto rounded-md bg-amber-500/15 border border-amber-500/40 px-2 py-1 text-[11px] text-amber-100">
+            <div className="absolute top-2 left-2 right-2 sm:right-auto sm:max-w-[55%] rounded-md bg-amber-500/15 border border-amber-500/40 px-2 py-1 text-[11px] text-amber-100">
               송출은 연결됐지만 프레임이 멈춘 것으로 보입니다(정지 화면 감지)
             </div>
           ) : null}
           {online === false && !error && !stalled ? (
-            <div className="absolute top-2 left-2 right-2 sm:right-auto rounded-md bg-amber-500/15 border border-amber-500/40 px-2 py-1 text-[11px] text-amber-100">
+            <div className="absolute top-2 left-2 right-2 sm:right-auto sm:max-w-[55%] rounded-md bg-amber-500/15 border border-amber-500/40 px-2 py-1 text-[11px] text-amber-100">
               서버 상태: 송출 없음 또는 점검 중 — 플레이어는 유지됩니다
             </div>
           ) : null}
         </div>
 
         <div className="px-4 py-2.5 border-t border-zinc-800 space-y-1.5">
+          {table ? (
+            <div className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="text-zinc-500">베팅 가능 시간</span>
+              <span
+                className={`inline-flex items-center gap-1 font-bold tabular-nums ${
+                  windowOpenBurst
+                    ? 'text-sky-300'
+                    : betSec > 0
+                      ? betSec <= 5
+                        ? 'text-rose-300'
+                        : 'text-amber-300'
+                      : 'text-zinc-500'
+                }`}
+              >
+                <Timer size={12} />
+                {betBadge.label}
+                {betSec > 0 ? ` · ${betSec}/30초` : null}
+              </span>
+            </div>
+          ) : null}
           <p className="flex items-start gap-1.5 text-[11px] text-zinc-400 leading-snug">
             <Info size={13} className="shrink-0 mt-0.5 text-zinc-500" />
             <span>

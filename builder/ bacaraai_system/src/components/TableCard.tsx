@@ -727,40 +727,42 @@ export default function TableCard({
                 <StatusBadge status={table.status} />
               )}
 
-              {lastResultLabel && (
-                <span
-                  title={`마지막 결과 ${getResultLabel(lastResult!)}`}
-                  className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-black text-white border ${getResultColor(lastResult!, 'bg')} ${getResultColor(lastResult!, 'border')}`}
-                >
-                  {lastResultLabel}
-                </span>
-              )}
-
-              {table.live && windowOpenBurst ? (
-                <span
-                  title="베팅 가능 시간이 시작되었습니다"
-                  className="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-black tracking-tight text-sky-100 border-sky-400/55 bg-sky-500/25 animate-pulse"
-                >
-                  베팅 시작
-                </span>
-              ) : table.live && betSec > 0 && betBanners.length === 0 ? (
-                <span
-                  title="베팅·취소 가능 남은 시간"
-                  className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 tabular-nums ${
-                    betSec <= 5
-                      ? 'text-[11px] font-black text-rose-200 border-rose-400/55 bg-rose-500/20 animate-pulse scale-105'
-                      : betSec <= 10
-                        ? 'text-[10px] font-bold text-amber-200 border-amber-400/45 bg-amber-500/15 animate-pulse'
-                        : 'text-[10px] font-bold text-amber-300/95 border-amber-400/40 bg-amber-500/10'
-                  }`}
-                >
-                  {betSec <= 5 ? `마감 임박 · ${betSec}초` : `베팅 가능 · ${betSec}초`}
-                </span>
-              ) : table.live && betBanners.length > 0 && betSec <= 0 ? (
-                <span className="text-[10px] font-bold text-zinc-500 tracking-tight">결과 대기</span>
-              ) : table.live && lastResultLabel && betBanners.length === 0 ? (
-                <span className="text-[10px] font-mono text-zinc-600 tracking-wide">마감</span>
-              ) : null}
+              {/* 마지막 결과(P/B/T) + 베팅 창 배지 — 한 덩어리로 P 오른쪽에 고정 */}
+              <span className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+                {lastResultLabel && (
+                  <span
+                    title={`마지막 결과 ${getResultLabel(lastResult!)}`}
+                    className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-black text-white border ${getResultColor(lastResult!, 'bg')} ${getResultColor(lastResult!, 'border')}`}
+                  >
+                    {lastResultLabel}
+                  </span>
+                )}
+                {table.live && windowOpenBurst ? (
+                  <span
+                    title="베팅 가능 시간이 시작되었습니다"
+                    className="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-black tracking-tight text-sky-100 border-sky-400/55 bg-sky-500/25 animate-pulse"
+                  >
+                    베팅 시작
+                  </span>
+                ) : table.live && betSec > 0 && betBanners.length === 0 ? (
+                  <span
+                    title="베팅·취소 가능 남은 시간"
+                    className={`inline-flex items-center rounded border px-1.5 py-0.5 tabular-nums ${
+                      betSec <= 5
+                        ? 'text-[11px] font-black text-rose-200 border-rose-400/55 bg-rose-500/20 animate-pulse'
+                        : betSec <= 10
+                          ? 'text-[10px] font-bold text-amber-200 border-amber-400/45 bg-amber-500/15 animate-pulse'
+                          : 'text-[10px] font-bold text-amber-300/95 border-amber-400/40 bg-amber-500/10'
+                    }`}
+                  >
+                    {betSec <= 5 ? `마감 ${betSec}초` : `가능 ${betSec}초`}
+                  </span>
+                ) : table.live && betBanners.length > 0 && betSec <= 0 ? (
+                  <span className="text-[10px] font-bold text-zinc-500 tracking-tight">결과 대기</span>
+                ) : table.live && lastResultLabel && betBanners.length === 0 ? (
+                  <span className="text-[10px] font-mono text-zinc-600 tracking-wide">마감</span>
+                ) : null}
+              </span>
             </div>
           </div>
 
