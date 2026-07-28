@@ -100,15 +100,18 @@ if (!function_exists('bacara_live_manual_baseline_clear')) {
 if (!function_exists('bacara_live_detector_tip')) {
     /**
      * 감지 DB 최신 tip (가벼운 조회)
-     * @return array{max_id:int,result:?string,detected_at:?string,ok:bool,error:string}
+     * @param string $table_name
+     * @param string $account 비어 있으면 테이블 전체, 있으면 해당 계정만
+     * @return array{max_id:int,result:?string,detected_at:?string,account:?string,ok:bool,error:string}
      */
-    function bacara_live_detector_tip($table_name)
+    function bacara_live_detector_tip($table_name, $account = '')
     {
         $out = array(
             'ok' => false,
             'max_id' => 0,
             'result' => null,
             'detected_at' => null,
+            'account' => null,
             'error' => '',
         );
         $table_name = strtoupper(trim((string) $table_name));
@@ -139,10 +142,20 @@ if (!function_exists('bacara_live_detector_tip')) {
             ? bacara_ai_live_escape($table_name, $use_live, $link)
             : addslashes($table_name);
 
-        $sql = " select id, result, detected_at
+        $account = trim((string) $account);
+        $account_sql = '';
+        if ($account !== '') {
+            $safe_acc = function_exists('bacara_ai_live_escape')
+                ? bacara_ai_live_escape($account, $use_live, $link)
+                : addslashes($account);
+            $account_sql = " and account = '{$safe_acc}' ";
+        }
+
+        $sql = " select id, account, result, detected_at
                    from `bacaraai`
                   where table_name = '{$safe}'
                     and result in ('P','B','T')
+                    {$account_sql}
                   order by id desc
                   limit 1 ";
         $error = '';
@@ -162,6 +175,7 @@ if (!function_exists('bacara_live_detector_tip')) {
         $out['max_id'] = isset($row['id']) ? (int) $row['id'] : 0;
         $out['result'] = isset($row['result']) ? strtoupper(trim((string) $row['result'])) : null;
         $out['detected_at'] = isset($row['detected_at']) ? $row['detected_at'] : null;
+        $out['account'] = isset($row['account']) ? (string) $row['account'] : null;
         return $out;
     }
 }
@@ -222,26 +236,40 @@ if (!function_exists('bacara_live_attach_integrity')) {
             $integrity[$k] = $v;
         }
 
-        // 감 tip 을 붙여 클라이언트가 교차검증 가능
+        // 감 tip — 표시와 같은 계정 기준으로 교차검증 (다른 계정 tip 은 오탐)
+        $display_account = isset($payload['account']) ? trim((string) $payload['account']) : '';
         if ($integrity['detector_max_id'] === null && !empty($payload['table_name'])) {
-            $tip = bacara_live_detector_tip($payload['table_name']);
+            $tip = bacara_live_detector_tip($payload['table_name'], $display_account);
             if (!empty($tip['ok'])) {
                 $integrity['detector_max_id'] = (int) $tip['max_id'];
                 $integrity['detector_result'] = $tip['result'];
+                $integrity['detector_account'] = isset($tip['account']) ? $tip['account'] : $display_account;
             }
         }
 
-        // 자동 모드: 표시 latest_id 가 감지 tip 과 같아야 함 (둘 다 있을 때)
+        // 자동 모드: 동일 계정 tip 과 표시 latest 가 반드시 일치
         if (!$manual
             && $integrity['detector_max_id']
             && $integrity['latest_id']
-            && (int) $integrity['detector_max_id'] !== (int) $integrity['latest_id']
         ) {
-            // tip 은 테이블 전체 max, 표시는 계정/슈 필터라 tip >= latest 는 정상일 수 있음
-            // 표시가 tip 보다 앞서면 이상
-            if ((int) $integrity['latest_id'] > (int) $integrity['detector_max_id']) {
+            $tip_id = (int) $integrity['detector_max_id'];
+            $disp_id = (int) $integrity['latest_id'];
+            $tip_res = isset($integrity['detector_result'])
+                ? strtoupper(trim((string) $integrity['detector_result']))
+                : '';
+            $disp_res = isset($integrity['latest_result'])
+                ? strtoupper(trim((string) $integrity['latest_result']))
+                : '';
+
+            if ($disp_id > $tip_id) {
                 $integrity['synced'] = false;
                 $integrity['message'] = '표시 latest_id 가 감지 tip 보다 앞섭니다.';
+            } elseif ($tip_id > $disp_id) {
+                $integrity['synced'] = false;
+                $integrity['message'] = '감지가 표시보다 앞섭니다. 재동기화가 필요합니다.';
+            } elseif ($tip_res !== '' && $disp_res !== '' && $tip_res !== $disp_res) {
+                $integrity['synced'] = false;
+                $integrity['message'] = '감지 결과(' . $tip_res . ')와 표시 결과(' . $disp_res . ')가 다릅니다.';
             }
         }
 

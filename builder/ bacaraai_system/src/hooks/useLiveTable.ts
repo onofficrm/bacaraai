@@ -163,6 +163,8 @@ export default function useLiveTable(
   const analyzeActive = useRef(false);
   const analyzedIdRef = useRef<string | null>(null);
   const lastSyncSigRef = useRef<string | null>(null);
+  const fpFailStreakRef = useRef(0);
+  const forceNextPollRef = useRef(false);
 
   const suggestScope = recommendCtx?.config.aiSuggestScope || 'side';
   const amountEnabled = recommendCtx
@@ -196,6 +198,10 @@ export default function useLiveTable(
       requestActive.current = true;
       try {
         const query = new URLSearchParams({ table_name: tableName, limit: '800' });
+        if (forceNextPollRef.current) {
+          query.set('force', '1');
+          forceNextPollRef.current = false;
+        }
         const response = await fetch(`${PLATFORM_LINKS.liveResults}?${query.toString()}`, {
           credentials: 'same-origin',
           headers: { Accept: 'application/json' },
@@ -228,15 +234,27 @@ export default function useLiveTable(
 
         const check = await verifyLiveFeedIntegrity({ ...data, results: rows });
         if (!check.fpMatch) {
-          // 지문 불일치 → 이번 틱은 버리고 다음 폴링에서 재시도
-          setState((prev) => ({
-            ...prev,
-            loading: false,
-            connected: true,
-            syncWarning: check.message,
-            error: null,
-          }));
-          return;
+          fpFailStreakRef.current += 1;
+          // 1회는 재시도, 2회 연속이면 서버 rows 강제 적용 (표시 고정 방지)
+          if (fpFailStreakRef.current < 2) {
+            forceNextPollRef.current = true;
+            setState((prev) => ({
+              ...prev,
+              loading: false,
+              connected: true,
+              syncWarning: check.message,
+              integrity: data.integrity || prev.integrity,
+              error: null,
+            }));
+            return;
+          }
+        } else {
+          fpFailStreakRef.current = 0;
+        }
+
+        // 감지가 표시보다 앞서면 다음 폴링에서 캐시 강제 무효화
+        if (!check.synced && !data.manual_mode) {
+          forceNextPollRef.current = true;
         }
 
         const latest = rows.length ? rows[rows.length - 1] : null;
@@ -248,7 +266,9 @@ export default function useLiveTable(
             ? check.message || '감지 새 결과로 표시를 자동 복구했습니다.'
             : !check.synced
               ? check.message
-              : null;
+              : !check.fpMatch
+                ? check.message
+                : null;
 
         // 데이터가 실제로 바뀐 경우에만 상태 갱신
         const sig = `ok|${buildRowsSignature(rows)}|${nextGameNo ?? ''}|${nextLatestId ?? ''}|${data.integrity?.results_fp || ''}|${syncWarning || ''}`;
@@ -278,6 +298,7 @@ export default function useLiveTable(
           return;
         }
         lastSyncSigRef.current = `err|${message}`;
+        forceNextPollRef.current = true;
         setState((prev) => ({
           ...prev,
           loading: false,

@@ -62,8 +62,13 @@ type NormalizedLive = {
   error: string | null;
 };
 
-async function fetchCanonicalLive(tableCode: string): Promise<NormalizedLive> {
+async function fetchCanonicalLive(
+  tableCode: string,
+  force = false,
+  fpRetry = 0,
+): Promise<NormalizedLive> {
   const query = new URLSearchParams({ table_name: tableCode, limit: '800' });
+  if (force) query.set('force', '1');
   const res = await fetch(`${PLATFORM_LINKS.liveResults}?${query}`, {
     credentials: 'same-origin',
     headers: { Accept: 'application/json' },
@@ -87,8 +92,12 @@ async function fetchCanonicalLive(tableCode: string): Promise<NormalizedLive> {
     .sort((a, b) => a.id - b.id);
 
   const check = await verifyLiveFeedIntegrity({ ...data, results: rows });
-  if (!check.fpMatch) {
-    throw new Error(check.message || '결과 지문 불일치 — 재시도');
+  if (!check.fpMatch && fpRetry < 1) {
+    return fetchCanonicalLive(tableCode, true, fpRetry + 1);
+  }
+  // 감지가 앞서면 강제 재조회로 한 번 더 맞춤
+  if (!check.synced && !force && !data.manual_mode) {
+    return fetchCanonicalLive(tableCode, true, fpRetry);
   }
 
   const latest = rows.length ? rows[rows.length - 1] : null;
@@ -104,7 +113,7 @@ async function fetchCanonicalLive(tableCode: string): Promise<NormalizedLive> {
     integrity: data.integrity || null,
     syncWarning: check.healed
       ? check.message || '감지 새 결과로 자동 복구됨'
-      : !check.synced
+      : !check.synced || !check.fpMatch
         ? check.message
         : null,
     error: null,

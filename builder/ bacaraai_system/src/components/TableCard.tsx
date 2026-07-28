@@ -87,12 +87,16 @@ export default function TableCard({
     key: number;
     side: 'P' | 'B' | 'T';
   } | null>(null);
+  /** 베팅 창이 막 열렸을 때 짧은 「베팅 시작」 배지 */
+  const [windowOpenBurst, setWindowOpenBurst] = useState(false);
   const prevLatestRef = useRef<number | null | undefined>(undefined);
   const prevStreakRef = useRef(table.stats.currentStreak);
   const prevLockRef = useRef(false);
+  const prevBetSecRef = useRef<number | null>(null);
   const seenBetIdsRef = useRef<Set<string>>(new Set());
   const betStartBootRef = useRef(true);
   const betStartTimerRef = useRef<number | null>(null);
+  const windowOpenTimerRef = useRef<number | null>(null);
   const betBannersRef = useRef(betBanners);
   betBannersRef.current = betBanners;
   /** pending id 목록 — 배열 참조 변경마다 effect가 돌지 않도록 안정 키 */
@@ -157,6 +161,7 @@ export default function TableCard({
   useEffect(() => {
     if (!table.live) {
       setBetSec(0);
+      prevBetSecRef.current = 0;
       return;
     }
     const tick = () => setBetSec(getBettingRemainingSecForTable(table));
@@ -164,6 +169,32 @@ export default function TableCard({
     const id = window.setInterval(tick, 250);
     return () => window.clearInterval(id);
   }, [table]);
+
+  // 베팅 가능 창 열림(0→양수) → 「베팅 시작」 배지 1.2초
+  useEffect(() => {
+    const prev = prevBetSecRef.current;
+    prevBetSecRef.current = betSec;
+    if (prev == null) return;
+    if (!(prev <= 0 && betSec > 0)) return;
+    if (windowOpenTimerRef.current != null) {
+      window.clearTimeout(windowOpenTimerRef.current);
+    }
+    setWindowOpenBurst(true);
+    windowOpenTimerRef.current = window.setTimeout(() => {
+      windowOpenTimerRef.current = null;
+      setWindowOpenBurst(false);
+    }, 1200);
+  }, [betSec]);
+
+  useEffect(
+    () => () => {
+      if (windowOpenTimerRef.current != null) {
+        window.clearTimeout(windowOpenTimerRef.current);
+        windowOpenTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   // 오토 락온 상승 엣지 → 타깃 연출 1회 (이미 베팅 중이면 생략 — LOCK ON/BET 겹침 방지)
   useEffect(() => {
@@ -627,14 +658,20 @@ export default function TableCard({
                   primary?.amount != null
                     ? `${primary.amount.toLocaleString()}원`
                     : '';
+                const waitLabel =
+                  betSec > 0 ? ` · 취소 ${betSec}초` : ' · 대기';
                 return (
                   <span
                     className={`text-[9px] font-black tracking-tight border px-1.5 py-0.5 rounded animate-pulse ${sideCls}`}
-                    title={primary?.hint || '베팅 접수됨 · 결과 대기'}
+                    title={
+                      betSec > 0
+                        ? `접수됨 · 취소 가능 ${betSec}초`
+                        : primary?.hint || '베팅 접수됨 · 결과 대기'
+                    }
                   >
                     {sideLabel || '베팅'}
                     {amt ? ` · ${amt}` : ''}
-                    {' · 대기'}
+                    {waitLabel}
                   </span>
                 );
               })()}
@@ -699,10 +736,17 @@ export default function TableCard({
                 </span>
               )}
 
-              {table.live && betSec > 0 ? (
+              {table.live && windowOpenBurst ? (
                 <span
-                  title="베팅 가능 남은 시간"
-                  className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 font-mono tabular-nums ${
+                  title="베팅 가능 시간이 시작되었습니다"
+                  className="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-black tracking-tight text-sky-100 border-sky-400/55 bg-sky-500/25 animate-pulse"
+                >
+                  베팅 시작
+                </span>
+              ) : table.live && betSec > 0 && betBanners.length === 0 ? (
+                <span
+                  title="베팅·취소 가능 남은 시간"
+                  className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 tabular-nums ${
                     betSec <= 5
                       ? 'text-[11px] font-black text-rose-200 border-rose-400/55 bg-rose-500/20 animate-pulse scale-105'
                       : betSec <= 10
@@ -710,14 +754,12 @@ export default function TableCard({
                         : 'text-[10px] font-bold text-amber-300/95 border-amber-400/40 bg-amber-500/10'
                   }`}
                 >
-                  <span className="opacity-80 font-sans text-[9px] tracking-wide">
-                    {betSec <= 5 ? 'CLOSE' : 'OPEN'}
-                  </span>
-                  {betSec}
-                  <span className="opacity-70 font-sans text-[9px]">s</span>
+                  {betSec <= 5 ? `마감 임박 · ${betSec}초` : `베팅 가능 · ${betSec}초`}
                 </span>
-              ) : table.live && lastResultLabel ? (
-                <span className="text-[10px] font-mono text-zinc-600 tracking-wide">CONFIRMED</span>
+              ) : table.live && betBanners.length > 0 && betSec <= 0 ? (
+                <span className="text-[10px] font-bold text-zinc-500 tracking-tight">결과 대기</span>
+              ) : table.live && lastResultLabel && betBanners.length === 0 ? (
+                <span className="text-[10px] font-mono text-zinc-600 tracking-wide">마감</span>
               ) : null}
             </div>
           </div>

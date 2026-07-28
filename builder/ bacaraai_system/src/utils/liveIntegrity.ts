@@ -13,6 +13,7 @@ export type LiveIntegrity = {
   policy?: string;
   detector_max_id?: number | null;
   detector_result?: string | null;
+  detector_account?: string | null;
   message?: string | null;
   healed?: boolean;
   manual_baseline_id?: number | null;
@@ -85,11 +86,48 @@ export async function verifyLiveFeedIntegrity(
   const clientFp = await fingerprintLiveResults(rows);
   const canVerify = Boolean(serverFp) && !clientFp.startsWith('weak');
   const fpMatch = !canVerify ? true : serverFp === clientFp;
-  const synced = data.integrity ? data.integrity.synced !== false : true;
-  const healed = Boolean(data.integrity?.healed);
-  const message =
+
+  const latest = rows.length ? rows[rows.length - 1] : null;
+  const tipId = data.integrity?.detector_max_id ?? null;
+  const tipRes = data.integrity?.detector_result
+    ? String(data.integrity.detector_result).trim().toUpperCase()
+    : '';
+  const latestId = latest ? Number(latest.id) : data.integrity?.latest_id ?? null;
+  const latestRes = latest
+    ? String(latest.result || '')
+        .trim()
+        .toUpperCase()
+    : data.integrity?.latest_result
+      ? String(data.integrity.latest_result).trim().toUpperCase()
+      : '';
+
+  let synced = data.integrity ? data.integrity.synced !== false : true;
+  let message =
     data.integrity?.message ||
     (!fpMatch ? '표시 지문이 서버와 일치하지 않습니다. 재동기화합니다.' : null);
+
+  // 클라이언트 교차검증 — 서버 synced 누락 시에도 감지≠표시를 막음
+  if (
+    !data.integrity?.manual_mode &&
+    tipId != null &&
+    latestId != null &&
+    Number(tipId) > 0 &&
+    Number(latestId) > 0
+  ) {
+    if (Number(latestId) > Number(tipId)) {
+      synced = false;
+      message = message || '표시 latest_id 가 감지 tip 보다 앞섭니다.';
+    } else if (Number(tipId) > Number(latestId)) {
+      synced = false;
+      message = message || '감지가 표시보다 앞섭니다. 재동기화가 필요합니다.';
+    } else if (tipRes && latestRes && tipRes !== latestRes) {
+      synced = false;
+      message =
+        message || `감지 결과(${tipRes})와 표시 결과(${latestRes})가 다릅니다.`;
+    }
+  }
+
+  const healed = Boolean(data.integrity?.healed);
 
   return {
     ok: fpMatch && synced,

@@ -42,6 +42,7 @@ if (!preg_match('/^[A-Z0-9_-]{1,40}$/', $table_name)) {
 
 $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 800;
 $limit = max(1, min(1000, $limit));
+$force_refresh = isset($_GET['force']) && (string) $_GET['force'] === '1';
 
 if (is_file(G5_LIB_PATH . '/bacara-live-integrity.lib.php')) {
     include_once G5_LIB_PATH . '/bacara-live-integrity.lib.php';
@@ -119,6 +120,44 @@ function bacara_live_output_payload($payload, $member_id, $cache_state)
     $payload['member_id'] = $member_id;
     $payload['cache'] = $cache_state;
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * 캐시가 감지 tip(동일 계정)과 일치할 때만 사용
+ */
+function bacara_live_cache_matches_detector($payload, $table_max_id, $table_name)
+{
+    if (!is_array($payload) || empty($payload['ok'])) {
+        return false;
+    }
+    $cached_latest = isset($payload['latest_id']) ? (int) $payload['latest_id'] : 0;
+    if ($table_max_id > 0 && $cached_latest < $table_max_id) {
+        return false;
+    }
+    if (!function_exists('bacara_live_detector_tip')) {
+        return $table_max_id <= 0 || $cached_latest >= $table_max_id;
+    }
+    $account = isset($payload['account']) ? trim((string) $payload['account']) : '';
+    $tip = bacara_live_detector_tip($table_name, $account);
+    if (empty($tip['ok'])) {
+        return $table_max_id <= 0 || $cached_latest >= $table_max_id;
+    }
+    $tip_id = (int) $tip['max_id'];
+    if ($tip_id > $cached_latest) {
+        return false;
+    }
+    $tip_res = isset($tip['result']) ? strtoupper(trim((string) $tip['result'])) : '';
+    $cached_res = '';
+    if (!empty($payload['results']) && is_array($payload['results'])) {
+        $last = $payload['results'][count($payload['results']) - 1];
+        if (is_array($last) && isset($last['result'])) {
+            $cached_res = strtoupper(trim((string) $last['result']));
+        }
+    }
+    if ($tip_id === $cached_latest && $tip_res !== '' && $cached_res !== '' && $tip_res !== $cached_res) {
+        return false;
+    }
+    return true;
 }
 
 // 캐시 히트 전에도 DB에 연결해 MAX(id) 로 신선도를 검증한다.
@@ -509,11 +548,13 @@ function bacara_live_accounts_by_freshness($safe_table_name, $use_live_cfg, $liv
 $query_error = '';
 $table_max_id = bacara_live_table_max_id($safe_table_name, $use_live_cfg, $live_link, $query_error);
 
-// 캐시: 시간이 신선해도 DB 최신 id 가 앞서면 반드시 재조회
-$fresh_payload = bacara_live_cached_payload($live_cache_file, 1);
-if ($fresh_payload !== null) {
-    $cached_latest = isset($fresh_payload['latest_id']) ? (int) $fresh_payload['latest_id'] : 0;
-    if ($query_error === '' && $cached_latest >= $table_max_id) {
+// 캐시: 시간이 신선해도 감지 tip/테이블 max 가 앞서거나 결과가 다르면 반드시 재조회
+if (!$force_refresh) {
+    $fresh_payload = bacara_live_cached_payload($live_cache_file, 1);
+    if ($fresh_payload !== null
+        && $query_error === ''
+        && bacara_live_cache_matches_detector($fresh_payload, $table_max_id, $table_name)
+    ) {
         bacara_live_output_payload($fresh_payload, $member['mb_id'], 'fresh');
         exit;
     }
@@ -521,21 +562,24 @@ if ($fresh_payload !== null) {
 
 $live_cache_lock = @fopen($live_cache_lock_file, 'c');
 if ($live_cache_lock && !@flock($live_cache_lock, LOCK_EX | LOCK_NB)) {
-    $stale_payload = bacara_live_cached_payload($live_cache_file, 10);
-    if ($stale_payload !== null) {
-        $cached_latest = isset($stale_payload['latest_id']) ? (int) $stale_payload['latest_id'] : 0;
-        // 새 결과가 있으면 stale 캐시를 쓰지 않는다 (감지 미반영의 주원인)
-        if ($query_error === '' && $cached_latest >= $table_max_id) {
+    if (!$force_refresh) {
+        $stale_payload = bacara_live_cached_payload($live_cache_file, 10);
+        if ($stale_payload !== null
+            && $query_error === ''
+            && bacara_live_cache_matches_detector($stale_payload, $table_max_id, $table_name)
+        ) {
             @fclose($live_cache_lock);
             bacara_live_output_payload($stale_payload, $member['mb_id'], 'stale');
             exit;
         }
     }
     @flock($live_cache_lock, LOCK_EX);
-    $fresh_payload = bacara_live_cached_payload($live_cache_file, 10);
-    if ($fresh_payload !== null) {
-        $cached_latest = isset($fresh_payload['latest_id']) ? (int) $fresh_payload['latest_id'] : 0;
-        if ($query_error === '' && $cached_latest >= $table_max_id) {
+    if (!$force_refresh) {
+        $fresh_payload = bacara_live_cached_payload($live_cache_file, 10);
+        if ($fresh_payload !== null
+            && $query_error === ''
+            && bacara_live_cache_matches_detector($fresh_payload, $table_max_id, $table_name)
+        ) {
             @flock($live_cache_lock, LOCK_UN);
             @fclose($live_cache_lock);
             bacara_live_output_payload($fresh_payload, $member['mb_id'], 'waited');
