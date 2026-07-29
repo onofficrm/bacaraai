@@ -90,8 +90,8 @@ $live_cache_dir = G5_DATA_PATH . '/cache';
 if (!is_dir($live_cache_dir)) {
     @mkdir($live_cache_dir, 0755, true);
 }
-// v3: game_no 고착 시 결과 유지 + 시간공백 슈 경계
-$live_cache_key = preg_replace('/[^A-Z0-9_-]/', '', $table_name) . '-' . $limit . '-v3';
+// v4: 15분 공백 슈절단 제거 — game_no 고착 시 로드맵 유지
+$live_cache_key = preg_replace('/[^A-Z0-9_-]/', '', $table_name) . '-' . $limit . '-v4';
 $live_cache_file = $live_cache_dir . '/bacara-live-' . $live_cache_key . '.json';
 $live_cache_lock_file = $live_cache_file . '.lock';
 $live_cache_lock = null;
@@ -566,8 +566,8 @@ function bacara_live_query_for_account($account, $safe_table_name, $limit, $use_
     return bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, $query_error);
 }
 
-/** 슈 사이 긴 공백(초). 이보다 길면 새 슈로 본다. */
-define('BACARA_LIVE_SHOE_GAP_SEC', 900);
+/** 슈 강제 경계(초). game_no 가 같아도 이보다 긴 공백이면 새 슈. */
+define('BACARA_LIVE_SHOE_HARD_GAP_SEC', 10800);
 
 /**
  * MySQL DATETIME → unix timestamp (실패 시 null)
@@ -630,7 +630,11 @@ function bacara_live_dedupe_game_no($rows)
 
 /**
  * id 오름차순에서 현재 슈만 남김.
- * 경계: game_no 감소, game_no=1 재시작, detected_at 긴 공백.
+ *
+ * 경계:
+ * - game_no 감소 또는 1 재시작 (정상 슈 리셋)
+ * - 3시간 이상 공백 (강제). 15분 공백으로 자르지 않음
+ *   → 감지기 game_no 고착 시 로드맵이 1칸만 남는 문제 방지
  */
 function bacara_live_trim_to_current_shoe($rows)
 {
@@ -646,12 +650,15 @@ function bacara_live_trim_to_current_shoe($rows)
         $ts = bacara_live_row_ts($rows[$i]);
 
         if ($prev_no !== null && $no !== null && $no > 0 && $prev_no > 0) {
-            // 회차 카운터 리셋 (새 슈)
-            if ($no < $prev_no || $no === 1 && $prev_no > 1) {
+            if ($no < $prev_no || ($no === 1 && $prev_no > 1)) {
                 $start = $i;
             }
         }
-        if ($prev_ts !== null && $ts !== null && ($ts - $prev_ts) >= BACARA_LIVE_SHOE_GAP_SEC) {
+        if (
+            $prev_ts !== null
+            && $ts !== null
+            && ($ts - $prev_ts) >= BACARA_LIVE_SHOE_HARD_GAP_SEC
+        ) {
             $start = $i;
         }
 

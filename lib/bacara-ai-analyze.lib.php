@@ -159,7 +159,8 @@ if (!function_exists('bacara_ai_trim_shoe')) {
         if (!$rows) {
             return array();
         }
-        $gap_sec = 900;
+        // live_results 와 동일: 회차 리셋 또는 3시간 이상 공백만 새 슈
+        $hard_gap_sec = 10800;
         $start = 0;
         $prev = null;
         $prev_ts = null;
@@ -175,7 +176,7 @@ if (!function_exists('bacara_ai_trim_shoe')) {
             if ($prev !== null && $no > 0 && $prev > 0 && ($no < $prev || ($no === 1 && $prev > 1))) {
                 $start = $i;
             }
-            if ($prev_ts !== null && $ts !== null && ($ts - $prev_ts) >= $gap_sec) {
+            if ($prev_ts !== null && $ts !== null && ($ts - $prev_ts) >= $hard_gap_sec) {
                 $start = $i;
             }
             if ($no > 0) {

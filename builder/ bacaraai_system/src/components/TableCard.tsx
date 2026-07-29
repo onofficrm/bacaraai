@@ -708,7 +708,13 @@ export default function TableCard({
                         table.live.connected || table.live.loading ? 'animate-pulse' : ''
                       }`}
                     />
-                    {table.live.connected ? 'LIVE' : table.live.loading ? '연결 중' : '연결 오류'}
+                    {table.live.connected
+                      ? table.live.gameStatus === 'lobby'
+                        ? '수신'
+                        : 'LIVE'
+                      : table.live.loading
+                        ? '연결 중'
+                        : '연결 오류'}
                   </span>
                   {(() => {
                     const badge = gameStatusBadge(table.live.gameStatus);
