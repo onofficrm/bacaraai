@@ -8,7 +8,11 @@ import {
 } from 'react';
 import { GameResult } from '../types';
 import { playSfx } from '../audio/sfxEngine';
-import { buildBeadPlate, ROAD_ROWS } from '../utils/baccaratRoads';
+import {
+  ROAD_ROWS,
+  buildBigRoadGrid,
+  type BigRoadCell,
+} from '../utils/baccaratRoads';
 
 interface RoadmapProps {
   data: GameResult[][];
@@ -38,7 +42,7 @@ const SIZE = {
   lg: { cell: 32, minCols: 12 },
 } as const;
 
-/** 라이브 테이블용 — 결과 1건 = 칸 1개 (빅로드 합침 없음) */
+/** 라이브 테이블용 — 빅로드 (연속 동일 결과 열 합침 + 타이 슬래시) */
 export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
@@ -77,15 +81,15 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
   const { cell, minCols } = SIZE[size];
   const rows = ROAD_ROWS;
 
-  const columns = useMemo(() => buildBeadPlate(flatResults, rows), [flatResults, rows]);
+  const columns = useMemo(() => buildBigRoadGrid(flatResults), [flatResults]);
 
   const displayCols = useMemo(() => {
     const pad = Math.max(0, minCols - columns.length);
     const leftPad = Array.from({ length: pad }, () =>
-      Array.from({ length: rows }, () => null as (typeof columns)[0][0] | null),
+      Array.from({ length: rows }, () => null as BigRoadCell | null),
     );
     const normalized = columns.map((col) => {
-      const next: Array<(typeof col)[0] | null> = [...col];
+      const next: Array<BigRoadCell | null> = [...col];
       while (next.length < rows) next.push(null);
       return next.slice(0, rows);
     });
@@ -172,6 +176,9 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
 
   return (
     <div className="min-w-0 w-full overflow-hidden rounded-lg border border-zinc-200 bg-white">
+      <div className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+        Big Road
+      </div>
       <div
         ref={scrollRef}
         onPointerDown={onPointerDown}
@@ -179,8 +186,8 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onClickCapture={onClickCapture}
-        aria-label={`게임 결과 ${counts.n}회 Player ${counts.p} Banker ${counts.b} Tie ${counts.t}`}
-        className={`roadmap-x-scroll p-2 sm:p-2.5 touch-pan-x select-none ${
+        aria-label={`빅로드 게임 결과 ${counts.n}회 Player ${counts.p} Banker ${counts.b} Tie ${counts.t}`}
+        className={`roadmap-x-scroll px-2 pb-2 sm:px-2.5 sm:pb-2.5 touch-pan-x select-none ${
           dragging ? 'cursor-grabbing' : 'cursor-grab'
         }`}
         style={{ touchAction: 'pan-x' }}
@@ -214,7 +221,7 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
                       className="bg-white flex items-center justify-center"
                       style={{ width: cell, height: cell }}
                     >
-                      {cellData ? <BeadMark result={cellData.result} newest={!!cellData.isNewest} /> : null}
+                      {cellData ? <BigRoadMark cell={cellData} /> : null}
                     </div>
                   );
                 })}
@@ -227,25 +234,45 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
   );
 }
 
-function BeadMark({ result, newest }: { result: GameResult; newest: boolean }) {
-  const color =
-    result === 'B' ? '#ef4444' : result === 'P' ? '#2563eb' : '#059669';
-  const label = result === 'B' ? 'B' : result === 'P' ? 'P' : 'T';
+function BigRoadMark({ cell }: { cell: BigRoadCell }) {
+  const stroke = cell.result === 'P' ? '#2563eb' : '#ef4444';
 
   return (
     <div
-      className="relative flex items-center justify-center rounded-full border-[2.5px] font-black leading-none"
+      className="relative flex items-center justify-center"
       style={{
-        width: '78%',
-        height: '78%',
-        borderColor: color,
-        color,
-        boxShadow: newest ? '0 0 0 1.5px rgba(161,161,170,0.55)' : undefined,
-        fontSize: result === 'T' ? '9px' : '10px',
+        width: '84%',
+        height: '84%',
+        filter: cell.isNewest ? 'drop-shadow(0 0 2px rgba(28,25,23,0.28))' : undefined,
       }}
-      aria-label={label}
+      aria-label={cell.result === 'P' ? 'Player' : 'Banker'}
     >
-      {label}
+      <svg viewBox="0 0 32 32" className="w-full h-full block" aria-hidden>
+        <circle
+          cx="16"
+          cy="16"
+          r="11.2"
+          fill="none"
+          stroke={stroke}
+          strokeWidth="2.6"
+        />
+        {cell.ties > 0 && (
+          <line
+            x1="8"
+            y1="24"
+            x2="24"
+            y2="8"
+            stroke="#059669"
+            strokeWidth="2.3"
+            strokeLinecap="round"
+          />
+        )}
+      </svg>
+      {cell.ties > 1 && (
+        <span className="absolute -top-0.5 -right-0.5 min-w-[10px] h-[10px] px-0.5 rounded-full bg-emerald-600 text-white text-[7px] font-bold leading-[10px] text-center">
+          {cell.ties}
+        </span>
+      )}
     </div>
   );
 }
