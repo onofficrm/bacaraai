@@ -5,6 +5,9 @@
  * GET table_name=MD2729&limit=800
  *
  * - 현재 슈(shoe) 결과만 반환
+ * - game_status 테이블: stop(대기) / game(감지) / shuffle(셔플)
+ *   SELECT status FROM game_status WHERE account=? AND table_name=?
+ *   (매 응답마다 재조회, shuffle 시 shuffle_active=true)
  * - game_no 는 회차 카운터(1,2,3… 후 리셋). 최신 game_no 로 필터하면
  *   과거 슈의 같은 회차까지 섞이므로, 마지막 game_no=1 이후 id 구간을 사용
  * - 슈가 짧으면 슈 시작부터 전부 반환 (앞부분 잘림 방지 — 로드맵 불일치 원인)
@@ -146,6 +149,10 @@ function bacara_live_output_payload($payload, $member_id, $cache_state)
 
 /**
  * 감지 프로그램 game_status: stop | game | shuffle
+ *
+ * 조회 (2차 명세):
+ *   SELECT status FROM game_status
+ *    WHERE account='계정' AND table_name='테이블명'
  */
 function bacara_live_normalize_game_status($raw)
 {
@@ -166,10 +173,48 @@ function bacara_live_normalize_game_status($raw)
 }
 
 /**
+ * game_status 한 행 조회.
+ * @return string|null  raw status 또는 행 없음 시 null
+ */
+function bacara_live_query_game_status_row($table_name, $account, $live_link, &$query_error)
+{
+    $query_error = '';
+    $safe_table = mysqli_real_escape_string($live_link, $table_name);
+    if ($account !== '') {
+        $safe_acc = mysqli_real_escape_string($live_link, $account);
+        // 명세 쿼리: account + table_name
+        $sql = " SELECT status
+                   FROM `game_status`
+                  WHERE account = '{$safe_acc}'
+                    AND table_name = '{$safe_table}'
+                  LIMIT 1 ";
+    } else {
+        $sql = " SELECT status
+                   FROM `game_status`
+                  WHERE table_name = '{$safe_table}'
+                  ORDER BY id DESC
+                  LIMIT 1 ";
+    }
+
+    $q = @mysqli_query($live_link, $sql);
+    if (!$q) {
+        $query_error = mysqli_error($live_link);
+        return null;
+    }
+    $row = mysqli_fetch_assoc($q);
+    if (!$row || !array_key_exists('status', $row)) {
+        return null;
+    }
+    return $row['status'];
+}
+
+/**
  * @return string stop|game|shuffle|unknown
  */
 function bacara_live_fetch_game_status($table_name, $account, $use_live_cfg, $live_link, &$query_error)
 {
+    global $live_cfg;
+
     $query_error = '';
     $table_name = strtoupper(trim((string) $table_name));
     $account = trim((string) $account);
@@ -180,32 +225,39 @@ function bacara_live_fetch_game_status($table_name, $account, $use_live_cfg, $li
         return 'unknown';
     }
 
-    $safe_table = mysqli_real_escape_string($live_link, $table_name);
-    if ($account !== '') {
-        $safe_acc = mysqli_real_escape_string($live_link, $account);
-        $sql = " select status
-                   from `game_status`
-                  where table_name = '{$safe_table}'
-                    and account = '{$safe_acc}'
-                  limit 1 ";
-    } else {
-        $sql = " select status
-                   from `game_status`
-                  where table_name = '{$safe_table}'
-                  order by id desc
-                  limit 1 ";
+    // 1) 결과 피드 계정
+    $raw = bacara_live_query_game_status_row($table_name, $account, $live_link, $query_error);
+    if ($query_error !== '') {
+        return 'unknown';
+    }
+    if ($raw !== null) {
+        return bacara_live_normalize_game_status($raw);
     }
 
-    $q = @mysqli_query($live_link, $sql);
-    if (!$q) {
-        $query_error = mysqli_error($live_link);
-        return 'unknown';
+    // 2) live config 선호 계정 (결과 account 와 다를 때)
+    $preferred = !empty($live_cfg['account']) ? trim((string) $live_cfg['account']) : '';
+    if ($preferred !== '' && strcasecmp($preferred, $account) !== 0) {
+        $raw = bacara_live_query_game_status_row($table_name, $preferred, $live_link, $query_error);
+        if ($query_error !== '') {
+            return 'unknown';
+        }
+        if ($raw !== null) {
+            return bacara_live_normalize_game_status($raw);
+        }
     }
-    $row = mysqli_fetch_assoc($q);
-    if (!$row || !isset($row['status'])) {
-        return 'unknown';
+
+    // 3) 테이블만으로 최신 상태
+    if ($account !== '' || $preferred !== '') {
+        $raw = bacara_live_query_game_status_row($table_name, '', $live_link, $query_error);
+        if ($query_error !== '') {
+            return 'unknown';
+        }
+        if ($raw !== null) {
+            return bacara_live_normalize_game_status($raw);
+        }
     }
-    return bacara_live_normalize_game_status($row['status']);
+
+    return 'unknown';
 }
 
 /**

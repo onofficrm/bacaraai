@@ -81,6 +81,12 @@ export function getBettingRemainingSecForTable(
     return 0;
   }
 
+  // game_status: stop=대기, shuffle=셔플 — 베팅 창 닫음
+  const gs = table.live.gameStatus;
+  if (gs === 'stop' || gs === 'shuffle' || table.live.shuffleActive) {
+    return 0;
+  }
+
   const latestId = table.live.latestId;
   if (latestId == null) {
     return 0;
@@ -162,6 +168,30 @@ export default function useBettingWindow(table: TableData | null): BettingWindow
       };
     }
 
+    const gs = table.live.gameStatus;
+    if (gs === 'stop') {
+      return {
+        remainingSec: 0,
+        hasResult: true,
+        canPlaceBet: false,
+        canCancelBet: false,
+        progress: 0,
+        statusLabel: '감지 대기(stop)',
+        hint: '감지 프로그램이 stop 상태입니다. game 으로 전환되면 베팅할 수 있습니다.',
+      };
+    }
+    if (gs === 'shuffle' || table.live.shuffleActive) {
+      return {
+        remainingSec: 0,
+        hasResult: true,
+        canPlaceBet: false,
+        canCancelBet: false,
+        progress: 0,
+        statusLabel: '셔플 중',
+        hint: '셔플이 끝나면 game 상태로 복귀하며 다시 30초 베팅 창이 열립니다.',
+      };
+    }
+
     const remainingSec = getBettingRemainingSecForTable(table, now);
     const open = remainingSec > 0;
     const progress = open ? remainingSec / BET_WINDOW_SEC : 0;
@@ -177,5 +207,12 @@ export default function useBettingWindow(table: TableData | null): BettingWindow
         ? '결과 표시 후 30초입니다. 이 안에 베팅·취소하세요.'
         : '베팅 가능 시간이 끝났습니다. 다음 결과가 나오면 다시 30초가 열립니다.',
     };
-  }, [table, now, table?.live?.latestId, table?.live?.latestDetectedAt]);
+  }, [
+    table,
+    now,
+    table?.live?.latestId,
+    table?.live?.latestDetectedAt,
+    table?.live?.gameStatus,
+    table?.live?.shuffleActive,
+  ]);
 }
