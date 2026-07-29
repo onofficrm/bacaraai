@@ -8,18 +8,28 @@ import {
 } from 'react';
 import { GameResult } from '../types';
 import { playSfx } from '../audio/sfxEngine';
-import { buildBigRoadGrid, ROAD_ROWS } from '../utils/baccaratRoads';
+import { buildBeadPlate, buildBigRoadGrid, ROAD_ROWS } from '../utils/baccaratRoads';
 
 interface RoadmapProps {
   data: GameResult[][];
-  /** 있으면 이 순서를 우선 (정확한 빅로드) */
+  /** 있으면 이 순서를 우선 (DB 결과와 1:1) */
   results?: GameResult[];
   size?: 'sm' | 'md' | 'lg';
+  /**
+   * bead = 한 결과당 한 칸 (DB·통계와 개수 일치) — 기본
+   * big = 카지노 빅로드 (타이 합침·연속 열 — 칸 수 ≠ 회차 수)
+   */
+  variant?: 'bead' | 'big';
 }
 
-type Cell = {
+type BigCell = {
   result: 'P' | 'B';
   ties: number;
+  isNewest?: boolean;
+};
+
+type BeadCell = {
+  result: GameResult;
   isNewest?: boolean;
 };
 
@@ -35,7 +45,7 @@ function flattenRoadmap(data: GameResult[][]): GameResult[] {
 
 function resultsSignature(results: GameResult[]): string {
   if (!results.length) return '0';
-  return `${results.length}:${results[results.length - 1]}:${results.slice(-6).join('')}`;
+  return `${results.length}:${results[results.length - 1]}:${results.slice(-8).join('')}`;
 }
 
 const SIZE = {
@@ -44,7 +54,12 @@ const SIZE = {
   lg: { cell: 32, stroke: 2.75, minCols: 14 },
 } as const;
 
-export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
+export default function Roadmap({
+  data,
+  results,
+  size = 'md',
+  variant = 'bead',
+}: RoadmapProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -67,38 +82,44 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
 
   const visualGrid = useMemo(() => {
     try {
-      return buildBigRoadGrid(flatResults) as Array<Array<Cell | null>>;
+      if (variant === 'bead') {
+        return buildBeadPlate(flatResults, rows) as Array<Array<BeadCell | null>>;
+      }
+      return buildBigRoadGrid(flatResults) as Array<Array<BigCell | null>>;
     } catch {
-      return [] as Array<Array<Cell | null>>;
+      return [] as Array<Array<BeadCell | BigCell | null>>;
     }
-  }, [flatResults]);
+  }, [flatResults, variant, rows]);
 
-  // 데이터 열 + 오른쪽 여유 2열만 (빈 칸으로 스크롤이 밀리지 않게)
   const displayCols = useMemo(() => {
     const dataCols = visualGrid.length > 0 ? visualGrid : [];
     const pad = Math.max(0, minCols - dataCols.length - 2);
     const leftPad = Array.from({ length: pad }, () =>
-      Array.from({ length: rows }, () => null as Cell | null),
+      Array.from({ length: rows }, () => null as BeadCell | BigCell | null),
     );
     const trail = Array.from({ length: 2 }, () =>
-      Array.from({ length: rows }, () => null as Cell | null),
+      Array.from({ length: rows }, () => null as BeadCell | BigCell | null),
     );
-    return [...leftPad, ...dataCols, ...trail];
+    // bead 열은 행 수가 6 미만일 수 있음 → 패딩
+    const normalized = dataCols.map((col) => {
+      const next = [...col];
+      while (next.length < rows) next.push(null);
+      return next.slice(0, rows);
+    });
+    return [...leftPad, ...normalized, ...trail];
   }, [visualGrid, minCols, rows]);
 
   const totalCols = displayCols.length;
   const gridWidth = totalCols * cell + Math.max(0, totalCols - 1);
   const leftPadCount = Math.max(0, minCols - visualGrid.length - 2);
 
-  // 새 결과 → 최신 데이터 열이 보이도록 스크롤 (trailing 빈칸이 아니라)
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
     const scrollToLatest = () => {
       const dataEndCol = leftPadCount + visualGrid.length;
-      const target =
-        dataEndCol * (cell + 1) - el.clientWidth + cell * 3;
+      const target = dataEndCol * (cell + 1) - el.clientWidth + cell * 3;
       el.scrollLeft = Math.max(0, target);
     };
 
@@ -180,7 +201,11 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
         dragging ? 'cursor-grabbing' : 'cursor-grab'
       }`}
       style={{ touchAction: 'pan-x' }}
-      title="드래그하여 좌우로 이동"
+      title={
+        variant === 'bead'
+          ? `결과 ${flatResults.length}회 · 드래그하여 이동`
+          : '빅로드 · 드래그하여 좌우로 이동'
+      }
     >
       <div className="p-2 sm:p-2.5">
         {flatResults.length === 0 ? (
@@ -213,7 +238,17 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
                       style={{ width: cell, height: cell }}
                     >
                       {cellData ? (
-                        <Bead cell={cellData} strokeWidth={stroke} />
+                        variant === 'bead' ? (
+                          <BeadPlateMark
+                            cell={cellData as BeadCell}
+                            strokeWidth={stroke}
+                          />
+                        ) : (
+                          <BigRoadMark
+                            cell={cellData as BigCell}
+                            strokeWidth={stroke}
+                          />
+                        )
                       ) : null}
                     </div>
                   );
@@ -227,10 +262,63 @@ export default function Roadmap({ data, results, size = 'md' }: RoadmapProps) {
   );
 }
 
-/** 단순 비드 — 애니메이션/필터 없이 항상 보이게 */
-function Bead({ cell, strokeWidth }: { cell: Cell; strokeWidth: number }) {
+function BeadPlateMark({
+  cell,
+  strokeWidth,
+}: {
+  cell: BeadCell;
+  strokeWidth: number;
+}) {
   const color =
     cell.result === 'B' ? '#ef4444' : cell.result === 'P' ? '#2563eb' : '#059669';
+  const isTie = cell.result === 'T';
+
+  return (
+    <div className="relative" style={{ width: '82%', height: '82%' }}>
+      <svg viewBox="0 0 32 32" className="w-full h-full block" aria-hidden>
+        {cell.isNewest && (
+          <circle
+            cx="16"
+            cy="16"
+            r="14.5"
+            fill="none"
+            stroke="#a1a1aa"
+            strokeWidth="1.2"
+            opacity="0.5"
+          />
+        )}
+        <circle
+          cx="16"
+          cy="16"
+          r="12"
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeWidth}
+        />
+        {isTie && (
+          <line
+            x1="9"
+            y1="23"
+            x2="23"
+            y2="9"
+            stroke="#059669"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+          />
+        )}
+      </svg>
+    </div>
+  );
+}
+
+function BigRoadMark({
+  cell,
+  strokeWidth,
+}: {
+  cell: BigCell;
+  strokeWidth: number;
+}) {
+  const color = cell.result === 'B' ? '#ef4444' : '#2563eb';
   const showTie = cell.ties > 0;
 
   return (

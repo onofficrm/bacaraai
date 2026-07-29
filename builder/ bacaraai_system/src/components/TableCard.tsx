@@ -907,7 +907,12 @@ export default function TableCard({
       </div>
 
       <div className="relative z-[2]">
-        <Roadmap data={table.roadmap} results={table.stats.recentResults} size="sm" />
+        <Roadmap
+          data={table.roadmap}
+          results={table.stats.recentResults}
+          size="sm"
+          variant="bead"
+        />
         {/* 로드맵 위 칩 산 — betStart 링과 동시 표시(링은 카드 전체 z-26, 칩은 로드맵) */}
         {showBetFx && !showWinFlip && !autoHit && betBanners.length > 0 && (
           <BetInOverlay banners={betBanners} compact={compact} />

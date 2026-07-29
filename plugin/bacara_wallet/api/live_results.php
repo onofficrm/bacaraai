@@ -91,7 +91,7 @@ if (!is_dir($live_cache_dir)) {
     @mkdir($live_cache_dir, 0755, true);
 }
 // v4: 15분 공백 슈절단 제거 — game_no 고착 시 로드맵 유지
-$live_cache_key = preg_replace('/[^A-Z0-9_-]/', '', $table_name) . '-' . $limit . '-v5';
+$live_cache_key = preg_replace('/[^A-Z0-9_-]/', '', $table_name) . '-' . $limit . '-v6';
 $live_cache_file = $live_cache_dir . '/bacara-live-' . $live_cache_key . '.json';
 $live_cache_lock_file = $live_cache_file . '.lock';
 $live_cache_lock = null;
@@ -601,6 +601,33 @@ function bacara_live_row_ts($row)
  * - 같은 game_no + 다른 result → 각각 새 회차로 유지
  *   (2초 병합은 다음 회차 OCR 과 겹치며 결과를 지워 "즉시 반영"이 깨짐)
  */
+
+/**
+ * 동일 id 행만 제거 (표시는 DB 행 1:1 유지)
+ */
+function bacara_live_dedupe_exact_id($rows)
+{
+    if (!is_array($rows) || count($rows) === 0) {
+        return array();
+    }
+    usort($rows, function ($a, $b) {
+        return (int) $a['id'] - (int) $b['id'];
+    });
+    $out = array();
+    $seen = array();
+    foreach ($rows as $row) {
+        $id = isset($row['id']) ? (int) $row['id'] : 0;
+        if ($id > 0 && isset($seen[$id])) {
+            continue;
+        }
+        if ($id > 0) {
+            $seen[$id] = true;
+        }
+        $out[] = $row;
+    }
+    return $out;
+}
+
 function bacara_live_dedupe_game_no($rows)
 {
     if (!is_array($rows) || count($rows) === 0) {
@@ -941,8 +968,10 @@ if ($query_error !== '') {
 }
 
 $rows = bacara_live_trim_to_current_shoe($rows);
-$before_dedupe = count($rows);
-$rows = bacara_live_dedupe_game_no($rows);
+// 표시 = 슈 구간 DB 행 그대로 (재감지 병합 없음 → 디비·표시 1:1)
+$db_row_count = count($rows);
+// 동일 id 중복만 제거 (정상적으로는 없음)
+$rows = bacara_live_dedupe_exact_id($rows);
 
 $latest = count($rows) ? $rows[count($rows) - 1] : null;
 $game_no = $latest && isset($latest['game_no']) ? $latest['game_no'] : null;
@@ -956,9 +985,10 @@ $payload = array(
     'game_no' => $game_no,
     'source' => $use_live_cfg ? 'live_config' : 'g5',
     'count' => count($rows),
-    'shoe_count' => isset($used_meta['shoe_count']) ? (int) $used_meta['shoe_count'] : count($rows),
+    'db_row_count' => $db_row_count,
+    'shoe_count' => count($rows),
     'truncated' => !empty($used_meta['truncated']),
-    'deduped' => $before_dedupe - count($rows),
+    'deduped' => 0,
     'shoe_start_id' => isset($used_meta['shoe_start_id']) ? $used_meta['shoe_start_id'] : null,
     'latest_id' => $latest ? $latest['id'] : null,
     'table_max_id' => $table_max_id,
