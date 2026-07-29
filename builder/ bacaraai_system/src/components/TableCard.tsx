@@ -635,7 +635,7 @@ export default function TableCard({
 
       <div className={`relative z-[2] flex flex-col ${compact ? 'gap-1.5' : 'gap-2'}`}>
         <div className="flex justify-between items-start gap-2">
-          <div className="flex flex-col gap-0.5 min-w-0">
+          <div className="flex flex-col gap-0.5 min-w-0 overflow-hidden">
             <div className="flex items-center gap-1.5 flex-wrap">
               <h3 className={`font-bold text-zinc-100 ${compact ? 'text-sm' : ''}`}>{table.name}</h3>
               {isSelected && (
@@ -690,7 +690,7 @@ export default function TableCard({
                 <span className="text-xs text-zinc-500 font-mono">{table.gameCode}</span>
               )}
             </div>
-            <div className="flex items-center gap-1 flex-nowrap whitespace-nowrap min-w-0 overflow-x-auto">
+            <div className="flex items-center gap-1 flex-nowrap whitespace-nowrap min-w-0 max-w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:h-0 [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar]:bg-transparent">
               {table.live ? (
                 <>
                   <span
