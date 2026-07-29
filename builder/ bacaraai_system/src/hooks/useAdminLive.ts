@@ -14,6 +14,7 @@ import {
   type LiveFeedResponse,
   type LiveIntegrity,
 } from '../utils/liveIntegrity';
+import { parseGameStatus, type GameStatus } from '../utils/gameStatus';
 
 function buildRoadmap(results: GameResult[]): GameResult[][] {
   const columns: GameResult[][] = [];
@@ -55,7 +56,7 @@ type NormalizedLive = {
   latestId: number | null;
   latestDetectedAt: string | null;
   shuffleActive: boolean;
-  gameStatus: 'stop' | 'game' | 'shuffle' | 'unknown' | null;
+  gameStatus: GameStatus | null;
   manualMode: boolean;
   source: string;
   integrity: LiveIntegrity | null;
@@ -109,13 +110,7 @@ async function fetchCanonicalLive(
     latestId: latest?.id ?? data.latest_id ?? null,
     latestDetectedAt: latest?.detected_at ?? data.latest_detected_at ?? null,
     shuffleActive: Boolean(data.shuffle_active),
-    gameStatus: (() => {
-      const s = String(data.game_status || '')
-        .trim()
-        .toLowerCase();
-      if (s === 'stop' || s === 'game' || s === 'shuffle') return s;
-      return s ? ('unknown' as const) : null;
-    })(),
+    gameStatus: parseGameStatus(data.game_status),
     manualMode: Boolean(data.manual_mode),
     source: String(data.source || (data.manual_mode ? 'admin_manual' : 'detector')),
     integrity: data.integrity || null,
@@ -132,9 +127,11 @@ function tableFromLive(base: TableData, live: NormalizedLive): TableData {
   const results = live.rows.map((r) => r.result);
   const gameNo = results.length > 0 ? results.length : live.gameNo;
   const appliedRule = live.shuffleActive
-    ? '셔플 중'
-    : live.gameStatus === 'stop'
-      ? '감지 대기(stop)'
+    ? '셔플중'
+    : live.gameStatus === 'lobby'
+      ? '게임종료(lobby)'
+      : live.gameStatus === 'game'
+        ? '게임중'
       : live.manualMode
       ? '관리자 수동 입력'
       : '자동 감지(동일 피드)';

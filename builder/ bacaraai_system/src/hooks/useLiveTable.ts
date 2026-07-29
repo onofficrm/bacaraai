@@ -15,6 +15,7 @@ import {
   type LiveFeedResponse,
   type LiveIntegrity,
 } from '../utils/liveIntegrity';
+import { parseGameStatus, type GameStatus } from '../utils/gameStatus';
 
 type LiveResultRow = {
   id: number;
@@ -57,7 +58,7 @@ type LiveState = {
   latestId: number | null;
   latestDetectedAt: string | null;
   shuffleActive: boolean;
-  gameStatus: 'stop' | 'game' | 'shuffle' | 'unknown' | null;
+  gameStatus: GameStatus | null;
   manualMode: boolean;
   integrity: LiveIntegrity | null;
   syncWarning: string | null;
@@ -272,15 +273,7 @@ export default function useLiveTable(
                 ? check.message
                 : null;
 
-        const rawStatus = String(data.game_status || '')
-          .trim()
-          .toLowerCase();
-        const gameStatus: LiveState['gameStatus'] =
-          rawStatus === 'stop' || rawStatus === 'game' || rawStatus === 'shuffle'
-            ? rawStatus
-            : rawStatus
-              ? 'unknown'
-              : null;
+        const gameStatus = parseGameStatus(data.game_status);
         const shuffleActive =
           Boolean(data.shuffle_active) || gameStatus === 'shuffle';
 

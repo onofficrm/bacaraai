@@ -44,8 +44,8 @@ export interface TableData {
     latestDetectedAt: string | null;
     error: string | null;
     gameNo?: number | null;
-    /** 감지 프로그램 game_status: stop | game | shuffle */
-    gameStatus?: 'stop' | 'game' | 'shuffle' | 'unknown' | null;
+    /** 감지 프로그램 game_status: game | shuffle | lobby (구 stop→lobby) */
+    gameStatus?: 'game' | 'shuffle' | 'lobby' | 'unknown' | null;
     /** 셔플 중 — game_status=shuffle 또는 관리자 수동 셔플 */
     shuffleActive?: boolean;
     manualMode?: boolean;

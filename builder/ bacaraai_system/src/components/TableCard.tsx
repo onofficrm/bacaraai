@@ -16,6 +16,7 @@ import WinFlipOverlay from './WinFlipOverlay';
 import BetInOverlay from './BetInOverlay';
 import TableEventOverlay from './TableEventOverlay';
 import ShuffleOverlay from './ShuffleOverlay';
+import { gameStatusBadge } from '../utils/gameStatus';
 import {
   autoEventCardClass,
   type AutoTableEvent,
@@ -408,7 +409,7 @@ export default function TableCard({
         )}
       </AnimatePresence>
       {shuffleActive ? (
-        <ShuffleOverlay compact={compact} label="셔플 중 · 감지" />
+        <ShuffleOverlay compact={compact} label="셔플중" />
       ) : null}
       {/* 베팅 창: 골드 헤어라인 / 마감 임박: 로즈 */}
       {showBetFx && betSec > 0 && (
@@ -709,28 +710,15 @@ export default function TableCard({
                     />
                     {table.live.connected ? 'LIVE' : table.live.loading ? '연결 중' : '연결 오류'}
                   </span>
-                  {table.live.gameStatus === 'stop' ? (
-                    <span
-                      title="감지 프로그램 상태: stop"
-                      className="text-[10px] px-1.5 py-0.5 rounded border border-zinc-600 bg-zinc-800/80 text-zinc-400 font-bold shrink-0"
-                    >
-                      STOP
-                    </span>
-                  ) : table.live.gameStatus === 'game' ? (
-                    <span
-                      title="감지 프로그램 상태: game"
-                      className="text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 font-bold shrink-0"
-                    >
-                      GAME
-                    </span>
-                  ) : table.live.gameStatus === 'shuffle' ? (
-                    <span
-                      title="감지 프로그램 상태: shuffle"
-                      className="text-[10px] px-1.5 py-0.5 rounded border border-amber-400/50 bg-amber-500/15 text-amber-200 font-bold animate-pulse shrink-0"
-                    >
-                      SHUFFLE
-                    </span>
-                  ) : null}
+                  {(() => {
+                    const badge = gameStatusBadge(table.live.gameStatus);
+                    if (!badge) return null;
+                    return (
+                      <span title={badge.title} className={badge.className}>
+                        {badge.label}
+                      </span>
+                    );
+                  })()}
                   {table.live.syncWarning ? (
                     <span
                       title={table.live.syncWarning}
@@ -785,7 +773,10 @@ export default function TableCard({
                   </span>
                 ) : table.live && betBanners.length > 0 && betSec <= 0 ? (
                   <span className="text-[10px] font-bold text-zinc-500 tracking-tight">결과 대기</span>
-                ) : table.live && lastResultLabel && betBanners.length === 0 ? (
+                ) : table.live &&
+                  table.live.gameStatus === 'game' &&
+                  lastResultLabel &&
+                  betBanners.length === 0 ? (
                   <span className="text-[10px] font-mono text-zinc-600 tracking-wide">마감</span>
                 ) : null}
               </span>

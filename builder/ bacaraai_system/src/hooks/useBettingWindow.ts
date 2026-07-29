@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { TableData } from '../types';
+import { isBettingBlockedByGameStatus } from '../utils/gameStatus';
 
 /** 게임 결과가 화면에 반영된 뒤 베팅 가능 시간 (초) */
 export const BET_WINDOW_SEC = 30;
@@ -81,9 +82,8 @@ export function getBettingRemainingSecForTable(
     return 0;
   }
 
-  // game_status: stop=대기, shuffle=셔플 — 베팅 창 닫음
-  const gs = table.live.gameStatus;
-  if (gs === 'stop' || gs === 'shuffle' || table.live.shuffleActive) {
+  // game_status: lobby/shuffle — 베팅 창 닫음 (game 만 열림)
+  if (isBettingBlockedByGameStatus(table.live.gameStatus, table.live.shuffleActive)) {
     return 0;
   }
 
@@ -169,15 +169,15 @@ export default function useBettingWindow(table: TableData | null): BettingWindow
     }
 
     const gs = table.live.gameStatus;
-    if (gs === 'stop') {
+    if (gs === 'lobby') {
       return {
         remainingSec: 0,
         hasResult: true,
         canPlaceBet: false,
         canCancelBet: false,
         progress: 0,
-        statusLabel: '감지 대기(stop)',
-        hint: '감지 프로그램이 stop 상태입니다. game 으로 전환되면 베팅할 수 있습니다.',
+        statusLabel: '게임종료',
+        hint: '로비(게임종료) 상태입니다. 감지가 시작되면 게임중으로 바뀝니다.',
       };
     }
     if (gs === 'shuffle' || table.live.shuffleActive) {
@@ -187,8 +187,8 @@ export default function useBettingWindow(table: TableData | null): BettingWindow
         canPlaceBet: false,
         canCancelBet: false,
         progress: 0,
-        statusLabel: '셔플 중',
-        hint: '셔플이 끝나면 game 상태로 복귀하며 다시 30초 베팅 창이 열립니다.',
+        statusLabel: '셔플중',
+        hint: '셔플이 끝나면 게임중으로 복귀하며 다시 30초 베팅 창이 열립니다.',
       };
     }
 

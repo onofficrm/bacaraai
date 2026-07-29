@@ -507,7 +507,7 @@ export default function App() {
         if (t.status === 'risk_blocked') continue;
         if (isCancelledRound(t)) continue;
         if (t.live?.shuffleActive || t.live?.gameStatus === 'shuffle') continue;
-        if (t.live?.gameStatus === 'stop') continue;
+        if (t.live?.gameStatus === 'lobby') continue;
         if (getBettingRemainingSecForTable(t) <= 0) continue;
         const roundKey = roundKeyOf(t);
         if (autoPlacedRoundRef.current.get(t.id) === roundKey) continue;
@@ -539,7 +539,7 @@ export default function App() {
         if (t.status === 'risk_blocked') continue;
         if (isCancelledRound(t)) continue;
         if (t.live?.shuffleActive || t.live?.gameStatus === 'shuffle') continue;
-        if (t.live?.gameStatus === 'stop') continue;
+        if (t.live?.gameStatus === 'lobby') continue;
         if (getBettingRemainingSecForTable(t) < 5) continue;
         if (!t.ai.autoBetAllowed) continue;
         const opinion = t.ai.finalOpinion;

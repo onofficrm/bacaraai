@@ -5,7 +5,8 @@
  * GET table_name=MD2729&limit=800
  *
  * - 현재 슈(shoe) 결과만 반환
- * - game_status 테이블: stop(대기) / game(감지) / shuffle(셔플)
+ * - game_status 테이블: game(활성) / shuffle(셔플) / lobby(종료)
+ *   구버전 stop 은 lobby 로 정규화
  *   SELECT status FROM game_status WHERE account=? AND table_name=?
  *   (매 응답마다 재조회, shuffle 시 shuffle_active=true)
  * - game_no 는 회차 카운터(1,2,3… 후 리셋). 최신 game_no 로 필터하면
@@ -148,7 +149,8 @@ function bacara_live_output_payload($payload, $member_id, $cache_state)
 }
 
 /**
- * 감지 프로그램 game_status: stop | game | shuffle
+ * 감지 프로그램 game_status: game | shuffle | lobby
+ * (구 stop → lobby)
  *
  * 조회 (2차 명세):
  *   SELECT status FROM game_status
@@ -157,17 +159,22 @@ function bacara_live_output_payload($payload, $member_id, $cache_state)
 function bacara_live_normalize_game_status($raw)
 {
     $s = strtolower(trim((string) $raw));
-    if ($s === 'stop' || $s === 'game' || $s === 'shuffle') {
-        return $s;
+    if ($s === 'game' || $s === 'play' || $s === 'playing' || $s === '감지') {
+        return 'game';
     }
-    if ($s === '셔플' || $s === 'shuffle_on') {
+    if ($s === 'shuffle' || $s === '셔플' || $s === 'shuffle_on') {
         return 'shuffle';
     }
-    if ($s === '대기' || $s === 'idle' || $s === 'paused') {
-        return 'stop';
-    }
-    if ($s === 'play' || $s === 'playing' || $s === '감지') {
-        return 'game';
+    if (
+        $s === 'lobby'
+        || $s === 'stop'
+        || $s === '대기'
+        || $s === 'idle'
+        || $s === 'paused'
+        || $s === 'end'
+        || $s === 'ended'
+    ) {
+        return 'lobby';
     }
     return 'unknown';
 }
@@ -209,7 +216,7 @@ function bacara_live_query_game_status_row($table_name, $account, $live_link, &$
 }
 
 /**
- * @return string stop|game|shuffle|unknown
+ * @return string game|shuffle|lobby|unknown
  */
 function bacara_live_fetch_game_status($table_name, $account, $use_live_cfg, $live_link, &$query_error)
 {
