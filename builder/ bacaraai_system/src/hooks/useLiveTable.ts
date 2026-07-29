@@ -15,7 +15,11 @@ import {
   type LiveFeedResponse,
   type LiveIntegrity,
 } from '../utils/liveIntegrity';
-import { parseGameStatus, type GameStatus } from '../utils/gameStatus';
+import {
+  parseGameStatus,
+  resolveEffectiveGameStatus,
+  type GameStatus,
+} from '../utils/gameStatus';
 
 type LiveResultRow = {
   id: number;
@@ -168,6 +172,8 @@ export default function useLiveTable(
   const lastSyncSigRef = useRef<string | null>(null);
   const fpFailStreakRef = useRef(0);
   const forceNextPollRef = useRef(false);
+  /** 새 latestId 를 처음 본 시각 — lobby 오표시 보정용 */
+  const latestIdSeenAtRef = useRef<{ id: number; at: number } | null>(null);
 
   const suggestScope = recommendCtx?.config.aiSuggestScope || 'side';
   const amountEnabled = recommendCtx
@@ -261,7 +267,19 @@ export default function useLiveTable(
                 ? check.message
                 : null;
 
-        const gameStatus = parseGameStatus(data.game_status);
+        if (nextLatestId != null && Number.isFinite(nextLatestId)) {
+          const prevSeen = latestIdSeenAtRef.current;
+          if (!prevSeen || prevSeen.id !== nextLatestId) {
+            latestIdSeenAtRef.current = { id: nextLatestId, at: Date.now() };
+          }
+        }
+
+        const rawStatus = parseGameStatus(data.game_status);
+        const gameStatus = resolveEffectiveGameStatus(rawStatus, {
+          wallClockSeenAt: latestIdSeenAtRef.current?.at ?? null,
+          latestDetectedAt:
+            typeof nextDetectedAt === 'string' ? nextDetectedAt : null,
+        });
         const shuffleActive =
           Boolean(data.shuffle_active) || gameStatus === 'shuffle';
 

@@ -2,6 +2,9 @@
 
 export type GameStatus = 'game' | 'shuffle' | 'lobby' | 'unknown';
 
+/** lobby→game 보정 창 (서버 BACARA_LIVE_STATUS_HEAL_SEC 와 맞춤) */
+export const GAME_STATUS_HEAL_MS = 900_000;
+
 /**
  * DB status → 앱 상태
  * - game: 게임 활성(베팅 가능)
@@ -27,6 +30,44 @@ export function parseGameStatus(raw: string | null | undefined): GameStatus | nu
     return 'lobby';
   }
   return 'unknown';
+}
+
+/**
+ * 감지 status 가 lobby/unknown 인데 결과가 계속 들어오면 game 으로 보정.
+ * wallClockSeenAt = 클라이언트가 해당 latestId 를 처음 본 시각(Date.now)
+ */
+export function resolveEffectiveGameStatus(
+  status: GameStatus | null | undefined,
+  opts?: {
+    wallClockSeenAt?: number | null;
+    latestDetectedAt?: string | null;
+    now?: number;
+    healMs?: number;
+  },
+): GameStatus | null {
+  const base = status ?? null;
+  if (base === 'shuffle' || base === 'game') return base;
+
+  const now = opts?.now ?? Date.now();
+  const healMs = opts?.healMs ?? GAME_STATUS_HEAL_MS;
+
+  const wall = opts?.wallClockSeenAt;
+  if (typeof wall === 'number' && wall > 0 && now - wall >= 0 && now - wall <= healMs) {
+    return 'game';
+  }
+
+  const at = opts?.latestDetectedAt ? String(opts.latestDetectedAt).trim() : '';
+  if (at) {
+    const normalized = at.includes('T') ? at : at.replace(' ', 'T');
+    const ts = Date.parse(normalized);
+    if (Number.isFinite(ts)) {
+      let age = now - ts;
+      if (age < 0 && age > -43_200_000) age = 0;
+      if (age >= 0 && age <= healMs) return 'game';
+    }
+  }
+
+  return base;
 }
 
 export function isBettingBlockedByGameStatus(

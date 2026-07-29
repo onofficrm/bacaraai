@@ -14,7 +14,11 @@ import {
   type LiveFeedResponse,
   type LiveIntegrity,
 } from '../utils/liveIntegrity';
-import { parseGameStatus, type GameStatus } from '../utils/gameStatus';
+import {
+  parseGameStatus,
+  resolveEffectiveGameStatus,
+  type GameStatus,
+} from '../utils/gameStatus';
 
 function buildRoadmap(results: GameResult[]): GameResult[][] {
   const columns: GameResult[][] = [];
@@ -103,14 +107,19 @@ async function fetchCanonicalLive(
   }
 
   const latest = rows.length ? rows[rows.length - 1] : null;
+  const latestDetectedAt = latest?.detected_at ?? data.latest_detected_at ?? null;
+  const rawStatus = parseGameStatus(data.game_status);
+  const gameStatus = resolveEffectiveGameStatus(rawStatus, {
+    latestDetectedAt: typeof latestDetectedAt === 'string' ? latestDetectedAt : null,
+  });
   return {
     code: tableCode,
     rows,
     gameNo: latest?.game_no ?? data.game_no ?? null,
     latestId: latest?.id ?? data.latest_id ?? null,
-    latestDetectedAt: latest?.detected_at ?? data.latest_detected_at ?? null,
-    shuffleActive: Boolean(data.shuffle_active),
-    gameStatus: parseGameStatus(data.game_status),
+    latestDetectedAt,
+    shuffleActive: Boolean(data.shuffle_active) || gameStatus === 'shuffle',
+    gameStatus,
     manualMode: Boolean(data.manual_mode),
     source: String(data.source || (data.manual_mode ? 'admin_manual' : 'detector')),
     integrity: data.integrity || null,

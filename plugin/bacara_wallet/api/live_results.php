@@ -127,15 +127,31 @@ function bacara_live_output_payload($payload, $member_id, $cache_state)
     );
 
     // 최근 감지 결과가 있는데 lobby/stop 고정이면 활성(game)으로 보정
+    // (감지기가 status 갱신을 놓치거나, detected_at TZ 어긋나도 슈가 살아 있으면 게임중)
     if ($game_status === 'lobby' || $game_status === 'stop') {
+        if (!defined('BACARA_LIVE_STATUS_HEAL_SEC')) {
+            define('BACARA_LIVE_STATUS_HEAL_SEC', 900); // 15분
+        }
         $latest_at = isset($payload['latest_detected_at'])
             ? trim((string) $payload['latest_detected_at'])
             : '';
+        $age = null;
         if ($latest_at !== '') {
             $ts = strtotime($latest_at);
-            if ($ts !== false && (time() - $ts) >= 0 && (time() - $ts) <= 180) {
-                $game_status = 'game';
+            if ($ts !== false) {
+                $age = time() - $ts;
+                // TZ 오차로 미래 시각이 되면 방금으로 간주 (최대 12시간)
+                if ($age < 0 && $age > -43200) {
+                    $age = 0;
+                }
             }
+        }
+        $has_rows = !empty($payload['results']) && is_array($payload['results']);
+        if ($age !== null && $age >= 0 && $age <= BACARA_LIVE_STATUS_HEAL_SEC) {
+            $game_status = 'game';
+        } elseif ($has_rows && ($age === null || $age < 0)) {
+            // detected_at 파싱 실패해도 슈 결과가 있으면 활성으로 본다
+            $game_status = 'game';
         }
     }
 
