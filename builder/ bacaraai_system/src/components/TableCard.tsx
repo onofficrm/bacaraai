@@ -689,12 +689,12 @@ export default function TableCard({
                 <span className="text-xs text-zinc-500 font-mono">{table.gameCode}</span>
               )}
             </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="flex items-center gap-1 flex-nowrap whitespace-nowrap min-w-0 overflow-x-auto">
               {table.live ? (
                 <>
                   <span
                     title={table.live.error || 'DB 결과를 2초마다 확인합니다.'}
-                    className={`text-[10px] px-1.5 py-0.5 rounded border inline-flex items-center gap-1 ${
+                    className={`text-[10px] px-1.5 py-0.5 rounded border inline-flex items-center gap-1 shrink-0 ${
                       table.live.connected
                         ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                         : table.live.loading
@@ -712,21 +712,21 @@ export default function TableCard({
                   {table.live.gameStatus === 'stop' ? (
                     <span
                       title="감지 프로그램 상태: stop"
-                      className="text-[10px] px-1.5 py-0.5 rounded border border-zinc-600 bg-zinc-800/80 text-zinc-400 font-bold"
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-zinc-600 bg-zinc-800/80 text-zinc-400 font-bold shrink-0"
                     >
                       STOP
                     </span>
                   ) : table.live.gameStatus === 'game' ? (
                     <span
                       title="감지 프로그램 상태: game"
-                      className="text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 font-bold"
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 font-bold shrink-0"
                     >
                       GAME
                     </span>
                   ) : table.live.gameStatus === 'shuffle' ? (
                     <span
                       title="감지 프로그램 상태: shuffle"
-                      className="text-[10px] px-1.5 py-0.5 rounded border border-amber-400/50 bg-amber-500/15 text-amber-200 font-bold animate-pulse"
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-amber-400/50 bg-amber-500/15 text-amber-200 font-bold animate-pulse shrink-0"
                     >
                       SHUFFLE
                     </span>
@@ -734,28 +734,27 @@ export default function TableCard({
                   {table.live.syncWarning ? (
                     <span
                       title={table.live.syncWarning}
-                      className="text-[10px] px-1.5 py-0.5 rounded border border-amber-400/50 bg-amber-500/15 text-amber-200 font-bold max-w-[140px] truncate"
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-amber-400/50 bg-amber-500/15 text-amber-200 font-bold max-w-[72px] truncate shrink-0"
                     >
                       동기화
                     </span>
                   ) : table.live.integritySynced === false ? (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded border border-rose-400/50 bg-rose-500/15 text-rose-200 font-bold">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded border border-rose-400/50 bg-rose-500/15 text-rose-200 font-bold shrink-0">
                       불일치
                     </span>
                   ) : null}
-                  {!compact && table.live.gameNo != null && (
-                    <span className="text-[10px] font-mono text-zinc-500">G{table.live.gameNo}</span>
-                  )}
-                  {compact && table.live.gameNo != null && (
-                    <span className="text-[10px] font-mono text-zinc-500">G{table.live.gameNo}</span>
+                  {table.live.gameNo != null && (
+                    <span className="text-[10px] font-mono text-zinc-500 shrink-0">
+                      G{table.live.gameNo}
+                    </span>
                   )}
                 </>
               ) : (
                 <StatusBadge status={table.status} />
               )}
 
-              {/* 마지막 결과(P/B/T) + 베팅 창 배지 — 한 덩어리로 P 오른쪽에 고정 */}
-              <span className="inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+              {/* 마지막 결과(P/B/T) + 베팅 창 — LIVE/STOP과 같은 한 줄 */}
+              <span className="inline-flex items-center gap-1 shrink-0">
                 {lastResultLabel && (
                   <span
                     title={`마지막 결과 ${getResultLabel(lastResult!)}`}
