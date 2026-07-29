@@ -6,7 +6,10 @@ import { AiOpinion, TableData } from '../types';
 import { STATUS_GUIDE } from '../help/glossary';
 import Roadmap from './Roadmap';
 import TableAiSlot from './TableAiSlot';
-import { getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
+import {
+  BET_WINDOW_SEC,
+  getBettingRemainingSecForTable,
+} from '../hooks/useBettingWindow';
 import { useFxIntensity } from '../hooks/useFxIntensity';
 import { playLockOn, playSfx } from '../audio/sfxEngine';
 import WinFlipOverlay from './WinFlipOverlay';
@@ -334,7 +337,7 @@ export default function TableCard({
     cardClass += ' countdown-urgent-ring ';
   }
 
-  const betProgress = betSec > 0 ? betSec / 30 : 0;
+  const betProgress = betSec > 0 ? betSec / BET_WINDOW_SEC : 0;
   // 금액만 모드는 방향 WAIT 여도 서버 금액이 있으면 표시
   const amountText =
     table.ai.recommendedAmount > 0
@@ -404,7 +407,9 @@ export default function TableCard({
           <WinFlipOverlay key={settleBanner.id} banner={settleBanner} compact={compact} />
         )}
       </AnimatePresence>
-      {shuffleActive ? <ShuffleOverlay compact={compact} /> : null}
+      {shuffleActive ? (
+        <ShuffleOverlay compact={compact} label="셔플 중 · 감지" />
+      ) : null}
       {/* 베팅 창: 골드 헤어라인 / 마감 임박: 로즈 */}
       {showBetFx && betSec > 0 && (
         <div
@@ -704,6 +709,28 @@ export default function TableCard({
                     />
                     {table.live.connected ? 'LIVE' : table.live.loading ? '연결 중' : '연결 오류'}
                   </span>
+                  {table.live.gameStatus === 'stop' ? (
+                    <span
+                      title="감지 프로그램 상태: stop"
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-zinc-600 bg-zinc-800/80 text-zinc-400 font-bold"
+                    >
+                      STOP
+                    </span>
+                  ) : table.live.gameStatus === 'game' ? (
+                    <span
+                      title="감지 프로그램 상태: game"
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 font-bold"
+                    >
+                      GAME
+                    </span>
+                  ) : table.live.gameStatus === 'shuffle' ? (
+                    <span
+                      title="감지 프로그램 상태: shuffle"
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-amber-400/50 bg-amber-500/15 text-amber-200 font-bold animate-pulse"
+                    >
+                      SHUFFLE
+                    </span>
+                  ) : null}
                   {table.live.syncWarning ? (
                     <span
                       title={table.live.syncWarning}

@@ -35,6 +35,8 @@ export type LiveFeedResponse = {
   latest_id?: number | null;
   latest_detected_at?: string | null;
   shuffle_active?: boolean;
+  game_status?: string | null;
+  game_status_error?: string | null;
   manual_mode?: boolean;
   source?: string;
   results_fp?: string;

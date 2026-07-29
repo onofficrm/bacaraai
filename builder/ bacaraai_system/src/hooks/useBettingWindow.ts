@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { TableData } from '../types';
 
-/** 마지막 결과 표시 후 베팅 가능 시간 (초) */
+/** 게임 결과가 화면에 반영된 뒤 베팅 가능 시간 (초) */
 export const BET_WINDOW_SEC = 30;
 
 /**
  * MySQL DATETIME(타임존 없음) 은 한국 서버(KST, UTC+9) 벽시계로 해석.
- * TZ 없는 문자열을 UTC/로컬로 오인해 창이 항상 30초에 고정되는 것을 막음.
  */
 export function parseDetectedAtMs(value: string | null | undefined): number {
   if (!value) return NaN;
@@ -33,14 +32,13 @@ export function parseDetectedAtMs(value: string | null | undefined): number {
 
 /**
  * 테이블별 베팅 창 시작 시각.
- * - 기준: 마지막 결과가 표시(감지)된 시각
- * - latestId 가 바뀌면 창을 다시 연다
- * - detected_at 이 늦게 도착하면 같은 latestId 라도 서버 시각으로 보정
+ *
+ * 규칙:
+ * - 라이브 중 latestId 가 바뀌면(= 새 결과가 화면에 뜸) 그 순간부터 30초
+ * - 서버 detected_at 으로 창을 줄이지 않음 (폴링 지연으로 30초가 깎이는 문제 방지)
+ * - 새로고침·첫 진입만 detected_at 으로 남은 시간 복원
  */
-const clientWindowStart = new Map<
-  string,
-  { latestId: number; startMs: number; fromServer: boolean }
->();
+const clientWindowStart = new Map<string, { latestId: number; startMs: number }>();
 
 function resolveWindowStartMs(
   table: TableData,
@@ -49,36 +47,36 @@ function resolveWindowStartMs(
 ): number {
   const key = table.id;
   const prev = clientWindowStart.get(key);
-  const detected = parseDetectedAtMs(table.live?.latestDetectedAt);
 
-  // 1) 서버 결과 시각이 있으면 그게 절대 기준 (마지막 결과 표시 시점)
-  if (!Number.isNaN(detected)) {
-    // 미래로 과도하게 치우친 값만 시계/TZ 오류로 보고 보정
-    const startMs = detected > now + 2_000 ? now : detected;
-    const sameId = prev && prev.latestId === latestId;
-    // 같은 회차에서 이미 서버 시각을 쓰고 있으면 유지 (매 틱 Map 갱신 불필요)
-    if (sameId && prev.fromServer && prev.startMs === startMs) {
-      return prev.startMs;
-    }
-    // 클라이언트 fallback → 서버 시각으로 업그레이드
-    clientWindowStart.set(key, { latestId, startMs, fromServer: detected <= now + 2_000 });
-    return startMs;
-  }
-
-  // 2) detected_at 아직 없음 → 이 클라이언트에서 해당 결과를 처음 본 시각
+  // 이미 이 결과를 보고 창을 연 상태 → 시작 시각 고정 (틱마다 리셋 금지)
   if (prev && prev.latestId === latestId) {
     return prev.startMs;
   }
-  clientWindowStart.set(key, { latestId, startMs: now, fromServer: false });
-  return now;
+
+  const detected = parseDetectedAtMs(table.live?.latestDetectedAt);
+  const hadPreviousResult = prev != null;
+
+  let startMs: number;
+  if (hadPreviousResult) {
+    // 시청 중 새 결과 도착 → 표시 시점부터 풀 30초
+    startMs = now;
+  } else if (!Number.isNaN(detected)) {
+    // 첫 진입/새로고침 → 서버 감지 시각으로 남은 시간 복원
+    // (미래로 치우친 값만 시계 오차로 보고 now 사용)
+    startMs = detected > now + 2_000 ? now : detected;
+  } else {
+    startMs = now;
+  }
+
+  clientWindowStart.set(key, { latestId, startMs });
+  return startMs;
 }
 
-/** 테이블 결과 시각 기준 남은 베팅 초 (오토·카드용) */
+/** 테이블 결과 표시 기준 남은 베팅 초 (오토·카드용) */
 export function getBettingRemainingSecForTable(
   table: TableData,
   now = Date.now(),
 ): number {
-  // 목업(비라이브)은 가짜 30초를 고정 표시하지 않음
   if (!table.live) {
     return 0;
   }
@@ -112,7 +110,7 @@ export type BettingWindowState = {
 };
 
 /**
- * 마지막 결과가 표시된 뒤 30초 베팅 창.
+ * 결과가 화면에 반영된 뒤 30초 베팅 창.
  * 새 결과가 오면 다시 30초부터 시작.
  */
 export default function useBettingWindow(table: TableData | null): BettingWindowState {
@@ -152,7 +150,6 @@ export default function useBettingWindow(table: TableData | null): BettingWindow
       };
     }
 
-    // 목업: 결과만 있고 라이브 아님 → 데모 베팅 창(항상 열림은 하지 않음)
     if (!table.live) {
       return {
         remainingSec: 0,
@@ -177,7 +174,7 @@ export default function useBettingWindow(table: TableData | null): BettingWindow
       progress,
       statusLabel: open ? `베팅 가능 ${remainingSec}초` : '베팅 마감',
       hint: open
-        ? '마지막 결과 표시 후 30초입니다. 이 안에 베팅·취소하세요.'
+        ? '결과 표시 후 30초입니다. 이 안에 베팅·취소하세요.'
         : '베팅 가능 시간이 끝났습니다. 다음 결과가 나오면 다시 30초가 열립니다.',
     };
   }, [table, now, table?.live?.latestId, table?.live?.latestDetectedAt]);

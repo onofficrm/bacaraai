@@ -9,7 +9,9 @@
  *   과거 슈의 같은 회차까지 섞이므로, 마지막 game_no=1 이후 id 구간을 사용
  * - 슈가 짧으면 슈 시작부터 전부 반환 (앞부분 잘림 방지 — 로드맵 불일치 원인)
  * - 슈가 limit 보다 길면 **최신** limit 건만 반환 + truncated=true
- * - 같은 game_no 중복 감지 시 최신 id 만 유지
+ * - 같은 game_no + 같은 result 재감지만 최신 id 로 교체
+ *   (game_no 가 고정된 채 result 만 바뀌면 각각 새 회차로 유지)
+ * - 슈 경계: game_no 감소, game_no=1 재시작, 또는 detected_at 긴 공백
  * - score account 는 live config 의 account 우선, 없으면 로그인 ID,
  *   그래도 없으면 awesome / 테이블 전체 fallback
  *   (여러 계정에 데이터가 있으면 가장 id 가 더 최신인 계정 선택)
@@ -84,7 +86,8 @@ $live_cache_dir = G5_DATA_PATH . '/cache';
 if (!is_dir($live_cache_dir)) {
     @mkdir($live_cache_dir, 0755, true);
 }
-$live_cache_key = preg_replace('/[^A-Z0-9_-]/', '', $table_name) . '-' . $limit;
+// v3: game_no 고착 시 결과 유지 + 시간공백 슈 경계
+$live_cache_key = preg_replace('/[^A-Z0-9_-]/', '', $table_name) . '-' . $limit . '-v3';
 $live_cache_file = $live_cache_dir . '/bacara-live-' . $live_cache_key . '.json';
 $live_cache_lock_file = $live_cache_file . '.lock';
 $live_cache_lock = null;
@@ -105,7 +108,26 @@ function bacara_live_cached_payload($file, $max_age)
 
 function bacara_live_output_payload($payload, $member_id, $cache_state)
 {
-    global $live_sync_healed;
+    global $live_sync_healed, $use_live_cfg, $live_link;
+
+    // 결과 캐시와 무관하게 game_status 는 매번 최신 조회 (셔플/스톱 지연 방지)
+    $gs_error = '';
+    $account = isset($payload['account']) ? trim((string) $payload['account']) : '';
+    $table = isset($payload['table_name']) ? strtoupper(trim((string) $payload['table_name'])) : '';
+    $game_status = bacara_live_fetch_game_status(
+        $table,
+        $account,
+        !empty($use_live_cfg),
+        $live_link,
+        $gs_error
+    );
+    $payload['game_status'] = $game_status;
+    $payload['game_status_error'] = $gs_error !== '' ? $gs_error : null;
+    // 수동 모드의 관리자 셔플 플래그 유지, 감지 피드는 game_status 우선
+    if (empty($payload['manual_mode'])) {
+        $payload['shuffle_active'] = ($game_status === 'shuffle');
+    }
+
     if (function_exists('bacara_live_attach_integrity')) {
         $extra = array('policy' => !empty($payload['manual_mode']) ? 'manual_frozen' : 'detector');
         if (!empty($live_sync_healed)) {
@@ -120,6 +142,70 @@ function bacara_live_output_payload($payload, $member_id, $cache_state)
     $payload['member_id'] = $member_id;
     $payload['cache'] = $cache_state;
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * 감지 프로그램 game_status: stop | game | shuffle
+ */
+function bacara_live_normalize_game_status($raw)
+{
+    $s = strtolower(trim((string) $raw));
+    if ($s === 'stop' || $s === 'game' || $s === 'shuffle') {
+        return $s;
+    }
+    if ($s === '셔플' || $s === 'shuffle_on') {
+        return 'shuffle';
+    }
+    if ($s === '대기' || $s === 'idle' || $s === 'paused') {
+        return 'stop';
+    }
+    if ($s === 'play' || $s === 'playing' || $s === '감지') {
+        return 'game';
+    }
+    return 'unknown';
+}
+
+/**
+ * @return string stop|game|shuffle|unknown
+ */
+function bacara_live_fetch_game_status($table_name, $account, $use_live_cfg, $live_link, &$query_error)
+{
+    $query_error = '';
+    $table_name = strtoupper(trim((string) $table_name));
+    $account = trim((string) $account);
+    if ($table_name === '' || !preg_match('/^[A-Z0-9_-]{1,40}$/', $table_name)) {
+        return 'unknown';
+    }
+    if (!$use_live_cfg || !$live_link) {
+        return 'unknown';
+    }
+
+    $safe_table = mysqli_real_escape_string($live_link, $table_name);
+    if ($account !== '') {
+        $safe_acc = mysqli_real_escape_string($live_link, $account);
+        $sql = " select status
+                   from `game_status`
+                  where table_name = '{$safe_table}'
+                    and account = '{$safe_acc}'
+                  limit 1 ";
+    } else {
+        $sql = " select status
+                   from `game_status`
+                  where table_name = '{$safe_table}'
+                  order by id desc
+                  limit 1 ";
+    }
+
+    $q = @mysqli_query($live_link, $sql);
+    if (!$q) {
+        $query_error = mysqli_error($live_link);
+        return 'unknown';
+    }
+    $row = mysqli_fetch_assoc($q);
+    if (!$row || !isset($row['status'])) {
+        return 'unknown';
+    }
+    return bacara_live_normalize_game_status($row['status']);
 }
 
 /**
@@ -157,6 +243,8 @@ function bacara_live_cache_matches_detector($payload, $table_max_id, $table_name
     if ($tip_id === $cached_latest && $tip_res !== '' && $cached_res !== '' && $tip_res !== $cached_res) {
         return false;
     }
+    // game_status 가 바뀌면(셔플 등) 결과 id 가 같아도 캐시 재사용 금지
+    // → 실제 상태는 output_payload 에서 매번 재조회하므로, 여기선 tip 만으로도 충분
     return true;
 }
 
@@ -419,10 +507,26 @@ function bacara_live_query_for_account($account, $safe_table_name, $limit, $use_
     return bacara_live_fetch_rows($sql, $use_live_cfg, $live_link, $query_error);
 }
 
+/** 슈 사이 긴 공백(초). 이보다 길면 새 슈로 본다. */
+define('BACARA_LIVE_SHOE_GAP_SEC', 900);
+
 /**
- * 같은 game_no 재감지는 "연속된" 행만 최신으로 교체한다.
- * 전역 game_no 유니크 병합은 비연속 중복(오인식·회차 꼬임) 때
- * 실제 이후 회차를 덮어 지워 로드맵이 멈추거나 어긋나는 원인이 된다.
+ * MySQL DATETIME → unix timestamp (실패 시 null)
+ */
+function bacara_live_row_ts($row)
+{
+    if (!is_array($row) || empty($row['detected_at'])) {
+        return null;
+    }
+    $t = strtotime(trim((string) $row['detected_at']));
+    return $t === false ? null : (int) $t;
+}
+
+/**
+ * 재감지 정리:
+ * - 같은 game_no + 같은 result 연속 → 최신 id 만 유지 (진짜 재감지)
+ * - 같은 game_no 인데 result 가 바뀜 → 새 회차로 유지
+ *   (감지기가 game_no 를 올리지 못하고 결과만 갱신하는 경우)
  */
 function bacara_live_dedupe_game_no($rows)
 {
@@ -437,12 +541,27 @@ function bacara_live_dedupe_game_no($rows)
     $out = array();
     foreach ($rows as $row) {
         $no = isset($row['game_no']) ? (int) $row['game_no'] : 0;
-        if ($no > 0 && count($out) > 0) {
+        $res = isset($row['result']) ? strtoupper(trim((string) $row['result'])) : '';
+        if ($no > 0 && $res !== '' && count($out) > 0) {
             $prev = $out[count($out) - 1];
             $prev_no = isset($prev['game_no']) ? (int) $prev['game_no'] : 0;
-            if ($prev_no === $no) {
+            $prev_res = isset($prev['result']) ? strtoupper(trim((string) $prev['result'])) : '';
+            if ($prev_no === $no && $prev_res === $res) {
                 $out[count($out) - 1] = $row;
                 continue;
+            }
+            // 같은 회차 번호 + 다른 결과인데 2초 이내 → OCR 요동으로 보고 최신만
+            if ($prev_no === $no && $prev_res !== $res) {
+                $prev_ts = bacara_live_row_ts($prev);
+                $cur_ts = bacara_live_row_ts($row);
+                if (
+                    $prev_ts !== null
+                    && $cur_ts !== null
+                    && abs($cur_ts - $prev_ts) <= 2
+                ) {
+                    $out[count($out) - 1] = $row;
+                    continue;
+                }
             }
         }
         $out[] = $row;
@@ -451,7 +570,8 @@ function bacara_live_dedupe_game_no($rows)
 }
 
 /**
- * id 오름차순에서 슈 경계(game_no 감소)를 찾아 마지막 슈만 남김.
+ * id 오름차순에서 현재 슈만 남김.
+ * 경계: game_no 감소, game_no=1 재시작, detected_at 긴 공백.
  */
 function bacara_live_trim_to_current_shoe($rows)
 {
@@ -461,13 +581,26 @@ function bacara_live_trim_to_current_shoe($rows)
 
     $start = 0;
     $prev_no = null;
+    $prev_ts = null;
     for ($i = 0; $i < count($rows); $i++) {
         $no = isset($rows[$i]['game_no']) ? (int) $rows[$i]['game_no'] : null;
-        if ($prev_no !== null && $no !== null && $no > 0 && $prev_no > 0 && $no < $prev_no) {
+        $ts = bacara_live_row_ts($rows[$i]);
+
+        if ($prev_no !== null && $no !== null && $no > 0 && $prev_no > 0) {
+            // 회차 카운터 리셋 (새 슈)
+            if ($no < $prev_no || $no === 1 && $prev_no > 1) {
+                $start = $i;
+            }
+        }
+        if ($prev_ts !== null && $ts !== null && ($ts - $prev_ts) >= BACARA_LIVE_SHOE_GAP_SEC) {
             $start = $i;
         }
+
         if ($no !== null && $no > 0) {
             $prev_no = $no;
+        }
+        if ($ts !== null) {
+            $prev_ts = $ts;
         }
     }
 

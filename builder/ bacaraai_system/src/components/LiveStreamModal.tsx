@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { playSfx } from '../audio/sfxEngine';
 import { fetchStreamViewerSession } from '../api/streamViewer';
-import { getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
+import { BET_WINDOW_SEC, getBettingRemainingSecForTable } from '../hooks/useBettingWindow';
 import type { TableData } from '../types';
 
 type Props = {
@@ -314,7 +314,7 @@ export default function LiveStreamModal({
                 <Timer size={13} />
                 {betBadge.label}
                 {betSec > 0 ? (
-                  <span className="font-mono font-bold opacity-90">/ 30</span>
+                  <span className="font-mono font-bold opacity-90">/ {BET_WINDOW_SEC}</span>
                 ) : null}
               </div>
             </div>
@@ -349,7 +349,7 @@ export default function LiveStreamModal({
               >
                 <Timer size={12} />
                 {betBadge.label}
-                {betSec > 0 ? ` · ${betSec}/30초` : null}
+                {betSec > 0 ? ` · ${betSec}/${BET_WINDOW_SEC}초` : null}
               </span>
             </div>
           ) : null}

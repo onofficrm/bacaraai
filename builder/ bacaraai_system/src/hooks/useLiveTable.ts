@@ -57,6 +57,7 @@ type LiveState = {
   latestId: number | null;
   latestDetectedAt: string | null;
   shuffleActive: boolean;
+  gameStatus: 'stop' | 'game' | 'shuffle' | 'unknown' | null;
   manualMode: boolean;
   integrity: LiveIntegrity | null;
   syncWarning: string | null;
@@ -148,6 +149,7 @@ export default function useLiveTable(
     latestId: null,
     latestDetectedAt: null,
     shuffleActive: false,
+    gameStatus: null,
     manualMode: false,
     integrity: null,
     syncWarning: null,
@@ -270,8 +272,20 @@ export default function useLiveTable(
                 ? check.message
                 : null;
 
-        // 데이터가 실제로 바뀐 경우에만 상태 갱신
-        const sig = `ok|${buildRowsSignature(rows)}|${nextGameNo ?? ''}|${nextLatestId ?? ''}|${data.integrity?.results_fp || ''}|${syncWarning || ''}`;
+        const rawStatus = String(data.game_status || '')
+          .trim()
+          .toLowerCase();
+        const gameStatus: LiveState['gameStatus'] =
+          rawStatus === 'stop' || rawStatus === 'game' || rawStatus === 'shuffle'
+            ? rawStatus
+            : rawStatus
+              ? 'unknown'
+              : null;
+        const shuffleActive =
+          Boolean(data.shuffle_active) || gameStatus === 'shuffle';
+
+        // 데이터가 실제로 바뀐 경우에만 상태 갱신 (game_status 포함)
+        const sig = `ok|${buildRowsSignature(rows)}|${nextGameNo ?? ''}|${nextLatestId ?? ''}|${data.integrity?.results_fp || ''}|${syncWarning || ''}|${gameStatus || ''}|${shuffleActive ? 1 : 0}`;
         if (lastSyncSigRef.current === sig) {
           return;
         }
@@ -284,7 +298,8 @@ export default function useLiveTable(
           gameNo: nextGameNo,
           latestId: nextLatestId,
           latestDetectedAt: nextDetectedAt,
-          shuffleActive: Boolean(data.shuffle_active),
+          shuffleActive,
+          gameStatus,
           manualMode: Boolean(data.manual_mode),
           integrity: data.integrity || null,
           syncWarning,
@@ -392,8 +407,10 @@ export default function useLiveTable(
 
   return useMemo(() => {
     const results = state.rows.map((row) => row.result);
+    // 슈 내 회차는 결과 건수 기준 (감지 game_no 고착 시 G4 고정 방지)
+    const shoeRound = results.length > 0 ? results.length : null;
     const shoeLabel =
-      state.gameNo !== null ? `G${state.gameNo}` : base.stats.shoeNumber;
+      shoeRound !== null ? `G${shoeRound}` : base.stats.shoeNumber;
 
     const analysis = aiState.data;
     const analysisReady =
@@ -447,6 +464,7 @@ export default function useLiveTable(
           error: state.error,
           gameNo: state.gameNo,
           shuffleActive: state.shuffleActive,
+          gameStatus: state.gameStatus,
           manualMode: state.manualMode,
           resultsFp: state.integrity?.results_fp ?? null,
           syncWarning: state.syncWarning,
@@ -540,8 +558,9 @@ export default function useLiveTable(
         latestId: state.latestId,
         latestDetectedAt: state.latestDetectedAt,
         error: state.error,
-        gameNo: state.gameNo,
+        gameNo: shoeRound ?? state.gameNo,
         shuffleActive: state.shuffleActive,
+        gameStatus: state.gameStatus,
         manualMode: state.manualMode,
         resultsFp: state.integrity?.results_fp ?? null,
         syncWarning: state.syncWarning,
@@ -556,7 +575,7 @@ export default function useLiveTable(
         currentStreak: currentStreak(results),
         shoeNumber: shoeLabel,
         shoeProgress: Math.min(100, Math.round((results.length / 80) * 100)),
-        currentRound: state.gameNo ?? results.length,
+        currentRound: shoeRound ?? results.length,
         recentResults: results,
       },
       ai: {

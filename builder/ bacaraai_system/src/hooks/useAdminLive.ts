@@ -55,6 +55,7 @@ type NormalizedLive = {
   latestId: number | null;
   latestDetectedAt: string | null;
   shuffleActive: boolean;
+  gameStatus: 'stop' | 'game' | 'shuffle' | 'unknown' | null;
   manualMode: boolean;
   source: string;
   integrity: LiveIntegrity | null;
@@ -108,6 +109,13 @@ async function fetchCanonicalLive(
     latestId: latest?.id ?? data.latest_id ?? null,
     latestDetectedAt: latest?.detected_at ?? data.latest_detected_at ?? null,
     shuffleActive: Boolean(data.shuffle_active),
+    gameStatus: (() => {
+      const s = String(data.game_status || '')
+        .trim()
+        .toLowerCase();
+      if (s === 'stop' || s === 'game' || s === 'shuffle') return s;
+      return s ? ('unknown' as const) : null;
+    })(),
     manualMode: Boolean(data.manual_mode),
     source: String(data.source || (data.manual_mode ? 'admin_manual' : 'detector')),
     integrity: data.integrity || null,
@@ -122,10 +130,12 @@ async function fetchCanonicalLive(
 
 function tableFromLive(base: TableData, live: NormalizedLive): TableData {
   const results = live.rows.map((r) => r.result);
-  const gameNo = live.gameNo;
+  const gameNo = results.length > 0 ? results.length : live.gameNo;
   const appliedRule = live.shuffleActive
     ? '셔플 중'
-    : live.manualMode
+    : live.gameStatus === 'stop'
+      ? '감지 대기(stop)'
+      : live.manualMode
       ? '관리자 수동 입력'
       : '자동 감지(동일 피드)';
 
@@ -140,6 +150,7 @@ function tableFromLive(base: TableData, live: NormalizedLive): TableData {
       error: live.error,
       gameNo,
       shuffleActive: live.shuffleActive,
+      gameStatus: live.gameStatus,
       manualMode: live.manualMode,
       resultsFp: live.integrity?.results_fp ?? null,
       syncWarning: live.syncWarning,
@@ -199,6 +210,7 @@ export function useAdminLiveControl(selectedTableId: string | null) {
               latestId: null,
               latestDetectedAt: null,
               shuffleActive: false,
+              gameStatus: null,
               manualMode: false,
               source: 'error',
               integrity: null,
@@ -257,6 +269,7 @@ export function useAdminLiveControl(selectedTableId: string | null) {
               latestDetectedAt: null,
               error: null,
               shuffleActive: false,
+              gameStatus: null,
               manualMode: false,
             },
             roadmap: [],

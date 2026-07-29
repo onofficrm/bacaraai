@@ -159,15 +159,30 @@ if (!function_exists('bacara_ai_trim_shoe')) {
         if (!$rows) {
             return array();
         }
+        $gap_sec = 900;
         $start = 0;
         $prev = null;
+        $prev_ts = null;
         for ($i = 0; $i < count($rows); $i++) {
             $no = isset($rows[$i]['game_no']) ? (int) $rows[$i]['game_no'] : 0;
-            if ($prev !== null && $no > 0 && $prev > 0 && $no < $prev) {
+            $ts = null;
+            if (!empty($rows[$i]['detected_at'])) {
+                $parsed = strtotime(trim((string) $rows[$i]['detected_at']));
+                if ($parsed !== false) {
+                    $ts = (int) $parsed;
+                }
+            }
+            if ($prev !== null && $no > 0 && $prev > 0 && ($no < $prev || ($no === 1 && $prev > 1))) {
+                $start = $i;
+            }
+            if ($prev_ts !== null && $ts !== null && ($ts - $prev_ts) >= $gap_sec) {
                 $start = $i;
             }
             if ($no > 0) {
                 $prev = $no;
+            }
+            if ($ts !== null) {
+                $prev_ts = $ts;
             }
         }
         return $start === 0 ? $rows : array_values(array_slice($rows, $start));
