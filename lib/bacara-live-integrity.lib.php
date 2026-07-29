@@ -248,6 +248,7 @@ if (!function_exists('bacara_live_attach_integrity')) {
         }
 
         // 자동 모드: 동일 계정 tip 과 표시 latest 가 반드시 일치
+        // tip id 가 앞서도 결과가 같으면(재감지 병합) synced 로 본다
         if (!$manual
             && $integrity['detector_max_id']
             && $integrity['latest_id']
@@ -265,8 +266,13 @@ if (!function_exists('bacara_live_attach_integrity')) {
                 $integrity['synced'] = false;
                 $integrity['message'] = '표시 latest_id 가 감지 tip 보다 앞섭니다.';
             } elseif ($tip_id > $disp_id) {
-                $integrity['synced'] = false;
-                $integrity['message'] = '감지가 표시보다 앞섭니다. 재동기화가 필요합니다.';
+                if ($tip_res !== '' && $disp_res !== '' && $tip_res === $disp_res) {
+                    // 같은 결과의 재감지 id 만 앞선 경우 — 표시는 최신 결과와 일치
+                    $integrity['synced'] = true;
+                } else {
+                    $integrity['synced'] = false;
+                    $integrity['message'] = '감지가 표시보다 앞섭니다. 재동기화가 필요합니다.';
+                }
             } elseif ($tip_res !== '' && $disp_res !== '' && $tip_res !== $disp_res) {
                 $integrity['synced'] = false;
                 $integrity['message'] = '감지 결과(' . $tip_res . ')와 표시 결과(' . $disp_res . ')가 다릅니다.';

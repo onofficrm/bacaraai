@@ -120,8 +120,11 @@ export async function verifyLiveFeedIntegrity(
       synced = false;
       message = message || '표시 latest_id 가 감지 tip 보다 앞섭니다.';
     } else if (Number(tipId) > Number(latestId)) {
-      synced = false;
-      message = message || '감지가 표시보다 앞섭니다. 재동기화가 필요합니다.';
+      // tip id 만 앞서고 결과가 같으면 재감지 — 표시 지연으로 보지 않음
+      if (!(tipRes && latestRes && tipRes === latestRes)) {
+        synced = false;
+        message = message || '감지가 표시보다 앞섭니다. 재동기화가 필요합니다.';
+      }
     } else if (tipRes && latestRes && tipRes !== latestRes) {
       synced = false;
       message =

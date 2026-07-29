@@ -91,7 +91,7 @@ if (!is_dir($live_cache_dir)) {
     @mkdir($live_cache_dir, 0755, true);
 }
 // v4: 15분 공백 슈절단 제거 — game_no 고착 시 로드맵 유지
-$live_cache_key = preg_replace('/[^A-Z0-9_-]/', '', $table_name) . '-' . $limit . '-v4';
+$live_cache_key = preg_replace('/[^A-Z0-9_-]/', '', $table_name) . '-' . $limit . '-v5';
 $live_cache_file = $live_cache_dir . '/bacara-live-' . $live_cache_key . '.json';
 $live_cache_lock_file = $live_cache_file . '.lock';
 $live_cache_lock = null;
@@ -125,6 +125,20 @@ function bacara_live_output_payload($payload, $member_id, $cache_state)
         $live_link,
         $gs_error
     );
+
+    // 최근 감지 결과가 있는데 lobby/stop 고정이면 활성(game)으로 보정
+    if ($game_status === 'lobby' || $game_status === 'stop') {
+        $latest_at = isset($payload['latest_detected_at'])
+            ? trim((string) $payload['latest_detected_at'])
+            : '';
+        if ($latest_at !== '') {
+            $ts = strtotime($latest_at);
+            if ($ts !== false && (time() - $ts) >= 0 && (time() - $ts) <= 180) {
+                $game_status = 'game';
+            }
+        }
+    }
+
     $payload['game_status'] = $game_status;
     $payload['game_status_error'] = $gs_error !== '' ? $gs_error : null;
     // 수동 모드의 관리자 셔플 플래그 유지, 감지 피드는 game_status 우선
@@ -584,8 +598,8 @@ function bacara_live_row_ts($row)
 /**
  * 재감지 정리:
  * - 같은 game_no + 같은 result 연속 → 최신 id 만 유지 (진짜 재감지)
- * - 같은 game_no 인데 result 가 바뀜 → 새 회차로 유지
- *   (감지기가 game_no 를 올리지 못하고 결과만 갱신하는 경우)
+ * - 같은 game_no + 다른 result → 각각 새 회차로 유지
+ *   (2초 병합은 다음 회차 OCR 과 겹치며 결과를 지워 "즉시 반영"이 깨짐)
  */
 function bacara_live_dedupe_game_no($rows)
 {
@@ -608,19 +622,6 @@ function bacara_live_dedupe_game_no($rows)
             if ($prev_no === $no && $prev_res === $res) {
                 $out[count($out) - 1] = $row;
                 continue;
-            }
-            // 같은 회차 번호 + 다른 결과인데 2초 이내 → OCR 요동으로 보고 최신만
-            if ($prev_no === $no && $prev_res !== $res) {
-                $prev_ts = bacara_live_row_ts($prev);
-                $cur_ts = bacara_live_row_ts($row);
-                if (
-                    $prev_ts !== null
-                    && $cur_ts !== null
-                    && abs($cur_ts - $prev_ts) <= 2
-                ) {
-                    $out[count($out) - 1] = $row;
-                    continue;
-                }
             }
         }
         $out[] = $row;

@@ -162,7 +162,7 @@ export default function useLiveTable(
     forResultId: null,
     data: null,
   });
-  const requestActive = useRef(false);
+  const pollSeqRef = useRef(0);
   const analyzeActive = useRef(false);
   const analyzedIdRef = useRef<string | null>(null);
   const lastSyncSigRef = useRef<string | null>(null);
@@ -197,8 +197,7 @@ export default function useLiveTable(
     lastSyncSigRef.current = null;
 
     const poll = async () => {
-      if (requestActive.current) return;
-      requestActive.current = true;
+      const seq = ++pollSeqRef.current;
       try {
         const query = new URLSearchParams({ table_name: tableName, limit: '800' });
         if (forceNextPollRef.current) {
@@ -214,7 +213,7 @@ export default function useLiveTable(
         if (!response.ok || !data.ok) {
           throw new Error(data.message || '실시간 결과 조회에 실패했습니다.');
         }
-        if (cancelled) return;
+        if (cancelled || seq !== pollSeqRef.current) return;
 
         // 서버가 이미 슈 정리·중복 제거한 결과를 그대로 표시 (클라이언트 재가공 금지)
         const rows = (data.results || [])
@@ -238,19 +237,8 @@ export default function useLiveTable(
         const check = await verifyLiveFeedIntegrity({ ...data, results: rows });
         if (!check.fpMatch) {
           fpFailStreakRef.current += 1;
-          // 1회는 재시도, 2회 연속이면 서버 rows 강제 적용 (표시 고정 방지)
-          if (fpFailStreakRef.current < 2) {
-            forceNextPollRef.current = true;
-            setState((prev) => ({
-              ...prev,
-              loading: false,
-              connected: true,
-              syncWarning: check.message,
-              integrity: data.integrity || prev.integrity,
-              error: null,
-            }));
-            return;
-          }
+          forceNextPollRef.current = true;
+          // 지문 불일치여도 서버 rows 는 즉시 반영 (표시 지연 방지)
         } else {
           fpFailStreakRef.current = 0;
         }
@@ -299,7 +287,7 @@ export default function useLiveTable(
           error: null,
         });
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled || seq !== pollSeqRef.current) return;
         const message = error instanceof Error ? error.message : '실시간 연결 오류';
         // 오류는 상태를 한 번만 반영 (반복 오류로 인한 재렌더 폭주 방지)
         if (lastSyncSigRef.current === `err|${message}`) {
@@ -313,8 +301,6 @@ export default function useLiveTable(
           connected: false,
           error: message,
         }));
-      } finally {
-        requestActive.current = false;
       }
     };
 
