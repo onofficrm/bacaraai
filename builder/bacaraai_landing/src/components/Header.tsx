@@ -29,7 +29,7 @@ export default function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center flex-shrink-0">
-            <a href="#" className="flex items-center gap-2 group">
+            <a href={PLATFORM_LINKS.about} className="flex items-center gap-2 group">
               <div className="p-1.5 bg-zinc-800 rounded-lg group-hover:bg-zinc-700 transition-colors">
                 <ShieldAlert className="w-5 h-5 text-amber-500" />
               </div>

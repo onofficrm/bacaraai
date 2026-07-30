@@ -21,7 +21,7 @@ export default function LoginPage() {
 
         <div className="relative z-10 flex-1 flex flex-col max-w-2xl mx-auto w-full">
           <div className="mb-12">
-            <a href="/" className="inline-flex items-center gap-2 mb-6 group">
+            <a href={PLATFORM_LINKS.login} className="inline-flex items-center gap-2 mb-6 group">
               <div className="p-2 bg-zinc-900 rounded-xl group-hover:bg-zinc-800 transition-colors border border-zinc-800">
                 <ShieldAlert className="w-6 h-6 text-amber-500" />
               </div>
@@ -34,6 +34,13 @@ export default function LoginPage() {
             <p className="text-zinc-400 text-lg">
               3개의 AI가 8개 테이블을 동시에 분석하고 사용자 규칙에 따라 판단을 돕습니다.
             </p>
+            <a
+              href={PLATFORM_LINKS.about}
+              className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-amber-500 hover:text-amber-400 transition-colors"
+            >
+              서비스 자세히보기
+              <ArrowRight className="w-4 h-4" />
+            </a>
           </div>
 
           <div className="mb-12 relative w-full aspect-video">
@@ -91,12 +98,19 @@ export default function LoginPage() {
       <div className="w-full lg:w-[45%] flex flex-col justify-center p-8 sm:p-12 md:p-24 bg-zinc-950 relative">
         <div className="absolute top-0 right-0 w-full h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-500/5 via-zinc-950 to-zinc-950 pointer-events-none"></div>
 
-        <div className="lg:hidden mb-12 flex justify-center">
-          <a href="/" className="inline-flex items-center gap-2">
+        <div className="lg:hidden mb-12 flex flex-col items-center gap-3">
+          <a href={PLATFORM_LINKS.login} className="inline-flex items-center gap-2">
             <div className="p-2 bg-zinc-900 rounded-xl border border-zinc-800">
               <ShieldAlert className="w-6 h-6 text-amber-500" />
             </div>
             <span className="font-bold text-xl tracking-tight text-white">바카라 AI 도우미</span>
+          </a>
+          <a
+            href={PLATFORM_LINKS.about}
+            className="text-sm text-amber-500 hover:text-amber-400 inline-flex items-center gap-1"
+          >
+            서비스 자세히보기
+            <ArrowRight className="w-3.5 h-3.5" />
           </a>
         </div>
 
