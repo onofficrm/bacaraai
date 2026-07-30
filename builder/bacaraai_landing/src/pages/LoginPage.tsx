@@ -1,6 +1,6 @@
 import { ShieldAlert, Monitor, Bot, Settings, Wallet, ArrowRight } from 'lucide-react';
 import LoginForm from '../components/LoginForm';
-import DashboardMockup from '../components/DashboardMockup';
+import SimWinFeedMarquee from '../components/SimWinFeedMarquee';
 import { PLATFORM_LINKS } from '../constants';
 import { usePlatformAuth } from '../hooks/usePlatformAuth';
 
@@ -13,14 +13,14 @@ export default function LoginPage() {
       <div className="hidden lg:flex w-[55%] flex-col p-12 border-r border-zinc-900 relative overflow-hidden bg-zinc-950">
         <img
           src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1200&q=80"
-          alt="Platform usage"
+          alt=""
           className="absolute inset-0 w-full h-full object-cover opacity-10 pointer-events-none"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/50 via-zinc-950/80 to-zinc-950 pointer-events-none"></div>
-        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-amber-500/5 via-transparent to-transparent pointer-events-none"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/50 via-zinc-950/80 to-zinc-950 pointer-events-none" />
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-amber-500/5 via-transparent to-transparent pointer-events-none" />
 
-        <div className="relative z-10 flex-1 flex flex-col max-w-2xl mx-auto w-full">
-          <div className="mb-12">
+        <div className="relative z-10 flex-1 flex flex-col max-w-2xl mx-auto w-full min-h-0">
+          <div className="mb-8 shrink-0">
             <a href={PLATFORM_LINKS.login} className="inline-flex items-center gap-2 mb-6 group">
               <div className="p-2 bg-zinc-900 rounded-xl group-hover:bg-zinc-800 transition-colors border border-zinc-800">
                 <ShieldAlert className="w-6 h-6 text-amber-500" />
@@ -43,13 +43,9 @@ export default function LoginPage() {
             </a>
           </div>
 
-          <div className="mb-12 relative w-full aspect-video">
-            <div className="absolute inset-0 scale-[0.85] origin-top-left">
-              <DashboardMockup />
-            </div>
-          </div>
+          <SimWinFeedMarquee className="flex-1 min-h-0 mb-8" heightClass="h-[min(320px,36vh)]" />
 
-          <div className="grid grid-cols-2 gap-6 mb-auto">
+          <div className="grid grid-cols-2 gap-5 shrink-0 mb-auto">
             <div className="flex gap-3">
               <div className="mt-1 p-1.5 bg-zinc-900 rounded-lg text-zinc-400 border border-zinc-800 h-fit">
                 <Monitor className="w-4 h-4" />
@@ -88,7 +84,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-zinc-900 text-xs text-zinc-500 leading-relaxed">
+          <div className="mt-8 pt-6 border-t border-zinc-900 text-xs text-zinc-500 leading-relaxed shrink-0">
             바카라 AI 도우미는 게임의 결과를 예측하거나 수익을 보장하는 시스템이 아닙니다. 제공되는 AI
             분석과 통계 자료는 참고 정보일 뿐이며, 판단과 책임은 전적으로 사용자에게 있습니다.
           </div>
@@ -96,9 +92,9 @@ export default function LoginPage() {
       </div>
 
       <div className="w-full lg:w-[45%] flex flex-col justify-center p-8 sm:p-12 md:p-24 bg-zinc-950 relative">
-        <div className="absolute top-0 right-0 w-full h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-500/5 via-zinc-950 to-zinc-950 pointer-events-none"></div>
+        <div className="absolute top-0 right-0 w-full h-full bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-500/5 via-zinc-950 to-zinc-950 pointer-events-none" />
 
-        <div className="lg:hidden mb-12 flex flex-col items-center gap-3">
+        <div className="lg:hidden mb-8 flex flex-col items-center gap-3">
           <a href={PLATFORM_LINKS.login} className="inline-flex items-center gap-2">
             <div className="p-2 bg-zinc-900 rounded-xl border border-zinc-800">
               <ShieldAlert className="w-6 h-6 text-amber-500" />
@@ -112,6 +108,11 @@ export default function LoginPage() {
             서비스 자세히보기
             <ArrowRight className="w-3.5 h-3.5" />
           </a>
+        </div>
+
+        {/* 모바일: 짧은 피드 스트립 */}
+        <div className="lg:hidden w-full max-w-md mx-auto mb-8 relative z-10">
+          <SimWinFeedMarquee heightClass="h-[140px]" />
         </div>
 
         <div className="w-full max-w-md mx-auto relative z-10">
